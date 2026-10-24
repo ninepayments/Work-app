@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.21';
+const VERSION = '웹 0.0.22';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -258,7 +258,7 @@ async function logout() {
 const NAVPHONE = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['chat', '채팅', 'chat', ''], ['calendar', '일정', 'calendar', ''], ['all', '전체', 'all', '']];
 const NAVPC = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['chat', '채팅', 'chat', ''], ['calendar', '일정', 'calendar', ''], ['merchants', '가맹점', 'all', 'merchants'], ['logs', '응대 기록', 'all', 'logs']];
 const isWide = () => window.innerWidth >= 900;
-function newTaskCount() { return list('tasks').filter(t => t.assignee === S.uid && t.status === '지시됨').length; }
+function newTaskCount() { return list('tasks').filter(t => t.assignee === S.uid && t.status === '지시됨').length + list('tasks').filter(t => t.preq && t.preq.stage === '발송함' && t.creator === S.uid).length; } // 물품요청이 발송되면 요청한 사람에게 '입고 확인' 알림
 function bodyHTML() {
   const k = S.sub || S.tab, wide = isWide();
   if (wide && S.menu) return '<div class="scroll menupg"><div class="col">' + viewMenu(true) + '</div></div>';
@@ -309,6 +309,7 @@ function viewBody(k) {
     case 'logs': return viewAllLogs();
     case 'stock': return viewStock();
     case 'stocklog': return viewStockLog();
+    case 'preqs': return viewPreqs();
     case 'contracts': return viewContracts();
     case 'deposit': return viewDeposits();
     case 'myperf': return viewPerf(true);
@@ -385,6 +386,7 @@ ACT.tfilter = a => { S.taskFilter = Number(a); render(); };
 function tlog(t, text) { (t.history = t.history || []).push({t: nowStr(), who: S.uid, text}); }
 ACT.task = id => {
   const t = byId('tasks', id); if (!t) return;
+  if (t.preq) return ACT.preq(id);
   if (t.status === '지시됨' && t.assignee === S.uid && !t.seenAt) { t.seenAt = nowStr(); tlog(t, '담당자가 열어봄'); put('tasks', t); }
   const own = t.assignee === S.uid || can('staff_manage'); // 상태 변경: 담당자 본인 또는 최고관리자 (앱과 같음)
   const ln = (k, v) => v ? '<div class="line"><b>' + k + '</b><div>' + esc(v) + '</div></div>' : '';
@@ -1003,22 +1005,24 @@ function viewStock() {
     asset = '<div class="card flat"><div class="sub" style="margin:0">보유 재고 자산 (입고 단가 합계)</div><div class="t1" style="font-size:22px;margin-top:2px">' + wonFmt(sum) + '</div>' + (noPrice ? '<div class="sub" style="color:var(--amber)">단가 미입력 ' + noPrice + '대는 빠져 있어요.</div>' : '') + '<button class="btn tint" data-nav="all" data-sub="profit">수익 현황 보기</button></div>';
   }
   return '<h1>재고</h1><div class="sub">입고·출고·수량 정정을 하면 이력이 남아요. 계약에서 장비를 고르면 ‘출고중’이 되고, 설치 완료하면 재고에서 빠집니다. 검색칸에 바코드 스캐너로 찍으면 그 장비가 바로 열려요.</div>' +
+    '<div class="pills"><span class="sub" style="align-self:center;margin:0">보관지</span>' + ['', ...LOCS].map(l => '<button class="pill ' + ((S.sloc || '') === l ? 'on' : '') + '" data-act="sloc" data-arg="' + l + '">' + (l || '전체') + '</button>').join('') + '</div>' +
     '<div class="stkacts"><button class="btn gold" data-act="newStock">＋ 입고</button><button class="btn tint" data-act="outStock">− 출고</button><button class="btn tint" data-act="adjStock">± 수량 정정</button><button class="btn" data-nav="all" data-sub="stocklog">이력</button></div>' + asset +
     '<div class="row" style="gap:8px"><input id="sq" data-q="sq" placeholder="🔍 모델명·시리얼 (초성)" value="' + esc(S.sq || '') + '" autocomplete="off"><button class="btn tint" data-act="scanInto" data-arg="sq" style="flex:none" aria-label="카메라로 바코드 찍기">📷 바코드</button></div>' +
-    '<div class="qres" data-for="sq">' + stockGroups() + '</div>';
+    '<div class="qres" data-for="sq">' + stockGroups() + '</div>' + preqSection();
 }
+ACT.sloc = l => { S.sloc = l; render(); };
 function stockGroups() {
   const g = new Map();
-  list('stock').filter(r => r.status !== '설치완료' && kmatch((r.model || '') + ' ' + (r.serial || ''), S.sq || '')).sort((a, b) => (a.model || '').localeCompare(b.model || '') || (a.serial || '').localeCompare(b.serial || ''))
+  list('stock').filter(r => r.status !== '설치완료' && (!S.sloc || locOf(r) === S.sloc) && kmatch((r.model || '') + ' ' + (r.serial || '') + ' ' + locOf(r), S.sq || '')).sort((a, b) => (a.model || '').localeCompare(b.model || '') || (a.serial || '').localeCompare(b.serial || ''))
     .forEach(r => { if (!g.has(r.model)) g.set(r.model, []); g.get(r.model).push(r); });
   if (!g.size) return '<div class="empty">' + ((S.sq || '').trim() ? '찾는 장비가 없어요.' : '등록된 재고가 없습니다. ‘＋ 입고’로 추가해 주세요.') + '</div>';
   return [...g.entries()].map(([model, rows]) => {
     let have = 0, out = 0, safe = 0;
-    rows.forEach(r => { if (r.status === '출고중') out += r.qty || 1; else have += r.qty || 1; safe = Math.max(safe, r.safe || 0); });
+    const byLoc = {}; rows.forEach(r => { if (r.status === '출고중') out += r.qty || 1; else { have += r.qty || 1; byLoc[locOf(r)] = (byLoc[locOf(r)] || 0) + (r.qty || 1); } safe = Math.max(safe, r.safe || 0); });
     const low = safe > 0 && have < safe;
-    return '<div class="card flat"><div class="row"><div class="grow t1">' + esc(model) + '</div><span class="chip"' + (low ? ' style="background:#fdecea;color:var(--red)"' : '') + '>재고 ' + have + (out ? ' · 출고중 ' + out : '') + '</span></div>' +
+    return '<div class="card flat"><div class="row"><div class="grow t1">' + esc(model) + '</div><span class="chip"' + (low ? ' style="background:#fdecea;color:var(--red)"' : '') + '>재고 ' + have + (out ? ' · 출고중 ' + out : '') + '</span></div>' + (S.sloc ? '' : '<div class="sub" style="margin:2px 0 0">' + LOCS.map(l => l + ' ' + (byLoc[l] || 0)).join(' · ') + '</div>') +
       (safe ? '<div class="sub" style="' + (low ? 'color:var(--red);font-weight:700' : '') + '">안전재고 ' + safe + '대' + (low ? ' — 부족해요!' : '') + '</div>' : '') +
-      rows.map(r => '<button class="srow' + (r.status === '출고중' ? ' out' : '') + '" data-act="editStock" data-arg="' + r.id + '">' + esc(r.serial ? r.serial : '시리얼 없음 · ' + (r.qty || 1) + '개') + (r.status === '출고중' ? '<i>출고중</i>' : '') + '</button>').join('') + '</div>';
+      rows.map(r => '<button class="srow' + (r.status === '출고중' ? ' out' : '') + '" data-act="editStock" data-arg="' + r.id + '">' + esc((S.sloc ? '' : '[' + locOf(r) + '] ') + (r.serial ? r.serial : '시리얼 없음 · ' + (r.qty || 1) + '개')) + (r.status === '출고중' ? '<i>출고중</i>' : '') + '</button>').join('') + '</div>';
   }).join('');
 }
 // 스캐너로 검색칸에 시리얼을 찍으면(Enter) 그 장비를 바로 연다
@@ -1033,23 +1037,24 @@ ACT.newStock = () => {
     '<label class="fl" for="f_mo">모델명 (필수 · 있던 모델은 아래에서 골라도 돼요)</label><input id="f_mo" list="f_mol" placeholder="예: 토스 포스 T2" autocomplete="off"><datalist id="f_mol">' + stockModels().map(m => '<option value="' + esc(m) + '">').join('') + '</datalist>' +
     '<label class="fl" for="f_se">시리얼 (여러 개는 한 줄에 하나 — 스캐너로 계속 찍으면 줄이 바뀌어요)</label><textarea id="f_se" placeholder="시리얼 번호"></textarea><button class="btn tint full" data-act="scanInto" data-arg="f_se">📷 카메라로 바코드 찍기</button>' +
     '<label class="fl" for="f_q">시리얼이 없는 물품의 수량 (같은 모델이 있으면 그 수량에 더해져요)</label><input id="f_q" inputmode="numeric" placeholder="예: 10">' +
+    '<label class="fl" for="f_lc">보관지</label><select id="f_lc">' + LOCS.map(l => '<option' + (l === (S.sloc || '본사') ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
     '<label class="fl" for="f_mm">입고처·메모 (선택)</label><input id="f_mm" placeholder="예: 토스플레이스 본사 10/24 배송분">' +
     '<label class="fl" for="f_sf">안전재고 (이 수 아래면 알려줘요, 선택)</label><input id="f_sf" inputmode="numeric" placeholder="예: 3">' +
     (canPerf() ? '<label class="fl" for="f_b">입고 단가 (1대당 산 값, 원, 선택)</label><input id="f_b" inputmode="numeric" placeholder="예: 250000">' : ''), () => {
     const m = $('#f_mo').value.trim(); if (!m) return warn('모델명을 입력해 주세요.');
-    const qn = numOf($('#f_q').value), sf = numOf($('#f_sf').value), by = canPerf() ? numOf($('#f_b').value) : 0, memo = $('#f_mm').value.trim();
+    const qn = numOf($('#f_q').value), sf = numOf($('#f_sf').value), by = canPerf() ? numOf($('#f_b').value) : 0, memo = $('#f_mm').value.trim(), lc = $('#f_lc').value;
     const ss = $('#f_se').value.split(/[\n,]+/).map(x => x.trim()).filter(Boolean);
     if (!ss.length && qn < 1) return warn('시리얼을 적거나 수량을 입력해 주세요.');
     const seen = new Set();
     for (const x of ss) { const k = x.toLowerCase(); if (seen.has(k) || list('stock').some(r => r.status !== '설치완료' && (r.serial || '').trim().toLowerCase() === k)) return warn('이미 재고에 있는 시리얼이에요: ' + x); seen.add(k); }
-    const one = (serial, qty) => { const r = create('stock', {model: m, serial, qty, safe: sf, status: '재고', deleted: false}); slog(r, '입고', qty, memo); put('stock', r); if (by > 0) { const c = costDoc(r.id); c.buy = by; put('costs', c); } };
+    const one = (serial, qty) => { const r = create('stock', {model: m, serial, qty, safe: sf, status: '재고', loc: lc, deleted: false, log: []}); slog(r, '입고', qty, memo); put('stock', r); if (by > 0) { const c = costDoc(r.id); c.buy = by; put('costs', c); } };
     if (ss.length) ss.forEach(x => one(x, 1));
     else {
-      const same = inStock().find(r => !r.serial && (r.model || '').trim() === m);
+      const same = inStock().find(r => !r.serial && (r.model || '').trim() === m && locOf(r) === lc);
       if (same) { slog(same, '입고', qn, memo); same.qty = (same.qty || 1) + qn; if (sf) same.safe = sf; put('stock', same); if (by > 0) { const c = costDoc(same.id); c.buy = by; put('costs', c); } }
       else one('', qn);
     }
-    render(); toast('입고했어요: ' + m + ' ' + (ss.length || qn) + (ss.length ? '대' : '개')); return true;
+    render(); toast(lc + '에 입고했어요: ' + m + ' ' + (ss.length || qn) + (ss.length ? '대' : '개')); return true;
   }, '입고');
 };
 // 계약 없이 내보내기 — n개만 떼어 낼 때는 takeStock 처럼 새 줄로 나눠 이력을 남긴다
@@ -1076,7 +1081,7 @@ ACT.outStock = pre => {
   const q = $('#oq'), L = $('#ol'), box = $('#osel');
   const show = () => { box.innerHTML = sel.length ? sel.map((e, i) => { const r = byId('stock', e.id); return '<div class="eqi"><span>' + esc(r.model) + (r.serial ? ' / ' + esc(r.serial) : '') + '</span>' + (r.serial ? '' : '<input type="number" min="1" max="' + (r.qty || 1) + '" value="' + e.n + '" data-i="' + i + '" class="oqn" aria-label="수량"> / ' + (r.qty || 1) + '개') + '<button type="button" data-i="' + i + '" aria-label="빼기">−</button></div>'; }).join('') : '<div class="sub">아직 고른 장비가 없어요.</div>'; };
   const avail = () => inStock().filter(r => !sel.some(e => e.id === r.id));
-  const fill = () => { const v = q.value.trim(); L.innerHTML = avail().filter(r => kmatch((r.model || '') + ' ' + (r.serial || ''), v)).sort((a, b) => (a.model || '').localeCompare(b.model || '')).slice(0, 40).map(r => '<button type="button" class="pick" data-id="' + r.id + '"><b>' + esc(r.model) + '</b><span>' + (r.serial ? esc(r.serial) : '시리얼 없음 · ' + (r.qty || 1) + '개 보유') + '</span></button>').join('') || '<div class="sub">재고에 맞는 장비가 없어요.</div>'; };
+  const fill = () => { const v = q.value.trim(); L.innerHTML = avail().filter(r => kmatch((r.model || '') + ' ' + (r.serial || ''), v)).sort((a, b) => (a.model || '').localeCompare(b.model || '')).slice(0, 40).map(r => '<button type="button" class="pick" data-id="' + r.id + '"><b>' + esc(r.model) + '</b><span>' + esc('[' + locOf(r) + '] ') + (r.serial ? esc(r.serial) : '시리얼 없음 · ' + (r.qty || 1) + '개 보유') + '</span></button>').join('') || '<div class="sub">재고에 맞는 장비가 없어요.</div>'; };
   const add = r => { sel.push({id: r.id, n: 1}); show(); fill(); };
   const byCode = code => { const c = code.trim().toLowerCase(); if (!c) return; const r = avail().find(x => (x.serial || '').trim().toLowerCase() === c); if (r) { add(r); toast('추가: ' + r.model + ' · ' + r.serial); } else toast('재고에 없는 번호예요: ' + code); q.value = ''; fill(); };
   q.addEventListener('input', fill);
@@ -1092,7 +1097,7 @@ ACT.outStock = pre => {
 ACT.adjStock = () => {
   const rows = inStock().sort((a, b) => (a.model || '').localeCompare(b.model || '') || (a.serial || '').localeCompare(b.serial || ''));
   if (!rows.length) return toast('정정할 재고가 없어요.');
-  const g = new Map(); rows.forEach(r => { if (!g.has(r.model)) g.set(r.model, []); g.get(r.model).push(r); });
+  const g = new Map(); rows.forEach(r => { const k = r.model + ' · ' + locOf(r); if (!g.has(k)) g.set(k, []); g.get(k).push(r); });
   formModal('수량 정정 (재고 조사)',
     '<div class="sub" style="margin-top:0">창고에서 실제로 센 수량을 적으세요. 시리얼 장비는 실제로 없는 것만 체크를 끄면 ‘분실’로 빠져요. 바뀐 것만 이력에 남습니다.</div>' +
     '<div class="row" style="gap:8px"><input id="aqs" placeholder="시리얼 스캔하면 ‘확인’ 표시 (선택)" autocomplete="off"><button type="button" class="btn tint" id="acam" style="flex:none" aria-label="카메라로 바코드 찍기">📷</button></div>' +
@@ -1127,7 +1132,7 @@ function stockMoves() {
   });
   return out.sort((a, b) => (b.d || '').localeCompare(a.d || ''));
 }
-const MOVE_KINDS = ['전체', '입고', '출고', '정정'];
+const MOVE_KINDS = ['전체', '입고', '출고', '정정', '이동'];
 function viewStockLog() {
   const f = S.slogF || '전체';
   return '<h1>재고 이력</h1><div class="sub">입고·출고(계약 출고 포함)·수량 정정이 시간 순으로 남아요. 장비를 누르면 그 장비가 열려요.</div>' +
@@ -1139,7 +1144,7 @@ function stockLogList() {
   const f = S.slogF || '전체', q = S.slq || '';
   const ls = stockMoves().filter(x => (f === '전체' || x.k.endsWith(f)) && kmatch((x.r.model || '') + ' ' + (x.r.serial || '') + ' ' + (x.m || '') + ' ' + (x.by ? uname(x.by) : ''), q));
   if (!ls.length) return '<div class="empty">이력이 없어요.</div>';
-  const col = k => k === '입고' ? 'var(--green)' : k === '정정' ? 'var(--amber)' : 'var(--red)';
+  const col = k => k === '입고' ? 'var(--green)' : k === '정정' ? 'var(--amber)' : k === '이동' ? 'var(--gray)' : 'var(--red)';
   return '<div class="sub" style="font-weight:700">' + ls.length + '건</div>' + ls.slice(0, 300).map(x => '<div class="mv" data-act="editStock" data-arg="' + x.r.id + '"><span class="mvd">' + esc((x.d || '').slice(2, 16) || '예전 자료') + '</span><span class="chip" style="color:' + col(x.k) + ';background:var(--field)">' + esc(x.k) + '</span>' +
     '<span class="grow"><b>' + esc(x.r.model) + '</b>' + (x.r.serial ? ' / ' + esc(x.r.serial) : '') + (x.m ? '<small>' + esc(x.m) + '</small>' : '') + '</span><b class="mvq" style="color:' + col(x.k) + '">' + (x.q > 0 ? '+' : '') + x.q + '</b><span class="mvb">' + esc(x.by ? uname(x.by) : '') + '</span></div>').join('');
 }
@@ -1150,6 +1155,7 @@ ACT.editStock = id => {
   formModal('재고 수정', '<label class="fl" for="f_mo">모델명</label><input id="f_mo" value="' + esc(r.model) + '"><label class="fl" for="f_se">시리얼</label><input id="f_se" value="' + esc(r.serial) + '"><button class="btn tint full" data-act="scanInto" data-arg="f_se">📷 카메라로 바코드 찍기</button>' +
     (r.serial ? '' : '<div class="sub">수량은 ‘수량 정정’ 또는 ‘입고’·‘출고’로 바꿔 주세요 (지금 ' + (r.qty || 1) + '개).</div>') +
     '<label class="fl" for="f_sf">안전재고</label><input id="f_sf" inputmode="numeric" value="' + (r.safe || 0) + '">' +
+    (r.status === '재고' ? '<label class="fl" for="f_lc">보관지 (바꾸면 ‘이동’으로 이력에 남아요)</label><select id="f_lc">' + LOCS.map(l => '<option' + (l === locOf(r) ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' : '') +
     (canPerf() ? '<label class="fl" for="f_b">입고 단가 (산 값, 원)</label><input id="f_b" inputmode="numeric" value="' + (c && c.buy ? c.buy : '') + '"><label class="fl" for="f_s">출고 단가 (판 값, 원)</label><input id="f_s" inputmode="numeric" value="' + (c && c.sell ? c.sell : '') + '">' : '') +
     '<div class="sub" style="margin-top:10px">상태: ' + esc(stockState(r)) + (mer ? ' · ' + esc(mer.name) : '') + '</div>' +
     (hist.length ? '<div class="lb">이 장비 이력</div>' + hist.map(x => '<div class="sub" style="margin:2px 0">' + esc((x.d || '').slice(2) + ' · ' + x.k + ' ' + (x.q > 0 ? '+' : '') + x.q + (x.m ? ' · ' + x.m : '') + (x.by ? ' · ' + uname(x.by) : '')) + '</div>').join('') : '') +
@@ -1157,12 +1163,108 @@ ACT.editStock = id => {
     const m = $('#f_mo').value.trim(); if (!m) return warn('모델명을 입력해 주세요.');
     const se = $('#f_se').value.trim();
     if (se && se.toLowerCase() !== (r.serial || '').trim().toLowerCase() && list('stock').some(x => x.id !== r.id && x.status !== '설치완료' && (x.serial || '').trim().toLowerCase() === se.toLowerCase())) return warn('이미 있는 시리얼이에요: ' + se);
+    if ($('#f_lc') && $('#f_lc').value !== locOf(r)) { slog(r, '이동', 0, locOf(r) + ' → ' + $('#f_lc').value); r.loc = $('#f_lc').value; }
     r.model = m; r.serial = se; r.safe = numOf($('#f_sf').value); put('stock', r);
     if (canPerf()) { const b2 = numOf($('#f_b').value), s2 = numOf($('#f_s').value); const cd = costOf(r.id) || (b2 || s2 ? costDoc(r.id) : null); if (cd) { cd.buy = b2; cd.sell = s2; put('costs', cd); } }
     render(); toast('저장했어요.'); return true;
   }, '저장');
   if ($('#f_out')) $('#f_out').onclick = () => { closeModal(); setTimeout(() => ACT.outStock(r.id), 0); };
   $('#f_del').onclick = () => askConfirm('이 재고를 지울까요?', (r.model || '') + ' ' + (r.serial || '') + '\n잘못 넣은 것을 지울 때만 쓰세요. 실제로 나간 것은 ‘출고’, 수가 안 맞으면 ‘수량 정정’을 써야 이력이 남아요.', '지우기', () => { r.deleted = true; put('stock', r); render(); toast('삭제했어요.'); }, true);
+};
+
+// ---------- 보관지 · 물품요청 (지사 → 본사) ----------
+// 재고 보관지는 본사·광주지사. 예전 재고(보관지 없음)는 본사로 본다.
+// 물품요청은 업무(tasks)의 한 종류(type '물품요청')로 둔다 → 담당자 알림·이력·서버 규칙을 그대로 쓴다.
+// t.preq = {to 받을 곳, items [{model, qty}], stage 요청|주문함|발송함|입고완료|반려, ship 발송 메모}
+const LOCS = ['본사', '광주지사'];
+const locOf = r => r.loc || '본사';
+const PSTAGES = ['요청', '주문함', '발송함', '입고완료'];
+const preqs = () => list('tasks').filter(t => t.preq).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
+const preqWaiting = () => preqs().filter(t => t.preq.stage === '발송함' && (t.creator === S.uid || can('staff_manage'))); // 받는 쪽이 입고 확인할 것
+const preqItems = t => (t.preq.items || []).map(x => x.model + ' ' + x.qty + (x.serial ? '' : '개')).join(', ');
+function preqStageHTML(st) {
+  if (st === '반려') return '<span class="chip" style="background:#fdecea;color:var(--red)">반려</span>';
+  const i = PSTAGES.indexOf(st);
+  return '<div class="pstg">' + PSTAGES.map((s, k) => '<span class="' + (k < i ? 'done' : k === i ? 'on' : '') + '">' + s + '</span>').join('<i>›</i>') + '</div>';
+}
+function preqCard(t) {
+  return '<div class="card" data-act="preq" data-arg="' + t.id + '"><div class="row"><div class="grow"><div class="t1">📦 ' + esc(t.preq.to) + ' ← 본사</div><div class="t2">' + esc(preqItems(t)) + '</div><div class="t2">' + esc('요청 ' + uname(t.creator) + ' · 담당 ' + uname(t.assignee) + (t.due ? ' · 희망 ' + t.due : '')) + '</div></div></div>' + preqStageHTML(t.preq.stage) + '</div>';
+}
+function preqSection() {
+  const open = preqs().filter(t => t.preq.stage !== '입고완료' && t.preq.stage !== '반려');
+  const doneN = preqs().length - open.length;
+  return '<h2>📦 물품요청 (본사 ← 지사)</h2><button class="btn tint full" data-act="newPreq">＋ 본사에 물품요청</button>' +
+    (open.length ? open.map(preqCard).join('') : '<div class="sub">진행 중인 요청이 없어요.</div>') +
+    (doneN ? '<button class="btn full" data-nav="all" data-sub="preqs">지난 요청 보기 (' + doneN + '건)</button>' : '');
+}
+function viewPreqs() {
+  return '<h1>물품요청</h1><div class="sub">지사가 본사에 필요한 물품을 요청 → 본사 담당자가 주문·발송 → 받는 쪽이 입고 확인하면 그 보관지 재고에 들어가요.</div><button class="btn gold full" data-act="newPreq">＋ 본사에 물품요청</button>' +
+    (preqs().length ? preqs().map(preqCard).join('') : '<div class="empty">아직 요청이 없어요.</div>');
+}
+ACT.newPreq = () => {
+  const staff = list('users').filter(u => u.active !== false).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const row = () => '<div class="row prow2" style="gap:6px"><input class="pm" list="pmodels" placeholder="품목 (예: 영수증 용지)" style="flex:3"><input class="pq" inputmode="numeric" placeholder="수량" style="flex:1"></div>';
+  formModal('본사에 물품요청', '<div class="sub" style="margin-top:0">본사 담당자에게 알림이 가요. 담당자가 주문·발송을 표시하고, 물건이 오면 ‘입고 확인’을 누르면 받은 곳 재고에 들어가요.</div>' +
+    '<label class="fl" for="f_to">받을 곳</label><select id="f_to">' + LOCS.map(l => '<option' + (l === '광주지사' ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
+    '<div class="lb">요청 품목</div><datalist id="pmodels">' + stockModels().map(m => '<option value="' + esc(m) + '">').join('') + '</datalist><div id="prows">' + row() + row() + '</div><button type="button" class="btn full" id="paddr">＋ 품목 줄 추가</button>' +
+    '<label class="fl" for="f_as">본사 담당자 (알림이 가요)</label><select id="f_as">' + staff.map(u => '<option value="' + u.id + '">' + esc(u.name) + '</option>').join('') + '</select>' +
+    '<label class="fl" for="f_d">희망 도착일 (선택)</label><input id="f_d" type="date"><label class="fl" for="f_m">메모 (선택)</label><textarea id="f_m" placeholder="예: 다음 주 설치 3건 예정"></textarea>', () => {
+    const items = [...document.querySelectorAll('#prows .prow2')].map(r => ({model: r.querySelector('.pm').value.trim(), qty: numOf(r.querySelector('.pq').value)})).filter(x => x.model);
+    if (!items.length) return warn('요청할 품목을 적어 주세요.');
+    if (items.some(x => x.qty < 1)) return warn('품목마다 수량을 적어 주세요.');
+    const to = $('#f_to').value, as = Number($('#f_as').value), d = $('#f_d').value;
+    const t = create('tasks', {title: '물품요청 · ' + to + ' · ' + items.map(x => x.model + ' ' + x.qty).join(', '), type: '물품요청', client: to, due: d, memo: $('#f_m').value.trim(), assignee: as, creator: S.uid, status: '지시됨', history: [], preq: {to, items, stage: '요청'}});
+    tlog(t, '물품요청 → ' + uname(as) + ' (' + to + ')'); put('tasks', t); render(); toast(uname(as) + '님에게 물품요청을 보냈어요.'); return true;
+  }, '요청 보내기');
+  $('#paddr').onclick = () => $('#prows').insertAdjacentHTML('beforeend', row());
+};
+function preqStage(t, st, msg) {
+  t.preq.stage = st; tlog(t, '물품요청 → ' + st + (msg ? ' : ' + msg : ''));
+  if (st === '주문함' || st === '발송함') t.status = '진행중';
+  if (st === '입고완료' || st === '반려') { t.status = '완료'; t.doneAt = nowStr(); t.doneMsg = st + (msg ? ' : ' + msg : ''); }
+  put('tasks', t);
+}
+ACT.preq = id => {
+  const t = byId('tasks', id); if (!t || !t.preq) return;
+  if (t.status === '지시됨' && t.assignee === S.uid && !t.seenAt) { t.seenAt = nowStr(); tlog(t, '담당자가 열어봄'); put('tasks', t); }
+  const P = t.preq, st = P.stage, hq = t.assignee === S.uid || can('staff_manage'), rq = t.creator === S.uid || can('staff_manage');
+  const ln = (k, v) => v ? '<div class="line"><b>' + k + '</b><div>' + esc(v) + '</div></div>' : '';
+  modal('<h3>📦 물품요청 — ' + esc(P.to) + '</h3>' + preqStageHTML(st) +
+    '<table class="ptbl"><tr><th>품목</th><th>수량</th></tr>' + (P.items || []).map(x => '<tr><td>' + esc(x.model) + '</td><td>' + x.qty + '</td></tr>').join('') + '</table>' +
+    ln('받을 곳', P.to) + ln('요청한 사람', uname(t.creator) + ' · ' + (t.created || '')) + ln('본사 담당', uname(t.assignee)) + ln('희망 도착일', t.due) + ln('메모', t.memo) + ln('발송 메모', P.ship) +
+    '<h2>처리 이력</h2>' + (t.history || []).map(h => '<div class="hist">' + esc(h.t + '  ' + uname(h.who) + '\n' + h.text) + '</div>').join('') +
+    '<div class="btns" style="margin-top:12px;flex-wrap:wrap">' +
+    (hq && st === '요청' ? '<button class="btn tint" data-act="preqGo" data-arg="' + id + '|주문함">주문함</button>' : '') +
+    (hq && (st === '요청' || st === '주문함') ? '<button class="btn gold" data-act="preqShip" data-arg="' + id + '">발송(발주처리)</button><button class="btn red" data-act="preqNo" data-arg="' + id + '">반려</button>' : '') +
+    (rq && st === '발송함' ? '<button class="btn gold" data-act="preqIn" data-arg="' + id + '">입고 확인</button>' : '') +
+    '<button class="btn" data-act="close">닫기</button></div>');
+};
+ACT.preqGo = a => { const [id, st] = a.split('|'); const t = byId('tasks', id); preqStage(t, st); render(); ACT.preq(id); toast(st + '(으)로 표시했어요.'); };
+ACT.preqShip = id => formModal('발송 (발주처리)', '<div class="sub" style="margin-top:0">' + esc(byId('tasks', id).preq.to) + '로 보냈다고 표시해요. 받는 쪽에 ‘입고 확인’ 알림이 떠요.</div><label class="fl" for="f_s">발송 메모 (선택 — 택배사·송장번호 등)</label><input id="f_s" placeholder="예: 한진 1234-5678-9012">', () => {
+  const t = byId('tasks', id); t.preq.ship = $('#f_s').value.trim(); preqStage(t, '발송함', t.preq.ship); render(); setTimeout(() => ACT.preq(id), 0); toast('발송으로 표시했어요.'); return true;
+}, '발송 표시');
+ACT.preqNo = id => formModal('반려', '<label class="fl" for="f_s">반려 사유 (필수)</label><textarea id="f_s" placeholder="예: 재고 부족, 다음 주 재요청"></textarea>', () => {
+  const m = $('#f_s').value.trim(); if (!m) return warn('반려 사유를 적어 주세요.'); preqStage(byId('tasks', id), '반려', m); render(); toast('반려했어요.'); return true;
+}, '반려');
+// 입고 확인: 품목마다 받은 수량(시리얼이 있으면 한 줄에 하나)을 적으면 받는 곳 재고에 입고된다
+ACT.preqIn = id => {
+  const t = byId('tasks', id); const P = t.preq;
+  formModal('입고 확인 — ' + P.to, '<div class="sub" style="margin-top:0">받은 그대로 적어 주세요. 시리얼이 있는 장비는 시리얼을 한 줄에 하나씩 적거나 스캐너로 찍으면 시리얼마다 입고돼요.</div>' +
+    (P.items || []).map((x, i) => '<div class="adjg"><b>' + esc(x.model) + ' (요청 ' + x.qty + ')</b><div class="row" style="gap:6px"><span class="sub" style="margin:0">받은 수량</span><input id="pi_q' + i + '" inputmode="numeric" value="' + x.qty + '" style="width:90px;margin:0"></div><textarea id="pi_s' + i + '" placeholder="시리얼 (있으면, 한 줄에 하나)" style="min-height:44px"></textarea></div>').join(''), () => {
+    const memo = '물품요청 입고 (' + uname(t.creator) + ' 요청)';
+    const plan = (P.items || []).map((x, i) => ({x, q: numOf($('#pi_q' + i).value), ss: $('#pi_s' + i).value.split(/[\n,]+/).map(s => s.trim()).filter(Boolean)}));
+    for (const p of plan) for (const s of p.ss) if (list('stock').some(r => r.status !== '설치완료' && (r.serial || '').trim().toLowerCase() === s.toLowerCase())) return warn('이미 재고에 있는 시리얼이에요: ' + s);
+    plan.forEach(({x, q, ss}) => {
+      if (ss.length) ss.forEach(s => { const r = create('stock', {model: x.model, serial: s, qty: 1, safe: 0, status: '재고', loc: P.to, deleted: false, log: []}); slog(r, '입고', 1, memo); put('stock', r); });
+      else if (q > 0) {
+        const same = inStock().find(r => !r.serial && (r.model || '').trim() === x.model && locOf(r) === P.to);
+        if (same) { slog(same, '입고', q, memo); same.qty = (same.qty || 1) + q; put('stock', same); }
+        else { const r = create('stock', {model: x.model, serial: '', qty: q, safe: 0, status: '재고', loc: P.to, deleted: false, log: []}); slog(r, '입고', q, memo); put('stock', r); }
+      }
+    });
+    preqStage(t, '입고완료', plan.map(p => p.x.model + ' ' + (p.ss.length || p.q)).join(', '));
+    render(); toast(P.to + ' 재고에 입고했어요.'); return true;
+  }, '입고 확인');
 };
 
 // ---------- 가맹점 고르기 · 장비 고르기 (팝업 안에서 쓰는 조각) ----------
@@ -1191,7 +1293,7 @@ function wireEquipPicker(sel) {
   const avail = () => list('stock').filter(r => r.status === '재고' && !sel.some(e => e.sid && e.sid === r.id));
   const fill = () => {
     const v = q.value.trim(); const rows = avail().filter(r => kmatch((r.model || '') + ' ' + (r.serial || ''), v)).sort((a, b) => (a.model || '').localeCompare(b.model || '')).slice(0, 40);
-    L.innerHTML = rows.map(r => '<button type="button" class="pick" data-id="' + r.id + '"><b>' + esc(r.model) + '</b><span>' + (r.serial ? esc(r.serial) : '시리얼 없음 · ' + (r.qty || 1) + '개 보유') + '</span></button>').join('') || '<div class="sub">' + (v ? '재고에 맞는 장비가 없어요.' : '재고에 남은 장비가 없어요. 아래 ‘직접 입력’을 써 주세요.') + '</div>';
+    L.innerHTML = rows.map(r => '<button type="button" class="pick" data-id="' + r.id + '"><b>' + esc(r.model) + '</b><span>' + esc('[' + locOf(r) + '] ') + (r.serial ? esc(r.serial) : '시리얼 없음 · ' + (r.qty || 1) + '개 보유') + '</span></button>').join('') || '<div class="sub">' + (v ? '재고에 맞는 장비가 없어요.' : '재고에 남은 장비가 없어요. 아래 ‘직접 입력’을 써 주세요.') + '</div>';
   };
   const addRow = r => { sel.push({sid: r.id, model: r.model, serial: r.serial || ''}); showSel(); fill(); };
   const byCode = code => {
@@ -1878,39 +1980,48 @@ ACT.newNotice = () => formModal('공지 작성', '<label class="fl" for="f_t1">�
 
 // ---------- 전체 ----------
 // 항목과 순서는 안드로이드 앱의 '전체' 탭과 같다. go 가 없는 항목은 아직 앱에서만 되는 기능이다.
+const MENU_SECS = ['업무', '가맹점', '계약·재고', '실적', '보고', '회사', '내 계정·설정', '관리자'];
 function menuItems() {
+  // 묶음(앱과 같은 순서): 업무 · 가맹점 · 계약·재고 · 실적 · 보고 · 회사 · 내 계정·설정 · 관리자 — 권한이 없는 메뉴는 아예 안 보인다
   const P = can('perf_view') || can('staff_manage'), R = canReport() || can('report_view'), A = can('staff_manage');
   const nu = unreadNotices(), lk = lockDoc(); const it = [];
   const add = (sec, label, words, go, badge) => it.push({sec, label, words, go, badge});
   add('바로가기', '업무', '업무 지시 할일 설치 AS 서류', 'nav:task:'); add('바로가기', '프로젝트', '프로젝트 진행률', 'nav:project:');
   add('바로가기', '채팅', '채팅 대화 메시지 방', 'nav:chat:'); add('바로가기', '일정 (달력)', '일정 달력 캘린더 방문 약속', 'nav:calendar:');
-  add('일', '재고', '재고 장비 바코드 시리얼 단가 입고 출고 수량 정정 스캔', 'nav:all:stock'); add('일', '재고 이력 (입고·출고·정정)', '재고 이력 입고 출고 정정 실사 조사 반품 불량', 'nav:all:stocklog');
-  add('일', '가맹점', '가맹점 거래처 상호 사업자 삭제', 'nav:all:merchants');
-  add('일', '가맹점 응대 기록 조회', '응대 기록 AS 전화 응대 방문 메모 이력 날짜 가맹점', 'nav:all:logs');
-  add('일', '가맹점 일괄 가져오기 (엑셀·이카운트)', '가맹점 일괄 가져오기 업로드 엑셀 csv 이카운트', 'act:importM');
+  add('업무', '업무 지시하기', '업무 지시 새 업무 올리기', 'act:newTask');
+  add('업무', '지난 업무 기록', '지난 업무 기록 이력 완료 검색', 'nav:all:history');
+  add('업무', '물품요청 (본사 ← 지사)', '물품요청 구매 발주 주문 본사 지사 용지 장비 요청', 'nav:all:preqs', preqWaiting().length ? '입고 확인 ' + preqWaiting().length : '');
+  add('가맹점', '가맹점', '가맹점 거래처 상호 사업자 삭제 계약 만료', 'nav:all:merchants');
+  add('가맹점', '응대 기록 조회', '응대 기록 AS 전화 응대 방문 메모 이력 날짜 가맹점', 'nav:all:logs');
+  add('가맹점', '단체 문자 보내기', '단체 문자 sms 발송 가맹점 문자 안내', 'nav:all:sms');
+  add('가맹점', '가맹점 일괄 가져오기 (엑셀·이카운트)', '가맹점 일괄 가져오기 업로드 엑셀 csv 이카운트', 'act:importM');
   const ex = expiringContracts().length;
-  add('일', '계약 관리 (설치 완료·만료 알림)', '계약 설치 완료 만료 알림 장비', 'nav:all:contracts', ex ? '만료 ' + ex : ''); add('일', '신규 계약 올리기', '신규 계약 올리기 CMS 판매 렌탈', 'act:newContract');
-  add('일', '입금 확인 (입금 내역 올리기)', '입금 확인 입금 내역 미납금 판매대금 정보변경수수료', 'nav:all:deposit'); add('일', '단체 문자 보내기 (가맹점)', '단체 문자 sms 발송 가맹점 문자 안내', 'nav:all:sms');
-  add('일', '내 실적', '내 실적 월별 성장률 계약', 'nav:all:myperf');
-  if (P) { add('일', '전체 실적·직원별 순위', '전체 실적 직원별 순위 성장률', 'nav:all:perf'); add('일', '수익 현황 (입고·출고 단가)', '수익 현황 입고 출고 단가 매출 매입', 'nav:all:profit'); add('일', '실적 보고서 올리기 (대표님께)', '실적 보고서 올리기 대표님 본부장', 'nav:all:perfreport'); }
-  add('일', '일일보고 쓰기', '일일보고 보고 오늘 한 일', 'nav:all:daily');
-  if (R) { add('일', '일일보고 종합 보기', '일일보고 종합 대표님 직원별', 'nav:all:reportview'); if (!P) add('일', '실적 보고서 보기', '실적 보고서 보기 대표님', 'nav:all:perfreport'); }
-  add('일', '지난 업무 기록', '지난 업무 기록 이력 완료 검색', 'nav:all:history');
-  add('회사', '자료실', '자료실 게시판 양식 서식 계약서 파일 문서', 'nav:all:library'); add('회사', '비상연락망 (눌러서 전화)', '비상연락망 연락처 전화 번호', 'nav:all:contacts');
-  add('회사', '사용설명서', '사용설명서 매뉴얼 도움말 사용법 설치', 'nav:all:manual'); add('회사', '버전·업데이트 내역', '버전 업데이트 내역 변경 이력', 'nav:all:about'); add('회사', '업데이트 확인 (새 버전 받기)', '업데이트 확인 새 버전 새로고침 최신', 'act:checkUpdate');
+  add('계약·재고', '신규 계약 올리기', '신규 계약 올리기 CMS 판매 렌탈', 'act:newContract');
+  add('계약·재고', '계약 관리 (설치 완료·만료 알림)', '계약 설치 완료 만료 알림 장비', 'nav:all:contracts', ex ? '만료 ' + ex : '');
+  add('계약·재고', '입금 확인', '입금 확인 입금 내역 미납금 판매대금 정보변경수수료', 'nav:all:deposit');
+  add('계약·재고', '재고 (입고·출고·정정)', '재고 장비 바코드 시리얼 단가 입고 출고 수량 정정 스캔 본사 광주지사 보관지', 'nav:all:stock');
+  add('계약·재고', '재고 이력', '재고 이력 입고 출고 정정 이동 실사 조사 반품 불량', 'nav:all:stocklog');
+  add('실적', '내 실적', '내 실적 월별 성장률 계약', 'nav:all:myperf');
+  if (P) { add('실적', '전체 실적·직원별 순위', '전체 실적 직원별 순위 성장률', 'nav:all:perf'); add('실적', '수익 현황 (입고·출고 단가)', '수익 현황 입고 출고 단가 매출 매입', 'nav:all:profit'); }
+  add('보고', '일일보고 쓰기', '일일보고 보고 오늘 한 일', 'nav:all:daily');
+  if (P) add('보고', '실적 보고서 올리기 (대표님께)', '실적 보고서 올리기 대표님 본부장', 'nav:all:perfreport');
+  if (R) { add('보고', '일일보고 종합 보기', '일일보고 종합 대표님 직원별', 'nav:all:reportview'); if (!P) add('보고', '실적 보고서 보기', '실적 보고서 보기 대표님', 'nav:all:perfreport'); }
   add('회사', '공지사항', '공지사항 공지 알림', 'nav:all:notice', nu ? String(nu) : '');
+  add('회사', '자료실', '자료실 게시판 양식 서식 계약서 파일 문서', 'nav:all:library'); add('회사', '비상연락망 (눌러서 전화)', '비상연락망 연락처 전화 번호', 'nav:all:contacts');
+  add('내 계정·설정', '내 프로필 (사진·상태 메시지)', '프로필 사진 상태 메시지 내 정보', 'act:myProfile');
+  const np = 'Notification' in window ? Notification.permission : 'none';
+  add('내 계정·설정', '알림 받기 (이 기기)', '알림 푸시 소리 새 업무 채팅', 'act:notifyOn', np === 'granted' ? '켜짐' : np === 'none' ? '소리만' : '꺼짐');
+  add('내 계정·설정', '알림 소리', '알림 소리 진동 끄기 켜기', 'act:soundToggle', soundOn() ? '켜짐' : '꺼짐');
+  add('내 계정·설정', '업데이트 확인 (새 버전 받기)', '업데이트 확인 새 버전 새로고침 최신', 'act:checkUpdate');
+  add('내 계정·설정', '사용설명서', '사용설명서 매뉴얼 도움말 사용법 설치', 'nav:all:manual'); add('내 계정·설정', '버전·업데이트 내역', '버전 업데이트 내역 변경 이력', 'nav:all:about');
+  if (!/Electron/.test(navigator.userAgent)) add('내 계정·설정', 'PC 프로그램 설치 파일 받기 (윈도우)', 'PC 설치 파일 다운로드 윈도우 exe 프로그램', 'act:pcSetup');
+  add('내 계정·설정', '로그아웃', '로그아웃 나가기', 'act:logout');
   if (A) {
+    add('관리자', '직원과 권한', '직원 권한 등록 사용 중지 관리자', 'nav:all:staff');
     add('관리자', '데이터 백업 내려받기', '데이터 백업 내려받기 저장 내보내기 json', 'act:backupDownload'); add('관리자', 'PC에 보관된 자동 백업', '자동 백업 보관 PC 복원', 'act:pcBackups'); add('관리자', '가맹점 보호·복원', '가맹점 보호 복원 되돌리기 삭제 복구 휴지통', 'act:safety');
     add('관리자', '가맹점 수정 암호', '가맹점 수정 암호 잠금 비밀번호 설정 변경', 'act:mlockSet', lk ? '설정됨' : '아직 없음');
     if (lk) add('관리자', '가맹점 수정 암호 끄기', '가맹점 수정 암호 끄기 잠금 해제', 'act:mlockOff');
-    add('관리자', '직원과 권한', '직원 권한 등록 사용 중지 관리자', 'nav:all:staff');
   }
-  add('계정', '내 프로필 (사진·상태 메시지)', '프로필 사진 상태 메시지 내 정보', 'act:myProfile');
-  const np = 'Notification' in window ? Notification.permission : 'none';
-  add('계정', '알림 받기 (이 기기)', '알림 푸시 소리 새 업무 채팅', 'act:notifyOn', np === 'granted' ? '켜짐' : np === 'none' ? '소리만' : '꺼짐');
-  add('계정', '알림 소리', '알림 소리 진동 끄기 켜기', 'act:soundToggle', soundOn() ? '켜짐' : '꺼짐');
-  if (!/Electron/.test(navigator.userAgent)) add('계정', 'PC 프로그램 설치 파일 받기 (윈도우)', 'PC 설치 파일 다운로드 윈도우 exe 프로그램', 'act:pcSetup');
-  add('계정', '로그아웃', '로그아웃 나가기', 'act:logout');
   return it;
 }
 function menuRow(e) {
@@ -1921,10 +2032,10 @@ function menuRow(e) {
 }
 function viewMenu(wide) {
   const q = (S.allQ || '').trim(); const items = menuItems();
-  const secs = q ? ['바로가기', '계정', '회사', '일', '관리자'] : ['계정', '회사', '일', '관리자']; // 같은 이름은 한 묶음으로 (앱과 같은 순서)
+  const secs = (q ? ['바로가기'] : []).concat(MENU_SECS);
   const html = secs.map(sec => {
     const rows = items.filter(e => e.sec === sec && (e.go || q) && kmatch(e.label + ' ' + e.words, q));
-    if (sec === '계정' && !q) rows.push({label: '앱으로 설치하기', go: 'act:installApp'});
+    if (sec === '내 계정·설정' && !q) rows.push({label: '앱으로 설치하기', go: 'act:installApp'});
     return rows.length ? '<div class="msec"><h2>' + sec + '</h2>' + rows.map(e => e.label === '앱으로 설치하기' ? '<button class="mi inst" data-act="installApp" style="display:none"><span>' + (wide ? 'PC에 설치하기' : '앱으로 설치하기') + '</span><em>›</em></button>' : menuRow(e)).join('') + '</div>' : '';
   }).join('');
   const appOnly = q ? [] : items.filter(e => !e.go);
@@ -1981,7 +2092,7 @@ function sideHTML(k) {
     (k === 'merchants' ? sideSec('최근 응대 기록', recentLogs, '응대 기록이 없어요.') : '');
   // 그 밖의 화면(☰ 메뉴에서 연 것): 같은 묶음의 메뉴를 왼쪽에 두고 바로 옮겨 다닌다
   const items = menuItems().filter(e => e.go && e.go.startsWith('nav:all:'));
-  const cur = items.find(e => e.go === 'nav:all:' + k); const sec = cur ? cur.sec : '일';
+  const cur = items.find(e => e.go === 'nav:all:' + k); const sec = cur ? cur.sec : '업무';
   return '<h1>' + esc(sec) + '</h1>' + items.filter(e => e.sec === sec).map(e => menuRow(e).replace('class="mi', 'class="mi' + (e === cur ? ' on' : ''))).join('');
 }
 
@@ -2005,6 +2116,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.22', '2026-10-24', ['재고 보관지(본사·광주지사): 입고 때 보관지 선택, 보관지별 보기·수량, 보관지 바꾸면 ‘이동’ 이력', '물품요청(지사 → 본사): 품목·수량·받을 곳·본사 담당자 → 담당자에게 알림 → 주문함·발송(발주처리, 송장 메모)·반려 → 받는 쪽 ‘입고 확인’하면 그 보관지 재고에 자동 입고', '☰ 전체 메뉴를 업무·가맹점·계약·재고·실적·보고·회사·내 계정·설정·관리자로 나누고 넓은 화면을 다 쓰게, 권한 없는 메뉴는 숨김']],
   ['웹 0.0.21', '2026-10-24', ['채팅 읽음 표시: 카톡처럼 말풍선 옆에 아직 안 읽은 사람 수(노란 숫자)가 보이고, 다 읽으면 사라져요 (상대가 웹 또는 앱 v0.0.4 이상을 쓸 때 정확해요)']],
   ['웹 0.0.20', '2026-10-24', ['업무 지시: 가맹점 요청사항 빠른 선택 ‘용지신청’(직접 입력과 같이). 완료하면 응대 기록 종류가 ‘용지신청’으로 남아요', '업무 지시: 찾는 가맹점이 없으면 ‘새 가맹점 등록’ → 저장하면 이 업무에 자동 연결 (권한·암호 규칙 그대로)', '가맹점: 계약시작일·계약종료일 (상세에 D-day)', '가맹점 목록: 계약 만료 예정 필터 1·2·3개월 이내·만료됨, 종료일 빠른 순, 검색과 같이', 'VAN사 목록을 취급사로 정리 (다우데이타·다우데이타PG·KIS정보통신·KIS정보통신PG·NHN KCP·KOVAN·KOPAY PG), 직접 입력한 이름도 다음부터 목록에', '응대 종류에 ‘용지신청’ 추가']],
   ['웹 0.0.19', '2026-10-24', ['채팅: ‘+ 새 채팅’을 누르면 앱처럼 그룹 채팅방 / 1:1 대화 중에서 골라요 (1:1은 직원 검색해서 고르기)', '채팅: 직원 찾기 칸(이름·초성·번호)과 직원 줄 좌우 화살표 ‹ › 로 직원이 많아도 쉽게 찾기']],
@@ -2041,7 +2153,7 @@ const WEB_MANUAL = [
   ['일정 (달력)', '■ 일요일·공휴일은 빨간색(공휴일 이름 표시, 2026~2028년), 토요일은 파란색이에요. ‹ › 로 달을 넘기고 ‘오늘’로 돌아와요.\n■ 날짜를 누르면 그날 일정과 기한이 있는 업무가 보이고, 아래 ‘다가오는 일정’에 앞으로의 일정이 날짜 순으로 나와요.\n■ 일정을 누르면 내용이 보이고, 가맹점이 연결된 일정은 ‘가맹점 정보 보기’로 바로 가요.\n■ 일정 추가·삭제는 최고관리자만 해요(+ 버튼). 가맹점을 고르면 장소에 주소가 들어가요. 일반 직원은 업무에 기한을 넣으면 달력에 표시돼요.'],
   ['가맹점', '■ 검색: 상호, 초성(예: ㅅㅇㅍ), 사업자번호(- 없이도), 전화번호. 한글을 치는 중에도 바로 걸러져요. PC는 표로 보여요.\n■ 항목: 상호·사업자번호·전화번호·휴대폰번호·이메일·주소·VAN사·계약구분(임대면 월 CMS 금액, 판매면 판매 금액)·계약조건·등급 코드·메모. 칸마다 이름이 위에 있어요.\n■ 등급 코드(밴피 기준): 0 S·월 5만원 이상 / 1 A·3만원 이상 / 2 B·1만원 이상 / 3 C·1만원 미만 / 4 해지 / 5 신규 / 7 협력사.\n■ 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있어야 하고, 관리자가 수정 암호를 정해 두면 관리자도 암호를 넣어야 해요(한 번 넣으면 5분 동안 다시 묻지 않아요). 같은 사업자번호가 이미 있으면 등록할 때 알려 줘요.\n■ 삭제하면 목록에서만 사라지고 기록은 남아요(관리자가 복원 가능).\n■ 최고관리자는 가맹점 정보 창의 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.\n■ 계약기간·만료 예정: 등록·수정에 계약시작일·계약종료일. 목록 위 ‘계약 만료 예정’ 1·2·3개월 이내·만료됨을 누르면 그 가맹점만 종료일 빠른 순으로 보여요(검색과 같이 써요, 종료일이 빈 가맹점은 필터에서만 빠짐).\n■ VAN사: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG — 그 밖은 직접 입력하면 다음부터 목록에 같이 나와요.'],
   ['가맹점 응대 기록', '■ 가맹점을 열어 ‘+ 응대 기록 남기기’ → 날짜·종류(방문A/S·원격A/S·전화응대·기타)·요청사항·처리결과.\n■ 가맹점 창에서 종류 버튼과 날짜로 걸러 봐요.\n■ 전체 → 가맹점 응대 기록 조회: 상호·초성·사업자번호로 가맹점을 찾거나, 모든 가맹점의 최근 기록을 검색해요.\n■ 기록은 직원 누구나 고칠 수 있고 수정한 사람·시각이 남아요. 지우기는 쓴 사람과 최고관리자만 해요.'],
-  ['재고 · 바코드', '■ 입고(＋ 입고 또는 오른쪽 아래 +): 모델명, 시리얼(한 줄에 하나 — 스캐너로 계속 찍으면 여러 대가 한 번에), 시리얼 없는 물품은 수량, 안전재고, 입고 단가(실적 권한자).\n■ 출고(− 출고): 계약 없이 나가는 장비 — 반품(공급처로)·불량·폐기·A/S 교체·분실·기타 중 사유를 고르고, 재고에서 찾거나 스캐너로 찍어 담아요. 시리얼 없는 물품은 수량을 적어요. A/S 교체는 가맹점을 연결할 수 있어요. 계약으로 나가는 장비는 지금처럼 ‘계약’에서 고릅니다.\n■ 수량 정정(재고 조사): 창고에서 센 실제 수량을 적고, 시리얼 장비는 없는 것만 체크를 꺼요(스캐너로 찍으면 ‘확인’ 표시). 사유를 적으면 차이만큼 바로잡고 이력에 남아요.\n■ 이력: 재고 화면의 ‘이력’ 또는 전체 → 일 → 재고 이력. 입고·출고·계약 출고·정정이 날짜·직원·메모와 함께 시간 순으로 나와요. 장비를 누르면 그 장비의 이력도 볼 수 있어요.\n■ 삭제는 잘못 넣은 것을 지울 때만 쓰세요(이력이 안 남음).\n■ 바코드: PC는 USB·블루투스 스캐너로 찍으면 바로 입력돼요. 검색칸에 시리얼을 찍으면 그 장비가 바로 열려요. 휴대폰은 📷 버튼으로 카메라 스캔(처음에 카메라 허용).\n■ 모델별로 재고·출고중 수량이 보이고, 안전재고보다 적으면 빨간색으로 알려요.\n■ 시리얼 줄을 눌러 수정·삭제, 실적 권한자는 입고·출고 단가와 보유 재고 자산을 봐요.\n■ 순서: 재고 → (계약에서 고르면) 출고중 → (설치 완료하면) 재고에서 빠짐.'],
+  ['재고 · 바코드', '■ 입고(＋ 입고 또는 오른쪽 아래 +): 모델명, 시리얼(한 줄에 하나 — 스캐너로 계속 찍으면 여러 대가 한 번에), 시리얼 없는 물품은 수량, 안전재고, 입고 단가(실적 권한자).\n■ 출고(− 출고): 계약 없이 나가는 장비 — 반품(공급처로)·불량·폐기·A/S 교체·분실·기타 중 사유를 고르고, 재고에서 찾거나 스캐너로 찍어 담아요. 시리얼 없는 물품은 수량을 적어요. A/S 교체는 가맹점을 연결할 수 있어요. 계약으로 나가는 장비는 지금처럼 ‘계약’에서 고릅니다.\n■ 수량 정정(재고 조사): 창고에서 센 실제 수량을 적고, 시리얼 장비는 없는 것만 체크를 꺼요(스캐너로 찍으면 ‘확인’ 표시). 사유를 적으면 차이만큼 바로잡고 이력에 남아요.\n■ 이력: 재고 화면의 ‘이력’ 또는 전체 → 일 → 재고 이력. 입고·출고·계약 출고·정정이 날짜·직원·메모와 함께 시간 순으로 나와요. 장비를 누르면 그 장비의 이력도 볼 수 있어요.\n■ 삭제는 잘못 넣은 것을 지울 때만 쓰세요(이력이 안 남음).\n■ 바코드: PC는 USB·블루투스 스캐너로 찍으면 바로 입력돼요. 검색칸에 시리얼을 찍으면 그 장비가 바로 열려요. 휴대폰은 📷 버튼으로 카메라 스캔(처음에 카메라 허용).\n■ 모델별로 재고·출고중 수량이 보이고, 안전재고보다 적으면 빨간색으로 알려요.\n■ 시리얼 줄을 눌러 수정·삭제, 실적 권한자는 입고·출고 단가와 보유 재고 자산을 봐요.\n■ 순서: 재고 → (계약에서 고르면) 출고중 → (설치 완료하면) 재고에서 빠짐.\n■ 보관지: 본사·광주지사. 입고할 때 보관지를 고르고, 위 ‘보관지’ 버튼으로 나눠 봐요. 장비를 눌러 보관지를 바꾸면 ‘이동’으로 이력에 남아요(예전 재고는 본사로 잡혀 있어요).\n■ 물품요청(지사 → 본사): 재고 화면 아래 또는 ☰ → 업무 → 물품요청. 품목·수량·받을 곳·본사 담당자를 적어 보내면 담당자 업무에 알림이 가요. 담당자가 ‘주문함’ → ‘발송(발주처리)’(송장 메모)을 누르면, 요청한 사람에게 ‘입고 확인’ 알림이 가요. 물건을 받고 ‘입고 확인’에서 받은 수량·시리얼을 적으면 받은 곳 재고에 바로 들어가요. 안 되면 담당자가 ‘반려’(사유).'],
   ['계약 · 입금', '■ 신규 계약 올리기: 가맹점 찾기 → 결제 연동(VAN/PG·업체명) → 구분(판매·CMS·렌탈)과 금액 → 나가는 장비(재고에서 고르기·스캔·직접 입력) → 장비 메모 → 계약일·만료일(+12/24/36개월 버튼).\n■ 계약 관리: 만료 3개월 이내 계약이 위에 빨간 D-day 로 나와요. 계약을 눌러 장비 추가, ‘설치 완료’(장비가 재고에서 빠짐). 실적 권한이 없으면 내가 올린 계약만 보여요.\n■ 입금 확인: + 로 종류·금액·가맹점·메모를 올리면 ‘입금확인’ 채팅방에 알림이 가고, 확인한 사람이 ‘확인 처리’를 눌러요.'],
   ['실적 · 수익 · 지난 업무', '■ 내 실적: 이번 달 내 신규 계약·판매금액, 지난달과 비교(성장률), 최근 6개월. ‹ › 로 달을 바꿔요.\n■ 전체 실적·직원별 순위(실적 권한자): 신규 계약 대수 순(같으면 판매금액 순), 직원별 지난달 → 이번 달 막대.\n■ 수익 현황(실적 권한자): 출고된 장비의 출고 단가 − 입고 단가. 단가를 안 적은 장비는 아래 목록에서 눌러 적으면 바로 반영돼요.\n■ 지난 업무 기록: 완료된 업무를 제목·거래처·담당자·완료 메시지로 찾아요(전체 이력 권한이 없으면 내 것만).'],
   ['일일보고 · 실적 보고서', '■ 일일보고 쓰기: ‹ › 로 날짜를 고르고 오늘 한 일·특이사항·내일 계획을 적어 제출해요. 그날 완료한 업무와 올린 계약은 자동으로 같이 들어가요. 같은 날 다시 내면 수정본으로 바뀌어요.\n■ 일일보고 종합 보기(보고 열람 권한자): 날짜별로 직원별 보고와 미제출자를 봐요.\n■ 실적 보고서: 실적 권한자는 자동 집계된 이달 실적을 고쳐 ‘대표님께 보고하기’, 보고 열람 권한자는 올라온 보고서를 봐요.'],

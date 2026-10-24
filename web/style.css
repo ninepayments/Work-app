@@ -291,3 +291,18 @@ details.man[open]{padding-bottom:12px}
 .dmrow small{display:block;color:var(--gray);font-size:12px}
 .dmrow .avimg,.dmrow .avtxt{flex:none}
 .unr{color:#d39e00;font-weight:800;font-size:11px}
+/* 물품요청 */
+.pstg{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:8px;font-size:12px}
+.pstg span{padding:3px 8px;border-radius:10px;background:var(--field);color:var(--gray)}
+.pstg span.done{background:#e7f4ee;color:var(--green)}
+.pstg span.on{background:var(--gold);color:var(--dark);font-weight:700}
+.pstg i{font-style:normal;color:var(--gray)}
+.ptbl{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}
+.ptbl th,.ptbl td{border-bottom:1px solid #eceef1;padding:6px 4px;text-align:left}
+.ptbl th{color:var(--gray);font-size:12px}
+/* ☰ 전체 메뉴: 넓은 화면 전체를 쓴다 */
+.menupg .col{max-width:none}
+.menupg .mgrid{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.menupg .mi{font-size:15px}
+.menupg .msec{margin-top:0}
+.menupg .mhead2{margin-bottom:12px}
