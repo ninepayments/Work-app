@@ -2,11 +2,12 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.19';
+const VERSION = '웹 0.0.20';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
-const KINDS = ['방문A/S', '원격A/S', '전화응대', '기타'];
+const KINDS = ['방문A/S', '원격A/S', '전화응대', '용지신청', '기타'];
+const REQ_QUICK = ['용지신청']; // 업무 지시 '가맹점 요청사항' 빠른 선택
 const logKind = k => (k === 'AS' || k === '방문' || k === '방문 A/S') ? '방문A/S' : k === '원격 A/S' ? '원격A/S' : k === '전화 응대' ? '전화응대' : k;
 const logReq = g => (g.req !== undefined || g.res !== undefined) ? (g.req || '') : (g.text || '');
 const logRes = g => g.res || '';
@@ -413,7 +414,7 @@ ACT.tresched = id => formModal('일정 다시 잡기', '<label class="fl" for="f
 }, '변경');
 // 업무 ↔ 응대 기록: 가맹점이 연결된 업무를 완료하면 요청사항·처리결과가 그 가맹점 응대 기록에 남는다(다시 완료하면 같은 기록을 고침)
 const taskMerchant = t => (t.merchant && byId('merchants', t.merchant)) || (t.client ? list('merchants').find(m => (m.name || '').trim() === t.client.trim()) : null);
-const kindOfTask = t => /원격/.test((t.type || '') + (t.title || '')) ? '원격A/S' : /전화/.test(t.title || '') ? '전화응대' : /AS|A\/S|설치|방문/.test(t.type || '') ? '방문A/S' : '기타';
+const kindOfTask = t => /용지신청/.test((t.req || '') + (t.title || '')) ? '용지신청' : /원격/.test((t.type || '') + (t.title || '')) ? '원격A/S' : /전화/.test(t.title || '') ? '전화응대' : /AS|A\/S|설치|방문/.test(t.type || '') ? '방문A/S' : '기타';
 ACT.tdone = id => {
   const t0 = byId('tasks', id); const mer = t0 && taskMerchant(t0); const k0 = t0 && t0.mlog && byId('mlogs', t0.mlog) ? logKind(byId('mlogs', t0.mlog).kind) : kindOfTask(t0 || {});
   formModal('완료 처리', (t0 && t0.req ? '<div class="lb">가맹점 요청사항</div><div class="sub" style="margin-top:0;white-space:pre-wrap">' + esc(t0.req) + '</div>' : '') +
@@ -431,11 +432,11 @@ ACT.tdone = id => {
     put('tasks', t); render(); toast(mer ? '완료 처리하고 응대 기록에도 남겼어요.' : '완료 처리했어요.'); return true;
   }, '완료 처리');
 };
-ACT.newTask = () => {
+ACT.newTask = draft => {
   const staff = list('users').filter(u => u.active !== false && (can('task_assign') || u.id === S.uid));
   formModal('업무 지시', '<label class="fl" for="f_t1">업무 제목 (필수)</label><input id="f_t1" placeholder="예: A마트 포스 설치"><label class="fl" for="f_ty">종류</label><select id="f_ty">' + TYPES.map(x => '<option>' + x + '</option>').join('') + '</select>' + MP_FILL +
     '<label class="fl" for="f_c">거래처 (상호)</label><input id="f_c" placeholder="가맹점을 고르면 자동으로 채워져요"><label class="fl" for="f_p">매장 전화</label><input id="f_p" type="tel" placeholder="예: 062-123-4567"><label class="fl" for="f_a">매장 주소</label><input id="f_a" placeholder="예: 광주 동구 …">' +
-    '<label class="fl" for="f_rq">가맹점 요청사항 (선택 — 완료하면 처리결과와 함께 응대 기록에 남아요)</label><textarea id="f_rq" placeholder="예: 카드 결제가 안 된다고 함, 영수증 출력 안 됨"></textarea>' +
+    '<label class="fl" for="f_rq">가맹점 요청사항 (빠른 선택 + 직접 입력 — 완료하면 처리결과와 함께 응대 기록에 남아요)</label><div class="pills" style="margin-top:4px">' + REQ_QUICK.map(w => '<button type="button" class="pill rqq" data-w="' + w + '">＋ ' + w + '</button>').join('') + '</div><textarea id="f_rq" placeholder="예: 카드 결제가 안 된다고 함, 영수증 출력 안 됨"></textarea>' +
     '<label class="fl" for="f_d">기한 날짜 (선택 — 고르면 일정 달력에도 표시돼요)</label><input id="f_d" type="date"><label class="fl" for="f_tm">기한 시간 (선택)</label><input id="f_tm" type="time"><label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모"></textarea><label class="fl" for="f_w">담당 직원</label><select id="f_w">' + staff.map(u => '<option value="' + u.id + '"' + (u.id === S.uid ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('') + '</select>', () => {
     const ti = $('#f_t1').value.trim(); if (!ti) return warn('업무 제목을 입력해 주세요.');
     const d = $('#f_d').value, tm = $('#f_tm').value; const as = Number($('#f_w').value);
@@ -446,7 +447,16 @@ ACT.newTask = () => {
     render(); toast(uname(as) + '님에게 업무를 지시했습니다.'); return true;
   }, '지시하기');
   let pickedMer = null;
-  wireMerchantPicker(m => { pickedMer = m; const n = mNums(m); $('#f_c').value = m.name || ''; $('#f_p').value = n.phone || n.mobile || ''; $('#f_a').value = m.addr || ''; });
+  const syncQ = () => { const v = $('#f_rq').value; document.querySelectorAll('#modal .rqq').forEach(b => b.classList.toggle('on', v.includes(b.dataset.w))); };
+  document.querySelectorAll('#modal .rqq').forEach(b => b.onclick = () => { const el = $('#f_rq'); el.value = toggleWord(el.value, b.dataset.w); syncQ(); });
+  $('#f_rq').addEventListener('input', syncQ);
+  const pick = wireMerchantPicker(m => { pickedMer = m; const n = mNums(m); $('#f_c').value = m.name || ''; $('#f_p').value = n.phone || n.mobile || ''; $('#f_a').value = m.addr || ''; });
+  const ids = ['f_t1', 'f_ty', 'f_c', 'f_p', 'f_a', 'f_rq', 'f_d', 'f_tm', 'f_m', 'f_w'];
+  S.mpNew = q => { // 가맹점이 없으면 여기서 바로 등록 → 저장하면 이 업무 창으로 돌아와 자동 연결
+    const d = {}; ids.forEach(k => { const el = $('#' + k); if (el) d[k] = el.value; });
+    newMerchantThen(q, m => { ACT.newTask(Object.assign(d, {mer: m.id})); }, () => ACT.newTask(d));
+  };
+  if (draft) { ids.forEach(k => { const el = $('#' + k); if (el && draft[k] != null) el.value = draft[k]; }); syncQ(); const m = draft.mer && byId('merchants', draft.mer); if (m) pick(m); }
 };
 
 // ---------- 프로젝트 ----------
@@ -748,23 +758,30 @@ function mHay(m) { const b = m.bizno || ''; return [m.name, b, b.replace(/-/g, '
 function termsShort(m) { return m.ctype === '임대' ? '임대' + (m.camt ? ' · 월 ' + won(m.camt) : '') : m.ctype === '판매' ? '판매' + (m.camt ? ' · ' + won(m.camt) : '') : ''; }
 function viewMerchants() {
   const all = list('merchants').sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  const hits = all.filter(m => kmatch(mHay(m), S.mq));
+  const today = todayStr(), ef = S.mExp || 0;
+  let hits = all.filter(m => kmatch(mHay(m), S.mq));
+  if (ef) { // 계약 만료 예정: 1~3 = 개월 이내, 9 = 만료됨 (계약종료일이 빈 가맹점은 여기서만 빠진다)
+    hits = hits.filter(m => /^\d{4}-\d{2}-\d{2}$/.test(m.cend || '') && (ef === 9 ? m.cend < today : m.cend >= today && m.cend <= addMonths(today, ef))).sort((a, b) => a.cend.localeCompare(b.cend));
+  }
   const shown = hits.slice(0, S.mlimit);
   const rows = !shown.length ? '' : isWide()
-    ? '<div class="tbl"><table><thead><tr><th>상호</th><th>사업자번호</th><th>전화 / 휴대폰</th><th>VAN사</th><th>계약</th><th>주소</th></tr></thead><tbody>' + shown.map(m => {
+    ? '<div class="tbl"><table><thead><tr><th>상호</th><th>사업자번호</th><th>전화 / 휴대폰</th><th>VAN사</th><th>계약</th><th>계약종료</th><th>주소</th></tr></thead><tbody>' + shown.map(m => {
       const n = mNums(m), t = termsShort(m);
-      return '<tr data-act="merchant" data-arg="' + m.id + '"><td class="b">' + esc(m.name) + '</td><td>' + esc(m.bizno || '') + '</td><td>' + esc([n.phone, n.mobile].filter(Boolean).join(' / ')) + '</td><td>' + esc(m.van || '') + '</td><td>' + (t ? '<span class="chip">' + esc(t) + '</span>' : '') + '</td><td class="g">' + esc(m.addr || '') + '</td></tr>';
+      return '<tr data-act="merchant" data-arg="' + m.id + '"><td class="b">' + esc(m.name) + '</td><td>' + esc(m.bizno || '') + '</td><td>' + esc([n.phone, n.mobile].filter(Boolean).join(' / ')) + '</td><td>' + esc(m.van || '') + '</td><td>' + (t ? '<span class="chip">' + esc(t) + '</span>' : '') + '</td><td>' + cendHTML(m) + '</td><td class="g">' + esc(m.addr || '') + '</td></tr>';
     }).join('') + '</tbody></table></div>'
     : shown.map(m => {
       const n = mNums(m), t = termsShort(m);
-      return '<div class="card" data-act="merchant" data-arg="' + m.id + '"><div class="row"><div class="grow"><div class="t1">' + esc(m.name) + '</div><div class="t2">' + esc([m.bizno, n.phone || n.mobile, m.van].filter(Boolean).join(' · ') || '연락처 없음') + '</div>' + (m.addr ? '<div class="t2">' + esc(m.addr) + '</div>' : '') + '</div>' + (t ? '<span class="chip">' + esc(t) + '</span>' : '') + '</div></div>';
+      return '<div class="card" data-act="merchant" data-arg="' + m.id + '"><div class="row"><div class="grow"><div class="t1">' + esc(m.name) + '</div><div class="t2">' + esc([m.bizno, n.phone || n.mobile, m.van].filter(Boolean).join(' · ') || '연락처 없음') + '</div>' + (m.addr ? '<div class="t2">' + esc(m.addr) + '</div>' : '') + (m.cend ? '<div class="t2">계약종료 ' + cendHTML(m) + '</div>' : '') + '</div>' + (t ? '<span class="chip">' + esc(t) + '</span>' : '') + '</div></div>';
     }).join('');
   return '<h1>가맹점</h1><div class="sub">눌러서 보고' + (canEditMerchant() ? ', 오른쪽 아래 + 로 새로 등록해요.' : '요.') + '</div><input id="mq" data-q="mq" placeholder="🔍 상호·초성·사업자번호·전화" value="' + esc(S.mq) + '">' +
-    '<div class="qres" data-for="mq"><div class="sub" style="margin-top:8px;font-weight:700">' + (S.mq.trim() ? '검색 결과 ' : '전체 ') + hits.length + '곳</div>' + rows +
+    '<div class="pills"><span class="sub" style="align-self:center;margin:0">계약 만료 예정</span>' + [[0, '전체'], [1, '1개월 이내'], [2, '2개월 이내'], [3, '3개월 이내'], [9, '만료됨']].map(([v, lb]) => '<button class="pill ' + (ef === v ? 'on' : '') + '" data-act="mExp" data-arg="' + v + '">' + lb + '</button>').join('') + '</div>' +
+    '<div class="qres" data-for="mq"><div class="sub" style="margin-top:8px;font-weight:700">' + (S.mq.trim() || ef ? '찾은 가맹점 ' : '전체 ') + hits.length + '곳' + (ef ? ' · 계약종료일 빠른 순' : '') + '</div>' + rows +
     (hits.length > shown.length ? '<button class="btn full" data-act="mmore">더 보기 (' + (hits.length - shown.length) + '곳 남음)</button>' : '') +
-    (!hits.length ? '<div class="empty">' + (S.mq.trim() ? '찾는 가맹점이 없어요.' : '등록된 가맹점이 없습니다.') + '</div>' : '') + '</div>';
+    (!hits.length ? '<div class="empty">' + (ef ? '조건에 맞는 가맹점이 없어요. (계약종료일을 넣은 가맹점만 걸러져요)' : S.mq.trim() ? '찾는 가맹점이 없어요.' : '등록된 가맹점이 없습니다.') + '</div>' : '') + '</div>';
 }
 ACT.mmore = () => { S.mlimit += 100; render(); };
+ACT.mExp = v => { S.mExp = Number(v); S.mlimit = 50; render(); };
+function cendHTML(m) { if (!m.cend) return ''; const d = daysLeft(m.cend); return '<span style="' + (d <= 30 ? 'color:var(--red);font-weight:700' : '') + '">' + esc(m.cend) + (d === 99999 ? '' : ' · ' + esc(dday(d))) + '</span>'; }
 ACT.merchant = id => {
   const m = byId('merchants', id); if (!m) return;
   rememberMerchant(m.id);
@@ -774,7 +791,7 @@ ACT.merchant = id => {
   const ln = (k, v) => v ? '<div class="line"><b>' + k + '</b><div>' + esc(v) + '</div></div>' : '';
   const nm = mNums(m); const ph = nm.phone.replace(/[^0-9+*#]/g, ''); const mp = nm.mobile.replace(/[^0-9+*#]/g, '');
   const callBtn = (num, raw, lb) => num ? '<a class="btn tint full" style="display:block;text-align:center;text-decoration:none;margin-top:6px" href="tel:' + num + '">📞 ' + lb + ' ' + esc(raw) + ' 전화 걸기</a>' : '';
-  modal('<h3>' + esc(m.name) + '</h3>' + ln('사업자번호', m.bizno) + ln('전화번호', nm.phone) + ln('휴대폰번호', nm.mobile) + ln('이메일', m.email) + ln('주소', m.addr) + ln('VAN사', m.van) + ln('계약조건', termsText(m)) + ln('등급', gradeLabel(m.grade)) + ln('메모', m.memo) +
+  modal('<h3>' + esc(m.name) + '</h3>' + ln('사업자번호', m.bizno) + ln('전화번호', nm.phone) + ln('휴대폰번호', nm.mobile) + ln('이메일', m.email) + ln('주소', m.addr) + ln('VAN사', m.van) + ln('계약조건', termsText(m)) + ln('계약기간', m.cstart || m.cend ? (m.cstart || '') + ' ~ ' + (m.cend || '') + (m.cend ? '  (' + dday(daysLeft(m.cend)) + ')' : '') : '') + ln('등급', gradeLabel(m.grade)) + ln('메모', m.memo) +
     callBtn(ph, nm.phone, '전화') + callBtn(mp, nm.mobile, '휴대폰') +
     openTasksOf(m) +
     '<h2>📝 응대 기록 (' + logs.length + '건)</h2><button class="btn gold full" data-act="newLog" data-arg="' + m.id + '">+ 응대 기록 남기기</button>' +
@@ -809,7 +826,7 @@ ACT.newLog = mid => formModal('응대 기록', '<input id="f_d" type="date" valu
   const d = $('#f_d').value, t = $('#f_m').value.trim(), r = $('#f_r').value.trim(); if (!d || (!t && !r)) return warn('날짜와 요청사항(또는 처리결과)을 적어 주세요.');
   const m = byId('merchants', mid); put('mlogs', create('mlogs', {merchant: m.id, mname: m.name, date: d, kind: $('#f_k').value, req: t, res: r, text: t + (r ? (t ? '\n' : '') + '→ 처리: ' + r : ''), who: S.uid})); render(); ACT.merchant(mid); toast('기록을 남겼어요.'); return true;
 }, '저장');
-const VANS = ['KICC(한국정보통신)', '다우데이타', 'NICE정보통신', 'KIS정보통신', '스마트로', 'KOCES', 'FDIK', '기타'];
+const VANS = ['다우데이타', '다우데이타PG', 'KIS정보통신', 'KIS정보통신PG', 'NHN KCP', 'KOVAN', 'KOPAY PG']; // 취급 VAN·PG사 (그 밖은 직접 입력하면 다음부터 목록에 같이 나와요)
 const won = v => { const n = String(v || '').replace(/[^0-9]/g, ''); return n ? Number(n).toLocaleString('ko-KR') + '원' : ''; };
 const amtLabel = ct => ct === '임대' ? '월 CMS 금액 (원)' : ct === '판매' ? '판매 금액 (원)' : '금액 (원, 계약구분을 먼저 골라요)';
 function termsText(m) {
@@ -827,17 +844,18 @@ function merchantForm(m) {
   return mfield('f_n', '상호 (필수)', '예: 토스단말기 전문', m.name) + mfield('f_b', '사업자번호', '예: 123-45-67890', m.bizno) +
     mfield('f_p', '전화번호', '예: 062-123-4567', nm.phone, 'tel') + mfield('f_mo', '휴대폰번호', '예: 010-1234-5678', nm.mobile, 'tel') +
     mfield('f_e', '이메일', '예: name@example.com', m.email, 'email') + mfield('f_a', '주소', '예: 광주 동구 …', m.addr) +
-    '<label class="fl" for="f_v">VAN사</label><input id="f_v" list="vanlist" placeholder="목록에서 고르거나 직접 입력" value="' + esc(m.van || '') + '"><datalist id="vanlist">' + VANS.map(v => '<option value="' + esc(v) + '">').join('') + '</datalist>' +
+    '<label class="fl" for="f_v">VAN사</label><input id="f_v" list="vanlist" placeholder="목록에서 고르거나 직접 입력" value="' + esc(m.van || '') + '"><datalist id="vanlist">' + [...new Set(VANS.concat(list('merchants').map(x => (x.van || '').trim()).filter(Boolean)))].map(v => '<option value="' + esc(v) + '">').join('') + '</datalist>' +
     '<label class="fl" for="f_ct">계약구분</label><select id="f_ct">' + ['', '임대', '판매'].map(v => '<option value="' + v + '"' + ((m.ctype || '') === v ? ' selected' : '') + '>' + (v || '(선택 안 함)') + '</option>').join('') + '</select>' +
     '<label class="fl" for="f_ca" id="f_cal">' + amtLabel(m.ctype) + '</label><input id="f_ca" inputmode="numeric" placeholder="숫자만 (예: 30000)" value="' + esc(m.camt || '') + '">' +
     mfield('f_t', '계약조건 (추가 내용)', '예: 36개월 약정, 위약금 없음', m.terms) +
+    '<div class="row" style="gap:8px"><div class="grow">' + mfield('f_cs', '계약시작일', '', m.cstart, 'date') + '</div><div class="grow">' + mfield('f_ce', '계약종료일', '', m.cend, 'date') + '</div></div>' +
     '<label class="fl" for="f_g">등급 코드 (밴피 기준)</label><select id="f_g">' + GRADES.map((g, i) => g ? '<option value="' + i + '"' + (Number(m.grade == null ? 5 : m.grade) === i ? ' selected' : '') + '>' + gradeLabel(i) + '</option>' : '').join('') + '</select>' +
     '<label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모">' + esc(m.memo || '') + '</textarea>';
 }
 function wireMerchantForm() { const ct = $('#f_ct'); if (ct) ct.onchange = () => { $('#f_cal').textContent = amtLabel(ct.value); }; }
 function readMerchant(o) {
   o.name = $('#f_n').value.trim(); o.bizno = $('#f_b').value.trim(); o.phone = $('#f_p').value.trim(); o.mobile = $('#f_mo').value.trim(); o.email = $('#f_e').value.trim();
-  o.addr = $('#f_a').value.trim(); o.van = $('#f_v').value.trim(); o.ctype = $('#f_ct').value; o.camt = $('#f_ca').value.replace(/[^0-9]/g, ''); o.terms = $('#f_t').value.trim(); o.grade = Number($('#f_g').value); o.memo = $('#f_m').value.trim(); return o;
+  o.addr = $('#f_a').value.trim(); o.van = $('#f_v').value.trim(); o.ctype = $('#f_ct').value; o.camt = $('#f_ca').value.replace(/[^0-9]/g, ''); o.terms = $('#f_t').value.trim(); o.grade = Number($('#f_g').value); o.memo = $('#f_m').value.trim(); o.cstart = $('#f_cs').value; o.cend = $('#f_ce').value; return o;
 }
 // ---------- 가맹점 수정 암호 (화면 잠금) ----------
 const LOCK_MS = 5 * 60 * 1000; let unlockedAt = 0;
@@ -874,12 +892,24 @@ ACT.newMerchant = () => needLock(() => { let dupOk = false; formModal('가맹점
   if (dup && !dupOk) { dupOk = true; return warn('같은 사업자번호의 가맹점 ‘' + dup.name + '’이(가) 이미 있어요. 그래도 등록하려면 저장을 한 번 더 누르세요.'); }
   const o = readMerchant(create('merchants', {grade: 5})); put('merchants', o); render(); toast('저장했어요.'); return true;
 }, '저장'); wireMerchantForm(); });
+// 다른 창(업무 지시)에서 가맹점을 새로 등록하고 돌아간다 — 권한·암호 규칙은 그대로
+function newMerchantThen(q, done, back) {
+  if (!canEditMerchant()) { toast('가맹점 등록·수정 권한이 없어요. 관리자에게 요청해 주세요.'); return back(); }
+  const pre = {}; if ((q || '').replace(/\D/g, '').length >= 10) pre.bizno = q; else pre.name = q || '';
+  needLock(() => { let dupOk = false; formModal('가맹점 등록', merchantForm(pre), () => {
+    if (!$('#f_n').value.trim()) return warn('상호를 입력해 주세요.');
+    const bd = $('#f_b').value.replace(/\D/g, ''); const dup = bd.length >= 10 && list('merchants').find(m => (m.bizno || '').replace(/\D/g, '') === bd);
+    if (dup && !dupOk) { dupOk = true; return warn('같은 사업자번호의 가맹점 ‘' + dup.name + '’이(가) 이미 있어요. 그래도 등록하려면 저장을 한 번 더 누르세요.'); }
+    const o = readMerchant(create('merchants', {grade: 5})); put('merchants', o); toast('가맹점을 등록하고 업무에 연결했어요.'); setTimeout(() => done(o), 0); return true;
+  }, '저장'); wireMerchantForm(); $('#m_cancel').onclick = () => { closeModal(); back(); }; });
+}
+function toggleWord(s, w) { s = s || ''; if (s.includes(w)) return s.replace(w + ', ', '').replace(', ' + w, '').replace(w, '').trim(); return s.trim() ? w + ', ' + s.trim() : w; }
 ACT.delMerchant = id => needLock(() => {
   const m = byId('merchants', id); if (!m) return;
   const c = list('mlogs').filter(g => g.merchant === m.id).length;
   askConfirm('‘' + m.name + '’ 가맹점을 삭제할까요?', '목록에서만 지워지고, 응대 기록 ' + c + '건과 서버의 기록은 그대로 남아요. (앱의 가맹점 보호·복원에서 되살릴 수 있어요)', '삭제', () => { m.deleted = true; put('merchants', m); render(); toast('삭제했어요.'); }, true);
 });
-const MF = {grade: '등급', name: '상호', bizno: '사업자번호', phone: '전화번호', mobile: '휴대폰번호', email: '이메일', addr: '주소', van: 'VAN사', ctype: '계약구분', camt: '금액', terms: '계약조건', memo: '메모', deleted: '삭제'};
+const MF = {grade: '등급', name: '상호', bizno: '사업자번호', phone: '전화번호', mobile: '휴대폰번호', email: '이메일', addr: '주소', van: 'VAN사', ctype: '계약구분', camt: '금액', terms: '계약조건', cstart: '계약시작일', cend: '계약종료일', memo: '메모', deleted: '삭제'};
 ACT.editMerchant = id => needLock(() => {
   const key = 'merchants/' + Number(id), base = S.pushed[key], before = JSON.stringify(byId('merchants', id)); let forced = false;
   formModal('가맹점 정보 수정', merchantForm(byId('merchants', id)) + '<div id="f_conf"></div>', () => {
@@ -1132,14 +1162,19 @@ ACT.editStock = id => {
 const MP_FILL = '<div class="lb">가맹점 조회 (선택 · 고르면 거래처·전화·주소가 자동으로 채워져요)</div><div id="mpSel" class="sub" style="display:none"></div><input id="mpq" placeholder="🔍 상호·초성·사업자번호" autocomplete="off"><div id="mpl" class="picks"></div>';
 const MP_HTML = '<div class="lb">가맹점</div><div id="mpSel" class="sub">아직 고르지 않았어요. 아래에서 찾아 눌러 주세요.</div><input id="mpq" placeholder="🔍 상호·초성·사업자번호" autocomplete="off"><div id="mpl" class="picks"></div>';
 function wireMerchantPicker(onPick) {
+  S.mpNew = null; // '새 가맹점 등록' 버튼은 업무 지시 창에서만 (그 창이 다시 켠다)
   const q = $('#mpq'), l = $('#mpl');
   const fill = () => { // 검색칸은 그대로 두고 목록만 바꾼다 → 한글을 치는 중에도 바로 걸러진다
     const v = q.value.trim(); if (!v) { l.innerHTML = ''; return; }
     const hits = list('merchants').filter(m => kmatch(mHay(m), v)).sort((a, b) => (a.name || '').localeCompare(b.name || '')).slice(0, 8);
-    l.innerHTML = hits.map(m => { const n = mNums(m); return '<button type="button" class="pick" data-id="' + m.id + '"><b>' + esc(m.name) + '</b><span>' + esc([m.bizno, n.phone || n.mobile].filter(Boolean).join(' · ')) + '</span></button>'; }).join('') || '<div class="sub">찾는 가맹점이 없어요.</div>';
+    l.innerHTML = hits.map(m => { const n = mNums(m); return '<button type="button" class="pick" data-id="' + m.id + '"><b>' + esc(m.name) + '</b><span>' + esc([m.bizno, n.phone || n.mobile].filter(Boolean).join(' · ')) + '</span></button>'; }).join('') ||
+      ('<div class="sub">찾는 가맹점이 없어요.</div>' + (S.mpNew ? '<button type="button" class="btn gold full" id="mpnew">＋ 새 가맹점 등록 (‘' + esc(v) + '’)</button>' : ''));
+    const nb = $('#mpnew'); if (nb) nb.onclick = () => { const f = S.mpNew; S.mpNew = null; f(v); };
   };
   q.addEventListener('input', fill);
-  l.onclick = ev => { const p = ev.target.closest('.pick'); if (!p) return; const m = byId('merchants', p.dataset.id); const s = $('#mpSel'); s.className = 'picked'; s.style.display = ''; s.innerHTML = '✔ <b>' + esc(m.name) + '</b>' + (m.bizno ? ' · ' + esc(m.bizno) : ''); q.value = ''; l.innerHTML = ''; onPick(m); };
+  const pick = m => { const s = $('#mpSel'); s.className = 'picked'; s.style.display = ''; s.innerHTML = '✔ <b>' + esc(m.name) + '</b>' + (m.bizno ? ' · ' + esc(m.bizno) : ''); q.value = ''; l.innerHTML = ''; onPick(m); };
+  l.onclick = ev => { const p = ev.target.closest('.pick'); if (p) pick(byId('merchants', p.dataset.id)); };
+  return pick;
 }
 const EQ_HTML = '<div class="lb">나가는 장비</div><div id="eqSel"></div><div class="row" style="gap:8px"><input id="eqq" placeholder="재고에서 찾기 (모델·시리얼)" autocomplete="off"><button type="button" class="btn tint" id="eqcam" style="flex:none" aria-label="카메라로 바코드 찍기">📷</button></div><div id="eqList" class="picks"></div>' +
   '<details class="direct"><summary>재고에 없는 장비 직접 입력</summary><input id="eqm" placeholder="모델명"><input id="eqs" placeholder="시리얼 (선택)"><button type="button" class="btn full" id="eqadd">장비 추가</button></details>';
@@ -1963,6 +1998,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.20', '2026-10-24', ['업무 지시: 가맹점 요청사항 빠른 선택 ‘용지신청’(직접 입력과 같이). 완료하면 응대 기록 종류가 ‘용지신청’으로 남아요', '업무 지시: 찾는 가맹점이 없으면 ‘새 가맹점 등록’ → 저장하면 이 업무에 자동 연결 (권한·암호 규칙 그대로)', '가맹점: 계약시작일·계약종료일 (상세에 D-day)', '가맹점 목록: 계약 만료 예정 필터 1·2·3개월 이내·만료됨, 종료일 빠른 순, 검색과 같이', 'VAN사 목록을 취급사로 정리 (다우데이타·다우데이타PG·KIS정보통신·KIS정보통신PG·NHN KCP·KOVAN·KOPAY PG), 직접 입력한 이름도 다음부터 목록에', '응대 종류에 ‘용지신청’ 추가']],
   ['웹 0.0.19', '2026-10-24', ['채팅: ‘+ 새 채팅’을 누르면 앱처럼 그룹 채팅방 / 1:1 대화 중에서 골라요 (1:1은 직원 검색해서 고르기)', '채팅: 직원 찾기 칸(이름·초성·번호)과 직원 줄 좌우 화살표 ‹ › 로 직원이 많아도 쉽게 찾기']],
   ['웹 0.0.18', '2026-10-24', ['직원과 권한: ‘영업 실적·순위에서 빼기’ 추가 — 대표님처럼 켜 둔 계정은 실적 합계·직원별 순위·월별 비교·직원별 수익에 들어가지 않아요']],
   ['웹 0.0.17', '2026-10-24', ['‘지금 업데이트’를 누르면 바로 새 버전이 열리게 고침(전에는 서버 임시 보관 때문에 최대 10분 늦게 바뀜)']],
@@ -1991,11 +2027,11 @@ const WEB_MANUAL = [
   ['처음 시작하기 · 로그인', '1. 관리자가 등록해 둔 내 휴대폰 번호를 넣고 ‘인증번호 받기’를 눌러요.\n2. 문자로 온 인증번호 6자리를 넣으면 로그인돼요. 한 번 로그인하면 계속 유지돼요.\n※ ‘등록되지 않은 번호입니다’가 나오면 관리자에게 번호 등록을 요청하세요.\n※ 아이폰: Safari 로 열고 공유 버튼 → ‘홈 화면에 추가’ 하면 앱처럼 써요.\n※ 로그아웃: 전체(☰) → 계정 → 로그아웃.'],
   ['PC 프로그램 (윈도우)', '전체(☰) → 계정 → ‘PC 프로그램 설치 파일 받기’로 설치 파일을 받아 실행하면 바탕화면·시작 메뉴에 ‘나인패밀리’가 생겨요.\n처음 실행할 때 ‘Windows의 PC 보호’ 창이 뜨면 ‘추가 정보’ → ‘실행’을 눌러 주세요.\n프로그램은 이 웹앱을 창으로 띄우는 방식이라, 업데이트가 나오면 다시 설치하지 않아도 다음에 켤 때(켜 둔 상태면 F5) 바로 바뀌어요.\n크롬·엣지에서 주소창 오른쪽 설치 버튼으로 설치해도 같아요.\n■ 왼쪽 칸: PC에서는 채팅처럼 화면 왼쪽에 바로가기 목록이 나와요. 업무는 기한 지난·내 업무, 프로젝트는 진행률, 일정은 오늘부터 일주일, 가맹점·응대 기록은 진행 중인 가맹점 업무와 최근 연 가맹점, ☰에서 연 화면은 같은 묶음 메뉴. 눌러서 바로 열어요.'],
   ['화면 구성', '휴대폰(아이폰): 안드로이드 앱과 같은 화면이에요. 아래 탭 업무·프로젝트·채팅·일정·전체, 나머지 기능은 전체 탭에 계정 → 회사 → 일 → 관리자 순서로 있어요.\nPC: 위쪽 가로줄이 주 메뉴(업무·프로젝트·채팅·일정·가맹점·응대 기록)예요. 왼쪽 위 ☰ 를 누르면 전체 메뉴가 펼쳐지고, ‘나인패밀리’를 누르면 홈(오늘 현황)으로 가요.\n전체 메뉴 위 기능 검색에 단어나 초성(예: ㅈㄱ)을 치면 기능을 바로 찾아요.\n안드로이드 앱·아이폰·PC 는 같은 서버를 써서, 어디서 고쳐도 다른 기기에 바로 보여요.'],
-  ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 지시: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 지시할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.'],
+  ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 지시: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 지시할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.\n■ 용지신청·새 가맹점: 요청사항 위 ‘＋ 용지신청’을 누르면 칸에 들어가요(다시 누르면 빠짐). 완료하면 응대 기록 종류가 ‘용지신청’. 가맹점 조회에서 못 찾으면 ‘새 가맹점 등록’ → 찾던 상호·사업자번호가 채워지고, 저장하면 업무 창으로 돌아와 자동 연결돼요(권한·암호 필요).'],
   ['프로젝트', '+ 로 이름·마감일·메모·체크리스트(한 줄에 하나)·담당자를 넣어 만들어요.\n프로젝트를 눌러 항목을 체크하면 진행률이 자동으로 올라가고, ‘항목 추가’로 늘려요. 100%가 되면 ‘완료 되돌리기’로 진행중으로 돌릴 수 있어요.\n목록 위 전체·진행중·완료로 걸러 봐요.'],
   ['채팅', '■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.'],
   ['일정 (달력)', '■ 일요일·공휴일은 빨간색(공휴일 이름 표시, 2026~2028년), 토요일은 파란색이에요. ‹ › 로 달을 넘기고 ‘오늘’로 돌아와요.\n■ 날짜를 누르면 그날 일정과 기한이 있는 업무가 보이고, 아래 ‘다가오는 일정’에 앞으로의 일정이 날짜 순으로 나와요.\n■ 일정을 누르면 내용이 보이고, 가맹점이 연결된 일정은 ‘가맹점 정보 보기’로 바로 가요.\n■ 일정 추가·삭제는 최고관리자만 해요(+ 버튼). 가맹점을 고르면 장소에 주소가 들어가요. 일반 직원은 업무에 기한을 넣으면 달력에 표시돼요.'],
-  ['가맹점', '■ 검색: 상호, 초성(예: ㅅㅇㅍ), 사업자번호(- 없이도), 전화번호. 한글을 치는 중에도 바로 걸러져요. PC는 표로 보여요.\n■ 항목: 상호·사업자번호·전화번호·휴대폰번호·이메일·주소·VAN사·계약구분(임대면 월 CMS 금액, 판매면 판매 금액)·계약조건·등급 코드·메모. 칸마다 이름이 위에 있어요.\n■ 등급 코드(밴피 기준): 0 S·월 5만원 이상 / 1 A·3만원 이상 / 2 B·1만원 이상 / 3 C·1만원 미만 / 4 해지 / 5 신규 / 7 협력사.\n■ 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있어야 하고, 관리자가 수정 암호를 정해 두면 관리자도 암호를 넣어야 해요(한 번 넣으면 5분 동안 다시 묻지 않아요). 같은 사업자번호가 이미 있으면 등록할 때 알려 줘요.\n■ 삭제하면 목록에서만 사라지고 기록은 남아요(관리자가 복원 가능).\n■ 최고관리자는 가맹점 정보 창의 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.'],
+  ['가맹점', '■ 검색: 상호, 초성(예: ㅅㅇㅍ), 사업자번호(- 없이도), 전화번호. 한글을 치는 중에도 바로 걸러져요. PC는 표로 보여요.\n■ 항목: 상호·사업자번호·전화번호·휴대폰번호·이메일·주소·VAN사·계약구분(임대면 월 CMS 금액, 판매면 판매 금액)·계약조건·등급 코드·메모. 칸마다 이름이 위에 있어요.\n■ 등급 코드(밴피 기준): 0 S·월 5만원 이상 / 1 A·3만원 이상 / 2 B·1만원 이상 / 3 C·1만원 미만 / 4 해지 / 5 신규 / 7 협력사.\n■ 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있어야 하고, 관리자가 수정 암호를 정해 두면 관리자도 암호를 넣어야 해요(한 번 넣으면 5분 동안 다시 묻지 않아요). 같은 사업자번호가 이미 있으면 등록할 때 알려 줘요.\n■ 삭제하면 목록에서만 사라지고 기록은 남아요(관리자가 복원 가능).\n■ 최고관리자는 가맹점 정보 창의 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.\n■ 계약기간·만료 예정: 등록·수정에 계약시작일·계약종료일. 목록 위 ‘계약 만료 예정’ 1·2·3개월 이내·만료됨을 누르면 그 가맹점만 종료일 빠른 순으로 보여요(검색과 같이 써요, 종료일이 빈 가맹점은 필터에서만 빠짐).\n■ VAN사: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG — 그 밖은 직접 입력하면 다음부터 목록에 같이 나와요.'],
   ['가맹점 응대 기록', '■ 가맹점을 열어 ‘+ 응대 기록 남기기’ → 날짜·종류(방문A/S·원격A/S·전화응대·기타)·요청사항·처리결과.\n■ 가맹점 창에서 종류 버튼과 날짜로 걸러 봐요.\n■ 전체 → 가맹점 응대 기록 조회: 상호·초성·사업자번호로 가맹점을 찾거나, 모든 가맹점의 최근 기록을 검색해요.\n■ 기록은 직원 누구나 고칠 수 있고 수정한 사람·시각이 남아요. 지우기는 쓴 사람과 최고관리자만 해요.'],
   ['재고 · 바코드', '■ 입고(＋ 입고 또는 오른쪽 아래 +): 모델명, 시리얼(한 줄에 하나 — 스캐너로 계속 찍으면 여러 대가 한 번에), 시리얼 없는 물품은 수량, 안전재고, 입고 단가(실적 권한자).\n■ 출고(− 출고): 계약 없이 나가는 장비 — 반품(공급처로)·불량·폐기·A/S 교체·분실·기타 중 사유를 고르고, 재고에서 찾거나 스캐너로 찍어 담아요. 시리얼 없는 물품은 수량을 적어요. A/S 교체는 가맹점을 연결할 수 있어요. 계약으로 나가는 장비는 지금처럼 ‘계약’에서 고릅니다.\n■ 수량 정정(재고 조사): 창고에서 센 실제 수량을 적고, 시리얼 장비는 없는 것만 체크를 꺼요(스캐너로 찍으면 ‘확인’ 표시). 사유를 적으면 차이만큼 바로잡고 이력에 남아요.\n■ 이력: 재고 화면의 ‘이력’ 또는 전체 → 일 → 재고 이력. 입고·출고·계약 출고·정정이 날짜·직원·메모와 함께 시간 순으로 나와요. 장비를 누르면 그 장비의 이력도 볼 수 있어요.\n■ 삭제는 잘못 넣은 것을 지울 때만 쓰세요(이력이 안 남음).\n■ 바코드: PC는 USB·블루투스 스캐너로 찍으면 바로 입력돼요. 검색칸에 시리얼을 찍으면 그 장비가 바로 열려요. 휴대폰은 📷 버튼으로 카메라 스캔(처음에 카메라 허용).\n■ 모델별로 재고·출고중 수량이 보이고, 안전재고보다 적으면 빨간색으로 알려요.\n■ 시리얼 줄을 눌러 수정·삭제, 실적 권한자는 입고·출고 단가와 보유 재고 자산을 봐요.\n■ 순서: 재고 → (계약에서 고르면) 출고중 → (설치 완료하면) 재고에서 빠짐.'],
   ['계약 · 입금', '■ 신규 계약 올리기: 가맹점 찾기 → 결제 연동(VAN/PG·업체명) → 구분(판매·CMS·렌탈)과 금액 → 나가는 장비(재고에서 고르기·스캔·직접 입력) → 장비 메모 → 계약일·만료일(+12/24/36개월 버튼).\n■ 계약 관리: 만료 3개월 이내 계약이 위에 빨간 D-day 로 나와요. 계약을 눌러 장비 추가, ‘설치 완료’(장비가 재고에서 빠짐). 실적 권한이 없으면 내가 올린 계약만 보여요.\n■ 입금 확인: + 로 종류·금액·가맹점·메모를 올리면 ‘입금확인’ 채팅방에 알림이 가고, 확인한 사람이 ‘확인 처리’를 눌러요.'],
