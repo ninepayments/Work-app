@@ -5519,6 +5519,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.12", "2026-10-25", "• 알림 음성이 안 나던 문제 고침: 미리 녹음한 음성 파일을 앱에 넣어, 폰에 한국어 음성 엔진이 없어도 \"업무가 배정되었습니다\"·\"나인톡\"이 들려요 (전체 → 내 계정·설정 → 알림 소리 들어 보기)"},
             {"0.0.11", "2026-10-25", "• 알림 음성: 업무가 배정되면 \"업무가 배정되었습니다\", 채팅은 \"나인톡\", 물품요청·발송·공지도 '띵동' 소리와 음성으로 알려요 (전체 → 내 계정·설정 → 알림 소리 들어 보기)\n• 물품이 발송되면 요청한 사람에게 알림\n• 전체 메뉴에서 '내 계정·설정'을 맨 앞으로\n• 사용설명서를 시작하기 → 아래 탭 → 전체 메뉴 묶음 순서로 정리, 물품요청·알림 음성 설명 추가"},
             {"0.0.10", "2026-10-24", "• 재고 보관지(본사·광주지사): 입고 때 보관지 선택, 보관지별 보기, 보관지 바꾸면 '이동' 이력\n• 물품요청(지사 → 본사): 품목·수량·받을 곳·본사 담당자 → 담당자에게 알림 → 주문함·발송(발주처리, 송장 메모)·반려 → 요청한 사람이 '입고 확인'하면 그 보관지 재고에 자동 입고\n• 전체 메뉴를 업무·가맹점·계약·재고·실적·보고·회사·내 계정·설정·관리자로 나눔 (권한 없는 메뉴는 숨김)"},
             {"0.0.9", "2026-10-24", "• 채팅 읽음 표시: 카톡처럼 말풍선 옆에 아직 안 읽은 사람 수(노란 숫자)가 보이고, 다 읽으면 사라져요 (상대가 웹 또는 앱 v0.0.4 이상을 쓸 때 정확해요)"},
@@ -6622,8 +6623,18 @@ public class MainActivity extends Activity {
             uiHandler.postDelayed(tg::release, 600);
         } catch (Exception ignored) {
         }
-        uiHandler.postDelayed(() -> {
+        uiHandler.postDelayed(() -> { // 미리 녹음한 음성(res/raw)을 튼다 — 폰에 한국어 음성 엔진이 없어도 들린다. 없으면 기기 음성으로.
+            int res = "업무가 배정되었습니다".equals(say) ? R.raw.snd_task : "나인톡".equals(say) ? R.raw.snd_talk : "물품요청이 들어왔습니다".equals(say) ? R.raw.snd_preq
+                    : "물품이 발송되었습니다".equals(say) ? R.raw.snd_ship : "새 공지가 있습니다".equals(say) ? R.raw.snd_notice : 0;
             try {
+                if (res != 0) {
+                    android.media.MediaPlayer mp = android.media.MediaPlayer.create(this, res);
+                    if (mp != null) {
+                        mp.setOnCompletionListener(android.media.MediaPlayer::release);
+                        mp.start();
+                        return;
+                    }
+                }
                 if (tts != null) tts.speak(say, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "nine");
             } catch (Exception ignored) {
             }

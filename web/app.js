@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.23';
+const VERSION = '웹 0.0.24';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -133,16 +133,31 @@ function refreshMe() { if (S.uid) { const u = user(S.uid); if (u) S.me = u; } }
 const soundOn = () => LS('snd_' + S.uid) !== '0';
 let actx = null;
 let lastSay = 0;
+// 미리 녹음한 음성 파일(web/snd)을 튼다 — 기기에 한국어 음성이 없어도 들린다. 파일을 못 틀면 기기 음성으로 말한다.
+const SND = {'업무가 배정되었습니다': 'snd/snd_task.mp3', '나인톡': 'snd/snd_talk.mp3', '물품요청이 들어왔습니다': 'snd/snd_preq.mp3', '물품이 발송되었습니다': 'snd/snd_ship.mp3', '새 공지가 있습니다': 'snd/snd_notice.mp3'};
+const sndEl = {};
+let audioOk = false;
+function unlockAudio() { // 브라우저는 사람이 한 번 누르기 전에는 소리를 막는다 → 첫 클릭·터치 때 소리를 깨워 둔다
+  if (audioOk) return; audioOk = true;
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {}
+  Object.entries(SND).forEach(([k, src]) => { try { const el = new Audio(src); el.preload = 'auto'; el.muted = true; el.play().then(() => { el.pause(); el.currentTime = 0; el.muted = false; }).catch(() => { el.muted = false; }); sndEl[k] = el; } catch (e) {} });
+}
+['pointerdown', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, unlockAudio, {capture: true, passive: true}));
+function sayIt(say) {
+  const ttsFallback = () => { try { if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(say); u.lang = 'ko-KR'; u.rate = 1.05; speechSynthesis.speak(u); } } catch (e) {} };
+  const src = SND[say]; if (!src) return ttsFallback();
+  try { const el = sndEl[say] || (sndEl[say] = new Audio(src)); el.currentTime = 0; el.volume = 1; const p = el.play(); if (p && p.catch) p.catch(ttsFallback); } catch (e) { ttsFallback(); }
+}
 function beep(say) { // '띵동' 두 음 + 음성 안내 (업무: "업무가 배정되었습니다", 채팅: "나인톡") — 알림 소리를 끄면 둘 다 안 나요
   if (!soundOn()) return;
   try {
-    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume();
     [[988, 0], [784, 0.16]].forEach(([f, t]) => { const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = f; g.gain.setValueAtTime(0.18, actx.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + t + 0.4); o.connect(g); g.connect(actx.destination); o.start(actx.currentTime + t); o.stop(actx.currentTime + t + 0.4); });
   } catch (e) {}
   if (navigator.vibrate) navigator.vibrate(120);
-  if (say && 'speechSynthesis' in window && Date.now() - lastSay > 2500) { // 연달아 오면 한 번만 말한다
+  if (say && Date.now() - lastSay > 2500) { // 연달아 오면 한 번만 말한다
     lastSay = Date.now();
-    setTimeout(() => { try { const u = new SpeechSynthesisUtterance(say); u.lang = 'ko-KR'; u.rate = 1.05; speechSynthesis.speak(u); } catch (e) {} }, 450);
+    setTimeout(() => sayIt(say), 450);
   }
 }
 function notify(title, body, go, say) {
@@ -2128,6 +2143,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.24', '2026-10-25', ['알림 음성이 안 나던 문제 고침: 미리 녹음한 음성 파일을 틀어서, 기기에 한국어 음성이 없어도 “업무가 배정되었습니다”·“나인톡”이 들려요. 화면을 한 번 누른 뒤부터 소리가 나요(브라우저 규칙)']],
   ['웹 0.0.23', '2026-10-25', ['알림 음성: 업무가 배정되면 “업무가 배정되었습니다”, 채팅은 “나인톡”, 물품요청·발송·공지도 소리와 음성으로 알려요 (☰ → 내 계정·설정 → 알림 소리 들어 보기)', '☰ 전체 메뉴에서 ‘내 계정·설정’을 맨 앞으로', '사용설명서를 시작하기 → 주 메뉴 → ☰ 메뉴 묶음 순서로 다시 정리, 물품요청 설명 추가']],
   ['웹 0.0.22', '2026-10-24', ['재고 보관지(본사·광주지사): 입고 때 보관지 선택, 보관지별 보기·수량, 보관지 바꾸면 ‘이동’ 이력', '물품요청(지사 → 본사): 품목·수량·받을 곳·본사 담당자 → 담당자에게 알림 → 주문함·발송(발주처리, 송장 메모)·반려 → 받는 쪽 ‘입고 확인’하면 그 보관지 재고에 자동 입고', '☰ 전체 메뉴를 업무·가맹점·계약·재고·실적·보고·회사·내 계정·설정·관리자로 나누고 넓은 화면을 다 쓰게, 권한 없는 메뉴는 숨김']],
   ['웹 0.0.21', '2026-10-24', ['채팅 읽음 표시: 카톡처럼 말풍선 옆에 아직 안 읽은 사람 수(노란 숫자)가 보이고, 다 읽으면 사라져요 (상대가 웹 또는 앱 v0.0.4 이상을 쓸 때 정확해요)']],
