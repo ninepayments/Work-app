@@ -1,0 +1,40 @@
+name: Make voice files
+# 알림 음성 파일(한국어)을 만들어 저장소에 넣는다. 손으로만 실행. 문구를 바꿀 때 다시 실행.
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  voices:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate
+        run: |
+          pip install gTTS==2.5.4
+          mkdir -p web/snd app/src/main/res/raw
+          python - <<'PY'
+          from gtts import gTTS
+          voices = {
+            'snd_task': '업무가 배정되었습니다',
+            'snd_talk': '나인톡',
+            'snd_preq': '물품요청이 들어왔습니다',
+            'snd_ship': '물품이 발송되었습니다',
+            'snd_notice': '새 공지가 있습니다',
+          }
+          for k, t in voices.items():
+              for d in ('web/snd', 'app/src/main/res/raw'):
+                  gTTS(t, lang='ko').save(f'{d}/{k}.mp3')
+              print(k, t)
+          PY
+          ls -la web/snd app/src/main/res/raw
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/snd app/src/main/res/raw
+          git commit -m "알림 음성 파일 만들기 (gTTS)" || echo "바뀐 것 없음"
+          git push

@@ -2,7 +2,7 @@ name: Build APK
 on:
   push:
     branches: [main]
-    paths-ignore: ['docs/**', '.github/workflows/cleanup-releases.yml', 'web/**', '.github/workflows/web.yml', 'tools/**', '.github/workflows/backup.yml', '*.md', 'pc/**', '.github/workflows/pc.yml']
+    paths-ignore: ['docs/**', '.github/workflows/voices.yml', '.github/workflows/cleanup-releases.yml', 'web/**', '.github/workflows/web.yml', 'tools/**', '.github/workflows/backup.yml', '*.md', 'pc/**', '.github/workflows/pc.yml']
   workflow_dispatch:
 permissions:
   contents: write
