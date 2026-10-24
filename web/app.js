@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.22';
+const VERSION = '웹 0.0.23';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -132,13 +132,21 @@ function refreshMe() { if (S.uid) { const u = user(S.uid); if (u) S.me = u; } }
 // 그 전까지: 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·화면 안내, PC는 다른 창을 보고 있어도 브라우저 알림, 탭 제목에 숫자.
 const soundOn = () => LS('snd_' + S.uid) !== '0';
 let actx = null;
-function beep() {
+let lastSay = 0;
+function beep(say) { // '띵동' 두 음 + 음성 안내 (업무: "업무가 배정되었습니다", 채팅: "나인톡") — 알림 소리를 끄면 둘 다 안 나요
   if (!soundOn()) return;
-  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = 880; g.gain.setValueAtTime(0.15, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.35); o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + 0.35); } catch (e) {}
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    [[988, 0], [784, 0.16]].forEach(([f, t]) => { const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = f; g.gain.setValueAtTime(0.18, actx.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + t + 0.4); o.connect(g); g.connect(actx.destination); o.start(actx.currentTime + t); o.stop(actx.currentTime + t + 0.4); });
+  } catch (e) {}
   if (navigator.vibrate) navigator.vibrate(120);
+  if (say && 'speechSynthesis' in window && Date.now() - lastSay > 2500) { // 연달아 오면 한 번만 말한다
+    lastSay = Date.now();
+    setTimeout(() => { try { const u = new SpeechSynthesisUtterance(say); u.lang = 'ko-KR'; u.rate = 1.05; speechSynthesis.speak(u); } catch (e) {} }, 450);
+  }
 }
-function notify(title, body, go) {
-  beep();
+function notify(title, body, go, say) {
+  beep(say);
   if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
     try { const n = new Notification(title, {body, icon: 'icon-192.png', tag: title}); n.onclick = () => { window.focus(); go(); n.close(); }; return; } catch (e) {}
   }
@@ -147,12 +155,15 @@ function notify(title, body, go) {
 function watchNew(coll, o, prev) {
   if (!S.me || o.deleted) return;
   if (coll === 'msgs' && !prev && o.who !== S.uid && o.ts > Date.now() - 5 * 60000 && !(S.room === o.room && !document.hidden)) {
-    const r = byId('rooms', o.room); notify('💬 ' + (r ? roomTitle(r) : '채팅'), uname(o.who) + ': ' + msgText(o), () => { S.tab = 'chat'; S.sub = ''; S.room = o.room; render(); });
+    const r = byId('rooms', o.room); notify('💬 ' + (r ? roomTitle(r) : '채팅'), uname(o.who) + ': ' + msgText(o), () => { S.tab = 'chat'; S.sub = ''; S.room = o.room; render(); }, '나인톡');
   }
   if (coll === 'tasks' && o.assignee === S.uid && o.status === '지시됨' && o.creator !== S.uid && (!prev || prev.assignee !== S.uid)) {
-    notify('📋 새 업무', o.title + ' (' + uname(o.creator) + ')', () => { S.tab = 'task'; S.sub = ''; render(); ACT.task(o.id); });
+    notify('📋 새 업무', o.title + ' (' + uname(o.creator) + ')', () => { S.tab = 'task'; S.sub = ''; render(); ACT.task(o.id); }, o.preq ? '물품요청이 들어왔습니다' : '업무가 배정되었습니다');
   }
-  if (coll === 'notices' && !prev && o.author !== S.uid) notify('📢 새 공지', o.title, () => { S.tab = 'all'; S.sub = 'notice'; render(); ACT.notice(o.id); });
+  if (coll === 'tasks' && o.preq && o.creator === S.uid && prev && prev.preq && prev.preq.stage !== '발송함' && o.preq.stage === '발송함') {
+    notify('📦 물품 발송', o.preq.to + ' — ' + preqItems(o) + ' · 입고 확인을 눌러 주세요', () => ACT.preq(o.id), '물품이 발송되었습니다');
+  }
+  if (coll === 'notices' && !prev && o.author !== S.uid) notify('📢 새 공지', o.title, () => { S.tab = 'all'; S.sub = 'notice'; render(); ACT.notice(o.id); }, '새 공지가 있습니다');
 }
 function syncTitle(n) { document.title = (n ? '(' + n + ') ' : '') + '나인패밀리'; }
 
@@ -355,6 +366,7 @@ ACT.notifyOn = () => {
   if (!('Notification' in window)) { toast('이 기기는 브라우저 알림을 못 써요. 웹앱을 열어 둔 동안 소리·진동으로 알려 드려요.'); return; }
   Notification.requestPermission().then(r => { toast(r === 'granted' ? '알림을 켰어요. 웹앱을 열어 둔 동안 새 업무·채팅·공지를 알려 드려요.' : '알림이 꺼져 있어요. 브라우저 설정에서 이 사이트 알림을 허용해 주세요.'); render(); });
 };
+ACT.soundTest = () => { if (!soundOn()) return toast('알림 소리가 꺼져 있어요. 먼저 켜 주세요.'); beep('업무가 배정되었습니다'); setTimeout(() => { lastSay = 0; beep('나인톡'); }, 3200); };
 ACT.soundToggle = () => { LS('snd_' + S.uid, soundOn() ? '0' : '1'); toast(soundOn() ? '알림 소리를 켰어요.' : '알림 소리를 껐어요.'); render(); };
 
 // ---------- 업무 ----------
@@ -1980,7 +1992,7 @@ ACT.newNotice = () => formModal('공지 작성', '<label class="fl" for="f_t1">�
 
 // ---------- 전체 ----------
 // 항목과 순서는 안드로이드 앱의 '전체' 탭과 같다. go 가 없는 항목은 아직 앱에서만 되는 기능이다.
-const MENU_SECS = ['업무', '가맹점', '계약·재고', '실적', '보고', '회사', '내 계정·설정', '관리자'];
+const MENU_SECS = ['내 계정·설정', '업무', '가맹점', '계약·재고', '실적', '보고', '회사', '관리자'];
 function menuItems() {
   // 묶음(앱과 같은 순서): 업무 · 가맹점 · 계약·재고 · 실적 · 보고 · 회사 · 내 계정·설정 · 관리자 — 권한이 없는 메뉴는 아예 안 보인다
   const P = can('perf_view') || can('staff_manage'), R = canReport() || can('report_view'), A = can('staff_manage');
@@ -2011,7 +2023,7 @@ function menuItems() {
   add('내 계정·설정', '내 프로필 (사진·상태 메시지)', '프로필 사진 상태 메시지 내 정보', 'act:myProfile');
   const np = 'Notification' in window ? Notification.permission : 'none';
   add('내 계정·설정', '알림 받기 (이 기기)', '알림 푸시 소리 새 업무 채팅', 'act:notifyOn', np === 'granted' ? '켜짐' : np === 'none' ? '소리만' : '꺼짐');
-  add('내 계정·설정', '알림 소리', '알림 소리 진동 끄기 켜기', 'act:soundToggle', soundOn() ? '켜짐' : '꺼짐');
+  add('내 계정·설정', '알림 소리·음성 (업무 배정·나인톡)', '알림 소리 음성 진동 끄기 켜기 나인톡 업무 배정', 'act:soundToggle', soundOn() ? '켜짐' : '꺼짐'); add('내 계정·설정', '알림 소리 들어 보기', '알림 소리 시험 듣기 테스트', 'act:soundTest');
   add('내 계정·설정', '업데이트 확인 (새 버전 받기)', '업데이트 확인 새 버전 새로고침 최신', 'act:checkUpdate');
   add('내 계정·설정', '사용설명서', '사용설명서 매뉴얼 도움말 사용법 설치', 'nav:all:manual'); add('내 계정·설정', '버전·업데이트 내역', '버전 업데이트 내역 변경 이력', 'nav:all:about');
   if (!/Electron/.test(navigator.userAgent)) add('내 계정·설정', 'PC 프로그램 설치 파일 받기 (윈도우)', 'PC 설치 파일 다운로드 윈도우 exe 프로그램', 'act:pcSetup');
@@ -2116,6 +2128,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.23', '2026-10-25', ['알림 음성: 업무가 배정되면 “업무가 배정되었습니다”, 채팅은 “나인톡”, 물품요청·발송·공지도 소리와 음성으로 알려요 (☰ → 내 계정·설정 → 알림 소리 들어 보기)', '☰ 전체 메뉴에서 ‘내 계정·설정’을 맨 앞으로', '사용설명서를 시작하기 → 주 메뉴 → ☰ 메뉴 묶음 순서로 다시 정리, 물품요청 설명 추가']],
   ['웹 0.0.22', '2026-10-24', ['재고 보관지(본사·광주지사): 입고 때 보관지 선택, 보관지별 보기·수량, 보관지 바꾸면 ‘이동’ 이력', '물품요청(지사 → 본사): 품목·수량·받을 곳·본사 담당자 → 담당자에게 알림 → 주문함·발송(발주처리, 송장 메모)·반려 → 받는 쪽 ‘입고 확인’하면 그 보관지 재고에 자동 입고', '☰ 전체 메뉴를 업무·가맹점·계약·재고·실적·보고·회사·내 계정·설정·관리자로 나누고 넓은 화면을 다 쓰게, 권한 없는 메뉴는 숨김']],
   ['웹 0.0.21', '2026-10-24', ['채팅 읽음 표시: 카톡처럼 말풍선 옆에 아직 안 읽은 사람 수(노란 숫자)가 보이고, 다 읽으면 사라져요 (상대가 웹 또는 앱 v0.0.4 이상을 쓸 때 정확해요)']],
   ['웹 0.0.20', '2026-10-24', ['업무 지시: 가맹점 요청사항 빠른 선택 ‘용지신청’(직접 입력과 같이). 완료하면 응대 기록 종류가 ‘용지신청’으로 남아요', '업무 지시: 찾는 가맹점이 없으면 ‘새 가맹점 등록’ → 저장하면 이 업무에 자동 연결 (권한·암호 규칙 그대로)', '가맹점: 계약시작일·계약종료일 (상세에 D-day)', '가맹점 목록: 계약 만료 예정 필터 1·2·3개월 이내·만료됨, 종료일 빠른 순, 검색과 같이', 'VAN사 목록을 취급사로 정리 (다우데이타·다우데이타PG·KIS정보통신·KIS정보통신PG·NHN KCP·KOVAN·KOPAY PG), 직접 입력한 이름도 다음부터 목록에', '응대 종류에 ‘용지신청’ 추가']],
@@ -2159,18 +2172,31 @@ const WEB_MANUAL = [
   ['일일보고 · 실적 보고서', '■ 일일보고 쓰기: ‹ › 로 날짜를 고르고 오늘 한 일·특이사항·내일 계획을 적어 제출해요. 그날 완료한 업무와 올린 계약은 자동으로 같이 들어가요. 같은 날 다시 내면 수정본으로 바뀌어요.\n■ 일일보고 종합 보기(보고 열람 권한자): 날짜별로 직원별 보고와 미제출자를 봐요.\n■ 실적 보고서: 실적 권한자는 자동 집계된 이달 실적을 고쳐 ‘대표님께 보고하기’, 보고 열람 권한자는 올라온 보고서를 봐요.'],
   ['자료실 · 비상연락망', '■ 자료실: 분류 버튼과 검색으로 찾고, 눌러서 첨부 파일을 받아요. + 로 제목·설명·분류와 파일(5개, 3MB까지, 사진은 자동으로 줄여서)을 올려요. 올린 사람과 관리자만 고치고 지워요. 개인정보 파일은 올리지 마세요.\n■ 비상연락망: 구분별로 모아 보이고, 번호를 누르면 전화가 걸려요. + 로 추가, ‘수정’으로 고치거나 지워요.'],
   ['내 프로필 · 공지사항', '■ 내 프로필: 전체 탭 맨 위 내 카드(또는 전체 → 계정 → 내 프로필)에서 사진과 상태 메시지(예: 외근 중)를 바꿔요. 다른 직원 프로필에서는 1:1 대화·전화하기.\n■ 공지사항: 읽지 않은 공지는 숫자로 표시돼요. ‘공지 작성’ 권한이 있으면 + 로 올리고 ‘맨 위에 고정’할 수 있어요. 작성 권한자·관리자는 공지 창에서 읽은 사람 목록을 봐요.'],
-  ['알림 · 저장 상태 · 뒤로가기', '■ 알림: 웹앱을 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·안내로 알려요. PC는 전체 → 계정 → 알림 받기를 허용하면 다른 창을 보고 있어도 알림이 떠요. 탭 제목에 안 본 개수가 보여요. (웹앱을 닫았을 때 오는 알림은 서버 연동 후 가능)\n■ 저장 상태: 저장하면 화면 위에 ‘저장 중’이 잠깐 보여요. 인터넷이 끊기면 ‘저장 대기’로 바뀌고, 연결되면 저절로 저장돼요. 이 띠가 있는 동안에는 닫지 마세요.\n■ 가맹점 수정 창을 연 사이 다른 직원이 같은 가맹점을 고치면, 저장할 때 바뀐 항목을 보여 주고 덮어쓸지 한 번 더 물어요.\n■ 뒤로가기: 폰 뒤로가기·브라우저 뒤로 버튼으로 팝업 → 대화방 → 메뉴 → 하위 화면 → 첫 화면 순서로 닫혀요. 첫 화면에서 한 번 더 누르면 나가요.'],
+  ['알림 · 저장 상태 · 뒤로가기', '■ 알림: 웹앱을 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·안내로 알려요. PC는 전체 → 계정 → 알림 받기를 허용하면 다른 창을 보고 있어도 알림이 떠요. 탭 제목에 안 본 개수가 보여요. (웹앱을 닫았을 때 오는 알림은 서버 연동 후 가능)\n■ 저장 상태: 저장하면 화면 위에 ‘저장 중’이 잠깐 보여요. 인터넷이 끊기면 ‘저장 대기’로 바뀌고, 연결되면 저절로 저장돼요. 이 띠가 있는 동안에는 닫지 마세요.\n■ 가맹점 수정 창을 연 사이 다른 직원이 같은 가맹점을 고치면, 저장할 때 바뀐 항목을 보여 주고 덮어쓸지 한 번 더 물어요.\n■ 뒤로가기: 폰 뒤로가기·브라우저 뒤로 버튼으로 팝업 → 대화방 → 메뉴 → 하위 화면 → 첫 화면 순서로 닫혀요. 첫 화면에서 한 번 더 누르면 나가요.\n■ 알림 소리·음성: 새 업무가 배정되면 ‘띵동’ 소리와 함께 “업무가 배정되었습니다”, 채팅이 오면 “나인톡”, 공지는 “새 공지가 있습니다”라고 말해 줘요. ☰ → 내 계정·설정 → 알림 소리·음성에서 끄고 켜고, ‘알림 소리 들어 보기’로 미리 들어 봐요.'],
   ['관리자: 직원과 권한', '■ 전체 → 관리자 → 직원과 권한. + 로 이름·휴대폰 번호·권한 묶음(영업직·사무직·관리자)을 넣어 등록하면 그 번호로 로그인할 수 있어요.\n■ 직원을 눌러 항목별 권한을 켜고 끄거나, ‘사용 중지’로 퇴사자의 접근을 막아요. 마지막 관리자는 중지하거나 관리 권한을 끌 수 없어요.\n■ 권한: 업무 만들기 / 다른 직원에게 업무 배정 / 전체 업무 보기 / 전체 이력 보기 / 공지 작성 / 실적 보기 / 일일보고·실적보고 종합 보기 / 가맹점 등록·수정 / 직원 관리(최고관리자).'],
   ['관리자: 백업 · 가맹점 보호·복원', '■ 자료는 여러 겹으로 지켜져요: ① 서버는 지우기가 막혀 있고 모든 변경이 기록돼요 ② 매일 새벽 서버 전체를 암호화해 90일 보관(비밀값 설정 후) ③ 관리자가 앱·웹을 열면 그 기기에 하루 한 번 14일치 자동 보관 ④ 데이터 백업 내려받기로 파일 보관(한 달에 한 번 이상 권장).\n■ 가맹점 보호·복원: 삭제한 가맹점 복원, 백업 파일(.json)로 복원, 되돌리기 기준점 만들기. 가져오기·복원·되돌리기 직전 상태는 그 PC에 자동 저장돼요(전체 → 관리자 → PC에 보관된 자동 백업).\n■ 가맹점 수정 암호: 전체 → 관리자에서 정하고 바꾸고 끄요.'],
   ['가맹점 일괄 가져오기 (엑셀·CSV)', '■ 이카운트 등에서 거래처 목록을 엑셀(.xlsx) 또는 CSV로 받아요. 옛 .xls 는 엑셀에서 .xlsx 로 다시 저장해 주세요.\n■ 머리글에 ‘거래처명’(또는 상호·가맹점명)이 있어야 하고, 사업자등록번호·거래처코드·대표자·전화·핸드폰·주소·등급·업태·종목·메모 열이 있으면 함께 가져와요.\n■ 전체 → 가맹점 일괄 가져오기 → 파일 고르기 → 미리보기(새로 등록·갱신·건너뜀) 확인 → 가져오기.\n■ 같은 거래처코드·사업자번호·상호가 있으면 새로 만들지 않고, 파일에 값이 있는 칸만 덮어써요. 잘못되면 가맹점 보호·복원에서 되돌려요.'],
   ['단체 문자 (가맹점)', '■ 전체 → 단체 문자 보내기. 내용을 쓰고({상호} 는 가맹점 이름으로 바뀜), 등급 버튼·검색·체크로 받을 가맹점을 골라요(휴대폰 번호가 있는 곳만).\n■ ‘문자 보내기 시작’ → 한 곳씩 휴대폰 문자 앱이 열리고 내용이 채워져 있어요. 보내고 돌아오면 다음 가맹점이 준비돼요. 받는 분끼리 번호가 보이지 않고, 요금은 그 휴대폰 요금제로 나가요.\n■ PC에는 문자 앱이 없어 보낼 수 없어요(남은 번호 복사는 가능). 알리고 연동 후 PC에서도 바로 보낼 수 있게 할 예정이에요.'],
   ['안드로이드 앱과 다른 점', '■ 웹에 아직 없는 세부 기능: 채팅방 이름 변경·초대·음소거·방 안 검색, 프로젝트 항목 삭제·진행 기록, 시리얼 사진 인식.\n■ 웹에서 먼저 생긴 기능: 저장 상태 표시, 가맹점 동시 수정 경고, 웹 기기끼리 채팅 읽음 맞춤.\n■ 가맹점 삭제: 웹은 ‘가맹점 등록·수정’ 권한 + 암호, 앱은 최고관리자만.'],
-  ['자주 묻는 질문', 'Q. 새 버전은 어떻게 받아요?\nA. 새 버전이 나오면 화면 위쪽에 ‘지금 업데이트’ 띠가 떠요. 누르거나, 새로고침(F5)·프로그램을 껐다 켜도 바로 적용돼요. 전체 → 회사 → 업데이트 확인으로 직접 확인할 수도 있어요.\n\nQ. 인증번호 문자가 안 와요.\nA. 번호가 등록됐는지 확인하세요. 짧은 시간에 여러 번 요청하면 잠시 막힐 수 있어요(30분쯤 뒤 다시).\n\nQ. 기기를 바꿨어요.\nA. 같은 번호로 다시 로그인하면 모든 자료가 그대로 나와요. 자료는 서버에 있어요.\n\nQ. 인터넷이 없을 때도 되나요?\nA. 받아 둔 자료로 보기와 입력이 되고, 연결되면 저절로 서버에 올라가요(화면 위 ‘저장 대기’ 띠).\n\nQ. 실수로 지웠어요.\nA. 지운 자료도 서버에 남아 있어요. 관리자에게 말씀해 주세요(가맹점은 보호·복원에서 바로 되살려요).\n\nQ. 업데이트는 어떻게 받아요?\nA. 웹앱·PC 프로그램은 다시 열면(F5) 자동으로 최신이에요. 안드로이드 앱은 새 APK 를 받아 설치해요.']
+  ['자주 묻는 질문', 'Q. 새 버전은 어떻게 받아요?\nA. 새 버전이 나오면 화면 위쪽에 ‘지금 업데이트’ 띠가 떠요. 누르거나, 새로고침(F5)·프로그램을 껐다 켜도 바로 적용돼요. 전체 → 회사 → 업데이트 확인으로 직접 확인할 수도 있어요.\n\nQ. 인증번호 문자가 안 와요.\nA. 번호가 등록됐는지 확인하세요. 짧은 시간에 여러 번 요청하면 잠시 막힐 수 있어요(30분쯤 뒤 다시).\n\nQ. 기기를 바꿨어요.\nA. 같은 번호로 다시 로그인하면 모든 자료가 그대로 나와요. 자료는 서버에 있어요.\n\nQ. 인터넷이 없을 때도 되나요?\nA. 받아 둔 자료로 보기와 입력이 되고, 연결되면 저절로 서버에 올라가요(화면 위 ‘저장 대기’ 띠).\n\nQ. 실수로 지웠어요.\nA. 지운 자료도 서버에 남아 있어요. 관리자에게 말씀해 주세요(가맹점은 보호·복원에서 바로 되살려요).\n\nQ. 업데이트는 어떻게 받아요?\nA. 웹앱·PC 프로그램은 다시 열면(F5) 자동으로 최신이에요. 안드로이드 앱은 새 APK 를 받아 설치해요.'],
+  ['물품요청 (본사 ← 지사)', '■ 요청: ☰ → 업무 → 물품요청, 또는 재고 화면 아래 ‘＋ 본사에 물품요청’. 받을 곳(광주지사·본사), 품목과 수량(줄 추가 가능), 본사 담당자, 희망 도착일, 메모를 적어 보내요.\n■ 본사 담당자: 업무 목록에 ‘미확인’으로 뜨고 알림(음성: 물품요청이 들어왔습니다)이 가요. 요청을 열어 ‘주문함’ → ‘발송(발주처리)’(택배사·송장번호 메모)를 누르거나, 안 되면 ‘반려’(사유).\n■ 요청한 사람: 발송되면 알림(음성: 물품이 발송되었습니다)과 업무 숫자가 떠요. 물건을 받고 ‘입고 확인’에서 받은 수량·시리얼을 적으면 받은 곳(보관지) 재고에 바로 입고되고, 재고 이력에 ‘물품요청 입고’로 남아요.\n■ 진행 단계: 요청 › 주문함 › 발송함 › 입고완료 (또는 반려). 모든 단계는 처리 이력에 시각·사람과 함께 남아요.']
 ];
+// 사용설명서 순서: 시작하기 → 위쪽 주 메뉴 → ☰ 전체 메뉴 묶음(메뉴와 같은 순서) → 도움말
+const MAN_GROUPS = [['시작하기', ['처음 시작하기 · 로그인', 'PC 프로그램 (윈도우)', '화면 구성']],
+  ['주 메뉴', ['업무', '프로젝트', '채팅', '일정 (달력)', '가맹점', '가맹점 응대 기록']],
+  ['☰ 내 계정·설정', ['내 프로필 · 공지사항', '알림 · 저장 상태 · 뒤로가기']],
+  ['☰ 업무', ['물품요청 (본사 ← 지사)']],
+  ['☰ 가맹점', ['단체 문자 (가맹점)', '가맹점 일괄 가져오기 (엑셀·CSV)']],
+  ['☰ 계약·재고', ['계약 · 입금', '재고 · 바코드']],
+  ['☰ 실적 · 보고', ['실적 · 수익 · 지난 업무', '일일보고 · 실적 보고서']],
+  ['☰ 회사', ['자료실 · 비상연락망']],
+  ['☰ 관리자', ['관리자: 직원과 권한', '관리자: 백업 · 가맹점 보호·복원']],
+  ['도움말', ['안드로이드 앱과 다른 점', '자주 묻는 질문']]];
 function viewManual() {
   const q = (S.manq || '').trim();
   return '<h1>사용설명서</h1><div class="sub">나인패밀리 ' + VERSION + ' 기준 · 항목을 눌러 펼쳐요</div><input id="manq" data-q="manq" placeholder="🔍 사용설명서 검색 (예: 바코드, ㄱㅁㅈ)" value="' + esc(S.manq || '') + '"><div class="qres" data-for="manq">' +
-    (WEB_MANUAL.filter(([t, b]) => kmatch(t + ' ' + b, q)).map(([t, b]) => '<details class="man"' + (q ? ' open' : '') + '><summary>' + esc(t) + '</summary><div class="mtext">' + esc(b) + '</div></details>').join('') || '<div class="empty">찾는 내용이 없어요.</div>') + '</div>';
+    (MAN_GROUPS.map(([g, ts]) => { const es = ts.map(t => WEB_MANUAL.find(x => x[0] === t)).filter(x => x && kmatch(x[0] + ' ' + x[1], q));
+      return es.length ? '<h2>' + esc(g) + '</h2>' + es.map(([t, b]) => '<details class="man"' + (q ? ' open' : '') + '><summary>' + esc(t) + '</summary><div class="mtext">' + esc(b) + '</div></details>').join('') : ''; }).join('') || '<div class="empty">찾는 내용이 없어요.</div>') + '</div>';
 }
 
 // ---------- 팝업 ----------
