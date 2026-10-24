@@ -15,26 +15,23 @@ jobs:
       - name: Generate
         run: |
           sudo apt-get install -y -qq ffmpeg >/dev/null
-          pip install gTTS==2.5.4
+          pip install edge-tts==6.1.12 gTTS==2.5.4
           mkdir -p web/snd app/src/main/res/raw
-          python - <<'PY'
-          from gtts import gTTS
-          voices = {
-            'snd_task': '업무가 배정되었습니다',
-            'snd_talk': '나톡!',
-            'snd_preq': '물품요청이 들어왔습니다',
-            'snd_ship': '물품이 발송되었습니다',
-            'snd_notice': '새 공지가 있습니다',
+          # 밝은 여자 목소리(ko-KR-SunHiNeural). 안 되면 gTTS 로 대신 만든다.
+          make() { # 파일이름 문구 말빠르기 음높이
+            edge-tts --voice ko-KR-SunHiNeural --rate="$3" --pitch="$4" --text "$2" --write-media raw.mp3 \
+              || python -c "import sys; from gtts import gTTS; gTTS(sys.argv[1], lang='ko').save('raw.mp3')" "$2"
+            # 앞뒤 무음 자르고 조금 크게
+            ffmpeg -y -loglevel error -i raw.mp3 -af "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,volume=1.4" -ar 24000 -b:a 64k web/snd/$1.mp3
+            cp web/snd/$1.mp3 app/src/main/res/raw/$1.mp3
+            echo "$1 $2"
           }
-          for k, t in voices.items():
-              for d in ('web/snd', 'app/src/main/res/raw'):
-                  gTTS(t, lang='ko').save(f'{d}/{k}.mp3')
-              print(k, t)
-          PY
-          # 채팅 '나톡!'은 카톡처럼 짧고 높게: 앞뒤 무음 자르고 음을 올리고 빠르게
-          for d in web/snd app/src/main/res/raw; do
-            ffmpeg -y -loglevel error -i $d/snd_talk.mp3 -af "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,asetrate=24000*1.22,aresample=24000,atempo=1.1,volume=1.6" -b:a 64k $d/t.mp3 && mv $d/t.mp3 $d/snd_talk.mp3
-          done
+          make snd_talk '나인톡!' '+8%' '+25Hz'
+          make snd_task '업무가 배정되었습니다' '+0%' '+10Hz'
+          make snd_preq '물품요청이 들어왔습니다' '+0%' '+10Hz'
+          make snd_ship '물품이 발송되었습니다' '+0%' '+10Hz'
+          make snd_notice '새 공지가 있습니다' '+0%' '+10Hz'
+          rm -f raw.mp3
           ls -la web/snd app/src/main/res/raw
       - name: Commit
         run: |
