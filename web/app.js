@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.18';
+const VERSION = '웹 0.0.19';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -564,8 +564,13 @@ function viewChat() {
   const rooms = list('rooms').map(r => ({r, last: lastMsg(r.id)})).filter(x => x.last || x.r.id === S.room).sort((a, b) => (b.last ? b.last.ts : 0) - (a.last ? a.last.ts : 0));
   const un = unreadMap();
   const staff = list('users').filter(u => u.id !== S.uid && u.active !== false).sort((a, b) => a.name.localeCompare(b.name));
-  const lst = '<div class="chatlist"><h1>채팅</h1><button class="btn gold full" data-act="newGroup">+ 새 그룹 채팅방</button>' +
-    '<div class="sub" style="margin-top:12px;font-weight:700">직원 총 ' + (staff.length + 1) + '명 · 눌러서 1:1 대화</div><div class="avs">' + staff.map(u => '<div class="av" data-act="dm" data-arg="' + u.id + '">' + avatarHTML(u.id, 52) + esc(u.name) + '</div>').join('') + '</div>' +
+  const pq = S.peopleQ || '', ps = staff.filter(u => kmatch((u.name || '') + ' ' + (u.phone || '').replace('+82', '0'), pq));
+  const lst = '<div class="chatlist"><h1>채팅</h1><button class="btn gold full" data-act="newChat">+ 새 채팅</button>' +
+    '<div class="sub" style="margin-top:12px;font-weight:700">직원 총 ' + (staff.length + 1) + '명 · 눌러서 1:1 대화</div>' +
+    '<input id="pq" data-q="peopleQ" placeholder="👤 직원 찾기 (이름·초성·번호)" value="' + esc(pq) + '" autocomplete="off">' +
+    '<div class="qres" data-for="peopleQ"><div class="avwrap"><button class="avnav" data-act="avScroll" data-arg="-1" aria-label="앞 직원">‹</button><div class="avs" id="avs">' +
+    (ps.length ? ps.map(u => '<div class="av" data-act="dm" data-arg="' + u.id + '">' + avatarHTML(u.id, 52) + esc(u.name) + '</div>').join('') : '<div class="sub" style="padding:14px 4px">찾는 직원이 없어요.</div>') +
+    '</div><button class="avnav" data-act="avScroll" data-arg="1" aria-label="다음 직원">›</button></div></div>' +
     '<input id="chq" data-q="chatQ" placeholder="🔍 대화방 검색 (초성 가능)" value="' + esc(S.chatQ) + '">' +
     '<div class="qres" data-for="chatQ">' + rooms.filter(x => kmatch(roomTitle(x.r), S.chatQ)).map(x => {
       const l = x.last; const c = un[x.r.id] || 0;
@@ -711,15 +716,29 @@ ACT.send = () => {
   put('msgs', m); inp.value = ''; render(); setTimeout(() => { const i = $('#msgin'); if (i) i.focus(); }, 0);
 };
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.target.id === 'msgin') { e.preventDefault(); ACT.send(); } });
+ACT.avScroll = d => { const el = $('#avs'); if (el) el.scrollBy({left: Number(d) * Math.max(160, el.clientWidth - 60), behavior: 'smooth'}); };
+// 새 채팅: 앱과 같이 '그룹 채팅방'과 '1:1 대화' 중에서 고른다
+ACT.newChat = () => modal('<h3>새 채팅</h3><div class="sub" style="margin-top:0">어떤 대화를 시작할까요?</div>' +
+  '<button class="btn gold full" data-act="newGroup">👥 그룹 채팅방 만들기</button><button class="btn tint full" data-act="pickDm">👤 1:1 대화 (직원 고르기)</button><button class="btn full" data-act="close">취소</button>');
+ACT.pickDm = () => {
+  const staff = list('users').filter(u => u.id !== S.uid && u.active !== false).sort((a, b) => a.name.localeCompare(b.name));
+  modal('<h3>1:1 대화 — 직원 고르기</h3><input id="dmq" placeholder="🔍 이름·초성·번호 (예: ㄱㅌㅎ)" autocomplete="off"><div id="dml" style="max-height:50vh;overflow:auto;margin-top:6px"></div><button class="btn full" data-act="close">닫기</button>');
+  const q = $('#dmq'), L = $('#dml');
+  const fill = () => { const v = q.value.trim(); const hs = staff.filter(u => kmatch((u.name || '') + ' ' + (u.phone || '').replace('+82', '0'), v));
+    L.innerHTML = hs.map(u => { const pr = byId('profiles', u.id); return '<button type="button" class="dmrow" data-id="' + u.id + '">' + avatarHTML(u.id, 40) + '<span><b>' + esc(u.name) + '</b>' + (pr && pr.status ? '<small>' + esc(pr.status) + '</small>' : '') + '</span></button>'; }).join('') || '<div class="sub">찾는 직원이 없어요.</div>'; };
+  q.addEventListener('input', fill); L.onclick = ev => { const b = ev.target.closest('.dmrow'); if (b) { closeModal(); ACT.dm(Number(b.dataset.id)); } };
+  fill(); q.focus();
+};
 ACT.newGroup = () => {
   const staff = list('users').filter(u => u.id !== S.uid && u.active !== false && u.phone).sort((a, b) => a.name.localeCompare(b.name));
-  formModal('그룹 채팅방 만들기', '<input id="f_n" placeholder="그룹 이름 (필수)"><div class="sub" style="margin-top:10px">초대할 직원</div>' + staff.map(u => '<label class="chk"><input type="checkbox" class="gm" value="' + u.id + '"><span>' + esc(u.name) + '</span></label>').join(''), () => {
+  formModal('그룹 채팅방 만들기', '<input id="f_n" placeholder="그룹 이름 (필수)"><div class="sub" style="margin-top:10px">초대할 직원</div><input id="gq" placeholder="🔍 직원 찾기 (이름·초성)" autocomplete="off">' + staff.map(u => '<label class="chk" data-nm="' + esc(u.name) + '"><input type="checkbox" class="gm" value="' + u.id + '"><span>' + esc(u.name) + '</span></label>').join(''), () => {
     const n = $('#f_n').value.trim(); if (!n) return warn('그룹 이름을 입력해 주세요.');
     const ids = [...document.querySelectorAll('.gm:checked')].map(c => Number(c.value)); if (!ids.length) return warn('초대할 직원을 골라 주세요.');
     const mem = [e164(S.phone)]; const members = [S.uid];
     ids.forEach(i => { members.push(i); mem.push(e164(user(i).phone)); });
     const r = create('rooms', {name: n, by: S.uid, grp: true, members, mem}); put('rooms', r); S.room = r.id; render(); toast('그룹 채팅방을 만들었어요.'); return true;
   }, '만들기');
+  $('#gq').addEventListener('input', e => { const v = e.target.value.trim(); document.querySelectorAll('#modal .chk[data-nm]').forEach(l => { l.style.display = kmatch(l.dataset.nm, v) || l.querySelector('input').checked ? '' : 'none'; }); });
 };
 
 // ---------- 가맹점 ----------
@@ -1944,6 +1963,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.19', '2026-10-24', ['채팅: ‘+ 새 채팅’을 누르면 앱처럼 그룹 채팅방 / 1:1 대화 중에서 골라요 (1:1은 직원 검색해서 고르기)', '채팅: 직원 찾기 칸(이름·초성·번호)과 직원 줄 좌우 화살표 ‹ › 로 직원이 많아도 쉽게 찾기']],
   ['웹 0.0.18', '2026-10-24', ['직원과 권한: ‘영업 실적·순위에서 빼기’ 추가 — 대표님처럼 켜 둔 계정은 실적 합계·직원별 순위·월별 비교·직원별 수익에 들어가지 않아요']],
   ['웹 0.0.17', '2026-10-24', ['‘지금 업데이트’를 누르면 바로 새 버전이 열리게 고침(전에는 서버 임시 보관 때문에 최대 10분 늦게 바뀜)']],
   ['웹 0.0.16', '2026-10-24', ['PC: 채팅처럼 화면 왼쪽 칸을 씀 — 업무(기한 지난·내 업무·최근 완료), 프로젝트(진행률), 일정(오늘부터 일주일), 가맹점·응대 기록(진행 중 가맹점 업무·최근 연 가맹점·최근 응대 기록), ☰에서 연 화면은 같은 묶음 메뉴']],
@@ -1973,7 +1993,7 @@ const WEB_MANUAL = [
   ['화면 구성', '휴대폰(아이폰): 안드로이드 앱과 같은 화면이에요. 아래 탭 업무·프로젝트·채팅·일정·전체, 나머지 기능은 전체 탭에 계정 → 회사 → 일 → 관리자 순서로 있어요.\nPC: 위쪽 가로줄이 주 메뉴(업무·프로젝트·채팅·일정·가맹점·응대 기록)예요. 왼쪽 위 ☰ 를 누르면 전체 메뉴가 펼쳐지고, ‘나인패밀리’를 누르면 홈(오늘 현황)으로 가요.\n전체 메뉴 위 기능 검색에 단어나 초성(예: ㅈㄱ)을 치면 기능을 바로 찾아요.\n안드로이드 앱·아이폰·PC 는 같은 서버를 써서, 어디서 고쳐도 다른 기기에 바로 보여요.'],
   ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 지시: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 지시할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.'],
   ['프로젝트', '+ 로 이름·마감일·메모·체크리스트(한 줄에 하나)·담당자를 넣어 만들어요.\n프로젝트를 눌러 항목을 체크하면 진행률이 자동으로 올라가고, ‘항목 추가’로 늘려요. 100%가 되면 ‘완료 되돌리기’로 진행중으로 돌릴 수 있어요.\n목록 위 전체·진행중·완료로 걸러 봐요.'],
-  ['채팅', '■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.'],
+  ['채팅', '■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.'],
   ['일정 (달력)', '■ 일요일·공휴일은 빨간색(공휴일 이름 표시, 2026~2028년), 토요일은 파란색이에요. ‹ › 로 달을 넘기고 ‘오늘’로 돌아와요.\n■ 날짜를 누르면 그날 일정과 기한이 있는 업무가 보이고, 아래 ‘다가오는 일정’에 앞으로의 일정이 날짜 순으로 나와요.\n■ 일정을 누르면 내용이 보이고, 가맹점이 연결된 일정은 ‘가맹점 정보 보기’로 바로 가요.\n■ 일정 추가·삭제는 최고관리자만 해요(+ 버튼). 가맹점을 고르면 장소에 주소가 들어가요. 일반 직원은 업무에 기한을 넣으면 달력에 표시돼요.'],
   ['가맹점', '■ 검색: 상호, 초성(예: ㅅㅇㅍ), 사업자번호(- 없이도), 전화번호. 한글을 치는 중에도 바로 걸러져요. PC는 표로 보여요.\n■ 항목: 상호·사업자번호·전화번호·휴대폰번호·이메일·주소·VAN사·계약구분(임대면 월 CMS 금액, 판매면 판매 금액)·계약조건·등급 코드·메모. 칸마다 이름이 위에 있어요.\n■ 등급 코드(밴피 기준): 0 S·월 5만원 이상 / 1 A·3만원 이상 / 2 B·1만원 이상 / 3 C·1만원 미만 / 4 해지 / 5 신규 / 7 협력사.\n■ 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있어야 하고, 관리자가 수정 암호를 정해 두면 관리자도 암호를 넣어야 해요(한 번 넣으면 5분 동안 다시 묻지 않아요). 같은 사업자번호가 이미 있으면 등록할 때 알려 줘요.\n■ 삭제하면 목록에서만 사라지고 기록은 남아요(관리자가 복원 가능).\n■ 최고관리자는 가맹점 정보 창의 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.'],
   ['가맹점 응대 기록', '■ 가맹점을 열어 ‘+ 응대 기록 남기기’ → 날짜·종류(방문A/S·원격A/S·전화응대·기타)·요청사항·처리결과.\n■ 가맹점 창에서 종류 버튼과 날짜로 걸러 봐요.\n■ 전체 → 가맹점 응대 기록 조회: 상호·초성·사업자번호로 가맹점을 찾거나, 모든 가맹점의 최근 기록을 검색해요.\n■ 기록은 직원 누구나 고칠 수 있고 수정한 사람·시각이 남아요. 지우기는 쓴 사람과 최고관리자만 해요.'],
