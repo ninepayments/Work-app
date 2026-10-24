@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.17';
+const VERSION = '웹 0.0.18';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -1236,7 +1236,7 @@ function monthKey(ym, off) { const [y, m] = ym.split('-').map(Number); const d =
 function perfStats(ym, mine) { // 직원별 [대수, 판매, CMS, 렌탈, 판매금액] — 계약일 기준
   const st = {};
   list('contracts').forEach(c => {
-    if (!(c.date || '').startsWith(ym) || (mine && c.who !== S.uid)) return;
+    if (!(c.date || '').startsWith(ym) || (mine && c.who !== S.uid) || noPerf(c.who)) return; // 대표님 등 '실적 제외' 계정은 빼고 센다
     const a = st[c.who] || (st[c.who] = [0, 0, 0, 0, 0]);
     a[0] += c.qty || 1;
     if (c.kind === '판매') { a[1]++; a[4] += c.amount || 0; } else if (c.kind === 'CMS') a[2]++; else if (c.kind === '렌탈') a[3]++;
@@ -1244,7 +1244,8 @@ function perfStats(ym, mine) { // 직원별 [대수, 판매, CMS, 렌탈, 판매
   return st;
 }
 const activeStaff = () => list('users').filter(u => u.active !== false);
-const rankedStaff = st => activeStaff().sort((a, b) => { const x = st[a.id] || [0, 0, 0, 0, 0], y = st[b.id] || [0, 0, 0, 0, 0]; return (y[0] - x[0]) || (y[4] - x[4]); });
+const noPerf = uid => { const u = byId('users', uid); return !!(u && u.noPerf); };
+const rankedStaff = st => activeStaff().filter(u => !u.noPerf).sort((a, b) => { const x = st[a.id] || [0, 0, 0, 0, 0], y = st[b.id] || [0, 0, 0, 0, 0]; return (y[0] - x[0]) || (y[4] - x[4]); });
 function growth(c, p) { if (!p) return c > 0 ? '신규' : '-'; const g = Math.round((c - p) * 100 / p); return (g > 0 ? '▲ +' : g < 0 ? '▼ ' : '') + g + '%'; }
 const gcol = (c, p) => c > p ? 'var(--green)' : c < p ? 'var(--red)' : 'var(--gray)';
 const pbar = (pct, color) => '<div class="pbar"><i style="width:' + Math.max(0, Math.min(100, Math.round(pct))) + '%;background:' + (color || 'var(--gold)') + '"></i></div>';
@@ -1288,7 +1289,7 @@ function sales() { // 계약으로 출고된 장비(출고중·설치완료)의 
 function viewProfit() {
   if (!canPerf()) return '<h1>수익 현황</h1><div class="empty">실적 보기 권한이 있어야 볼 수 있어요.</div>';
   const ym = perfYM(), all = sales(); let tS = 0, tB = 0, mS = 0, mB = 0, mC = 0, miss = 0; const by = {};
-  all.forEach(s => { if (!s.priced) { miss++; return; } tS += s.sell; tB += s.buy; if (s.month === ym) { mS += s.sell; mB += s.buy; mC++; const a = by[s.who] || (by[s.who] = [0, 0]); a[0]++; a[1] += s.sell - s.buy; } });
+  all.forEach(s => { if (!s.priced) { miss++; return; } tS += s.sell; tB += s.buy; if (s.month === ym) { mS += s.sell; mB += s.buy; mC++; if (noPerf(s.who)) return; const a = by[s.who] || (by[s.who] = [0, 0]); a[0]++; a[1] += s.sell - s.buy; } });
   const pr = [], lb = []; let mx = 1;
   for (let i = -5; i <= 0; i++) { const k = monthKey(ym, i); lb.push(Number(k.slice(5)) + '월'); let v = 0; all.forEach(s => { if (s.priced && s.month === k) v += s.sell - s.buy; }); pr.push(v); mx = Math.max(mx, Math.abs(v)); }
   return '<h1>수익 현황</h1><div class="sub">재고에 적어 둔 입고 단가(산 값)와 출고 단가(판 값)의 차이로 계산해요. 계약에 올라가 출고된 장비가 대상입니다.</div>' + monthNavHTML() +
@@ -1486,10 +1487,11 @@ ACT.newStaff = () => formModal('직원 추가', '<label class="fl" for="f_n">직
 ACT.staffEdit = id => {
   const u = byId('users', id); if (!u) return; const active = u.active !== false;
   formModal(u.name + ' 권한', PERMS.map(([k, lb]) => '<label class="chk"><input type="checkbox" class="pm" value="' + k + '"' + (hasP(u, k) ? ' checked' : '') + '><span>' + lb + '</span></label>').join('') +
+    '<label class="chk" style="margin-top:8px"><input type="checkbox" id="f_np"' + (u.noPerf ? ' checked' : '') + '><span>영업 실적·순위에서 빼기 (대표님 등)</span></label>' +
     '<button class="btn ' + (active ? 'red' : 'tint') + ' full" id="f_act">' + (active ? '사용 중지 (퇴사 등)' : '다시 사용') + '</button>', () => {
     const np = [...document.querySelectorAll('.pm:checked')].map(c => c.value);
     if (hasP(u, 'staff_manage') && !np.includes('staff_manage') && adminCount() <= 1) return warn('마지막 관리자의 직원 관리 권한은 끌 수 없습니다.');
-    u.perms = np; put('users', u); syncPhone(u); if (u.id === S.uid) refreshMe(); render(); toast('저장했어요.'); return true;
+    u.perms = np; u.noPerf = $('#f_np').checked; put('users', u); syncPhone(u); if (u.id === S.uid) refreshMe(); render(); toast('저장했어요.'); return true;
   }, '저장');
   $('#f_act').onclick = () => {
     if (active && hasP(u, 'staff_manage') && adminCount() <= 1) return toast('마지막 관리자는 중지할 수 없습니다.');
@@ -1942,6 +1944,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.18', '2026-10-24', ['직원과 권한: ‘영업 실적·순위에서 빼기’ 추가 — 대표님처럼 켜 둔 계정은 실적 합계·직원별 순위·월별 비교·직원별 수익에 들어가지 않아요']],
   ['웹 0.0.17', '2026-10-24', ['‘지금 업데이트’를 누르면 바로 새 버전이 열리게 고침(전에는 서버 임시 보관 때문에 최대 10분 늦게 바뀜)']],
   ['웹 0.0.16', '2026-10-24', ['PC: 채팅처럼 화면 왼쪽 칸을 씀 — 업무(기한 지난·내 업무·최근 완료), 프로젝트(진행률), 일정(오늘부터 일주일), 가맹점·응대 기록(진행 중 가맹점 업무·최근 연 가맹점·최근 응대 기록), ☰에서 연 화면은 같은 묶음 메뉴']],
   ['웹 0.0.15', '2026-10-24', ['업무 ↔ 응대 기록 연결: 업무를 올릴 때 가맹점을 고르고 ‘가맹점 요청사항’을 적으면, 완료할 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(다시 완료하면 같은 기록을 고침, 응대 종류 선택)', '가맹점 화면에 그 가맹점의 진행 중인 업무가 보여요', '응대 기록에 ‘📋 업무에서’ 표시']],

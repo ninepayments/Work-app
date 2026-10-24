@@ -1450,6 +1450,10 @@ public class MainActivity extends Activity {
             boxes[i].setChecked(Store.has(u, Perm.KEYS[i]));
             f.addView(boxes[i]);
         }
+        final CheckBox np0 = new CheckBox(this);
+        np0.setText("영업 실적·순위에서 빼기 (대표님 등)");
+        np0.setChecked(u.optBoolean("noPerf"));
+        f.addView(np0, Ui.lp(this, 8));
         final boolean active = u.optBoolean("active", true);
         ScrollView sv = new ScrollView(this);
         sv.addView(f);
@@ -1479,6 +1483,7 @@ public class MainActivity extends Activity {
                     }
                     try {
                         u.put("perms", np);
+                        u.put("noPerf", np0.isChecked());
                     } catch (Exception ignored) {
                     }
                     store.save();
@@ -4976,6 +4981,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.7", "2026-10-24", "• 직원과 권한: '영업 실적·순위에서 빼기' 표시 추가 — 대표님처럼 켜 둔 계정은 실적 합계·직원별 순위·월별 비교·직원별 수익에 들어가지 않아요"},
             {"0.0.6", "2026-10-24", "• 새 버전 알림 다시 고침: 올린 시각이 가장 최근인 버전만 안내해요 (예전 시험판 0.14.x 가 뜨던 문제)"},
             {"0.0.5", "2026-10-24", "• 새 버전 알림 고침: 예전 시험판 번호(0.14.x)를 새 버전으로 잘못 안내하던 문제 — 이제 가장 최근에 올린 버전만 봐요"},
             {"0.0.4", "2026-10-24", "• 앱 안에서 업데이트: 새 버전 안내에서 '업데이트'를 누르면 앱이 새 APK 를 받아 설치 화면을 바로 열어요 (처음 한 번만 '이 출처 허용'을 켜 주세요)\n• 채팅 읽음을 계정 단위로 맞춤: 웹·PC·다른 폰에서 읽은 대화는 이 폰에서도 읽은 것으로 보여요"},
@@ -7169,6 +7175,7 @@ public class MainActivity extends Activity {
                 mSell += s.sell;
                 mBuy += s.buy;
                 mCnt++;
+                if (noPerf(s.who)) continue;
                 long[] a = byWho.get(s.who);
                 if (a == null) {
                     a = new long[2];
@@ -7558,6 +7565,7 @@ public class MainActivity extends Activity {
         for (JSONObject c : store.list(store.contracts())) {
             if (!c.optString("date").startsWith(ym)) continue;
             if (mineOnly && c.optInt("who") != myId()) continue;
+            if (noPerf(c.optInt("who"))) continue; // 대표님 등 '실적 제외' 계정은 실적·순위·합계에 넣지 않는다
             long[] a = st.get(c.optInt("who"));
             if (a == null) {
                 a = new long[5];
@@ -7574,8 +7582,14 @@ public class MainActivity extends Activity {
         return st;
     }
 
+    private boolean noPerf(int uid) {
+        JSONObject u = store.user(uid);
+        return u != null && u.optBoolean("noPerf");
+    }
+
     private List<JSONObject> rankedStaff(final java.util.Map<Integer, long[]> st) {
-        List<JSONObject> staff = activeStaff();
+        List<JSONObject> staff = new ArrayList<>();
+        for (JSONObject u : activeStaff()) if (!u.optBoolean("noPerf")) staff.add(u);
         Collections.sort(staff, (a, b) -> {
             long[] x = st.get(a.optInt("id")), y = st.get(b.optInt("id"));
             long cx = x == null ? 0 : x[0], cy = y == null ? 0 : y[0];
