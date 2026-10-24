@@ -14,13 +14,14 @@ jobs:
           python-version: '3.12'
       - name: Generate
         run: |
+          sudo apt-get install -y -qq ffmpeg >/dev/null
           pip install gTTS==2.5.4
           mkdir -p web/snd app/src/main/res/raw
           python - <<'PY'
           from gtts import gTTS
           voices = {
             'snd_task': '업무가 배정되었습니다',
-            'snd_talk': '나인톡',
+            'snd_talk': '나톡!',
             'snd_preq': '물품요청이 들어왔습니다',
             'snd_ship': '물품이 발송되었습니다',
             'snd_notice': '새 공지가 있습니다',
@@ -30,6 +31,10 @@ jobs:
                   gTTS(t, lang='ko').save(f'{d}/{k}.mp3')
               print(k, t)
           PY
+          # 채팅 '나톡!'은 카톡처럼 짧고 높게: 앞뒤 무음 자르고 음을 올리고 빠르게
+          for d in web/snd app/src/main/res/raw; do
+            ffmpeg -y -loglevel error -i $d/snd_talk.mp3 -af "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,asetrate=24000*1.22,aresample=24000,atempo=1.1,volume=1.6" -b:a 64k $d/t.mp3 && mv $d/t.mp3 $d/snd_talk.mp3
+          done
           ls -la web/snd app/src/main/res/raw
       - name: Commit
         run: |
