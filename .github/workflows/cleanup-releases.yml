@@ -1,0 +1,22 @@
+name: Remove old test releases
+# 버전 번호를 0.0.1 로 새로 시작하기 전의 옛 APK 시험판(v0.1…v0.14)을 지운다. 손으로만 실행.
+# v0.0.x 시험판과 PC 설치 파일(pc-v…)은 남긴다. 태그는 지우지 않는다.
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete pre-reset releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release list -R "$REPO" --limit 200 --json tagName -q '.[].tagName' > tags.txt
+          cat tags.txt
+          grep -E '^v' tags.txt | grep -vE '^v0\.0\.' > old.txt || true
+          echo "지울 시험판:"; cat old.txt
+          while read -r t; do [ -n "$t" ] && gh release delete "$t" -R "$REPO" --yes && echo "deleted $t"; done < old.txt
+          echo "남은 릴리스:"; gh release list -R "$REPO" --limit 200
