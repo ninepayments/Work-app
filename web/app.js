@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.20';
+const VERSION = '웹 0.0.21';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -556,7 +556,9 @@ const readAt = r => {
 let rdQ = {}, rdT = 0;
 function markRead(r) {
   if (!r) return; const was = readAt(r); let mx = was; list('msgs').forEach(m => { if (m.room === r && m.ts > mx) mx = m.ts; });
-  LS('rd_' + S.uid + '_' + r, String(mx)); if (mx > was) { rdQ[r] = mx; clearTimeout(rdT); rdT = setTimeout(flushRead, 4000); }
+  LS('rd_' + S.uid + '_' + r, String(mx));
+  const pr = myProf(), sv = pr && pr.rd ? Number(pr.rd[r] || 0) : 0; // 서버에 남긴 것보다 새로 읽었으면 올린다 (상대 화면의 읽음 숫자가 줄어든다)
+  if (mx > sv && !(rdQ[r] >= mx)) { rdQ[r] = mx; clearTimeout(rdT); rdT = setTimeout(flushRead, 1500); }
 }
 function flushRead() { // 서버에는 모아서 가끔만 쓴다
   clearTimeout(rdT); const ks = Object.keys(rdQ); if (!ks.length || DEMO || !S.uid) return;
@@ -566,6 +568,10 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) flush
 function unreadMap() { const o = {}, since = {}; list('rooms').forEach(r => since[r.id] = readAt(r.id)); list('msgs').forEach(m => { if (since[m.room] != null && m.ts > since[m.room] && m.who !== S.uid) o[m.room] = (o[m.room] || 0) + 1; }); return o; }
 function unreadTotal() { if (!S.me) return 0; return Object.values(unreadMap()).reduce((a, b) => a + b, 0); }
 function unreadNotices() { return list('notices').filter(n => !(n.readBy || []).includes(S.uid)).length; }
+// 읽음 표시(카톡처럼): 이 방 사람 중 아직 안 읽은 사람 수. 각자 프로필의 rd{방: 시각}(웹·앱 v0.0.4 이상이 씀)으로 센다.
+function roomMemberIds(r) { const ids = (r.members && r.members.length ? r.members : list('users').filter(u => u.active !== false).map(u => u.id)); return ids.filter(i => { const u = byId('users', i); return u && u.active !== false; }); }
+function seenAt(uid, rid) { if (uid === S.uid) return Infinity; const p = byId('profiles', uid); return p && p.rd ? Number(p.rd[rid] || 0) : 0; }
+function unreadOf(m, mem) { return mem.filter(i => i !== m.who && seenAt(i, m.room) < m.ts).length; }
 function dmOther(r) { return (r.members || []).find(x => x !== S.uid) || 0; }
 function roomTitle(r) { return r.dm ? (dmOther(r) ? uname(dmOther(r)) : '나와의 대화') : (r.name || ''); }
 function lastMsg(rid) { let b = null; list('msgs').forEach(m => { if (m.room === rid && (!b || m.ts > b.ts)) b = m; }); return b; }
@@ -592,12 +598,13 @@ function viewChat() {
   if (!room) { S.room = 0; return lst; }
   markRead(S.room);
   const ms = list('msgs').filter(m => m.room === S.room).sort((a, b) => a.ts - b.ts);
+  const mem = roomMemberIds(room);
   let lastDay = '', html = '';
   ms.forEach(m => {
     const d = new Date(m.ts); const day = d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
     if (day !== lastDay) { lastDay = day; html += '<div class="day"><span>' + day + '</span></div>'; }
-    const me = m.who === S.uid;
-    html += '<div class="m ' + (me ? 'me' : '') + '"><div>' + (me || room.dm ? '' : '<div class="who">' + esc(uname(m.who)) + '</div>') + '<div class="bub' + (m.kind === 'img' ? ' pic' : m.kind === 'stk' ? ' pic' : '') + '" data-mid="' + m.id + '">' + (m.rto ? '<div class="rto">' + esc((uname(m.rto.who)) + ': ' + (m.rto.text || '')) + '</div>' : '') + msgBody(m) + '</div>' + reactLine(m) + '<div class="who" style="' + (me ? 'text-align:right' : '') + '">' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '</div></div></div>';
+    const me = m.who === S.uid; const un = unreadOf(m, mem);
+    html += '<div class="m ' + (me ? 'me' : '') + '"><div>' + (me || room.dm ? '' : '<div class="who">' + esc(uname(m.who)) + '</div>') + '<div class="bub' + (m.kind === 'img' ? ' pic' : m.kind === 'stk' ? ' pic' : '') + '" data-mid="' + m.id + '">' + (m.rto ? '<div class="rto">' + esc((uname(m.rto.who)) + ': ' + (m.rto.text || '')) + '</div>' : '') + msgBody(m) + '</div>' + reactLine(m) + '<div class="who" style="' + (me ? 'text-align:right' : '') + '">' + (un && me ? '<b class="unr">' + un + '</b> ' : '') + pad(d.getHours()) + ':' + pad(d.getMinutes()) + (un && !me ? ' <b class="unr">' + un + '</b>' : '') + '</div></div></div>';
   });
   const roomView = '<div class="chatroom"><div class="hdr"><button data-act="leave">‹</button><div class="grow t1">' + esc(roomTitle(room)) + (room.grp ? ' <span class="sub">(' + (room.members || []).length + '명)</span>' : '') + '</div></div><div class="msgs" id="msgbox">' + (html || '<div class="empty">첫 메시지를 남겨 보세요.</div>') + '</div>' + (S.replyTo ? '<div class="replybar"><span>↩ ' + esc(uname(S.replyTo.who)) + '에게 답장: ' + esc(S.replyTo.text) + '</span><button data-act="replyOff" aria-label="답장 취소">✕</button></div>' : '') + stkPanelHTML() + '<div class="send"><button class="plus" data-act="attach" aria-label="사진·파일 보내기">+</button><input id="msgin" placeholder="메시지 입력" autocomplete="off"><button class="plus" data-act="stkPanel" aria-label="이모지·스티커">☺</button><button data-act="send">보내기</button></div><input type="file" id="fpick" hidden></div>';
   return wide ? '<div class="chatwrap">' + lst + roomView + '</div>' : roomView;
@@ -1998,6 +2005,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.21', '2026-10-24', ['채팅 읽음 표시: 카톡처럼 말풍선 옆에 아직 안 읽은 사람 수(노란 숫자)가 보이고, 다 읽으면 사라져요 (상대가 웹 또는 앱 v0.0.4 이상을 쓸 때 정확해요)']],
   ['웹 0.0.20', '2026-10-24', ['업무 지시: 가맹점 요청사항 빠른 선택 ‘용지신청’(직접 입력과 같이). 완료하면 응대 기록 종류가 ‘용지신청’으로 남아요', '업무 지시: 찾는 가맹점이 없으면 ‘새 가맹점 등록’ → 저장하면 이 업무에 자동 연결 (권한·암호 규칙 그대로)', '가맹점: 계약시작일·계약종료일 (상세에 D-day)', '가맹점 목록: 계약 만료 예정 필터 1·2·3개월 이내·만료됨, 종료일 빠른 순, 검색과 같이', 'VAN사 목록을 취급사로 정리 (다우데이타·다우데이타PG·KIS정보통신·KIS정보통신PG·NHN KCP·KOVAN·KOPAY PG), 직접 입력한 이름도 다음부터 목록에', '응대 종류에 ‘용지신청’ 추가']],
   ['웹 0.0.19', '2026-10-24', ['채팅: ‘+ 새 채팅’을 누르면 앱처럼 그룹 채팅방 / 1:1 대화 중에서 골라요 (1:1은 직원 검색해서 고르기)', '채팅: 직원 찾기 칸(이름·초성·번호)과 직원 줄 좌우 화살표 ‹ › 로 직원이 많아도 쉽게 찾기']],
   ['웹 0.0.18', '2026-10-24', ['직원과 권한: ‘영업 실적·순위에서 빼기’ 추가 — 대표님처럼 켜 둔 계정은 실적 합계·직원별 순위·월별 비교·직원별 수익에 들어가지 않아요']],
@@ -2029,7 +2037,7 @@ const WEB_MANUAL = [
   ['화면 구성', '휴대폰(아이폰): 안드로이드 앱과 같은 화면이에요. 아래 탭 업무·프로젝트·채팅·일정·전체, 나머지 기능은 전체 탭에 계정 → 회사 → 일 → 관리자 순서로 있어요.\nPC: 위쪽 가로줄이 주 메뉴(업무·프로젝트·채팅·일정·가맹점·응대 기록)예요. 왼쪽 위 ☰ 를 누르면 전체 메뉴가 펼쳐지고, ‘나인패밀리’를 누르면 홈(오늘 현황)으로 가요.\n전체 메뉴 위 기능 검색에 단어나 초성(예: ㅈㄱ)을 치면 기능을 바로 찾아요.\n안드로이드 앱·아이폰·PC 는 같은 서버를 써서, 어디서 고쳐도 다른 기기에 바로 보여요.'],
   ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 지시: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 지시할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.\n■ 용지신청·새 가맹점: 요청사항 위 ‘＋ 용지신청’을 누르면 칸에 들어가요(다시 누르면 빠짐). 완료하면 응대 기록 종류가 ‘용지신청’. 가맹점 조회에서 못 찾으면 ‘새 가맹점 등록’ → 찾던 상호·사업자번호가 채워지고, 저장하면 업무 창으로 돌아와 자동 연결돼요(권한·암호 필요).'],
   ['프로젝트', '+ 로 이름·마감일·메모·체크리스트(한 줄에 하나)·담당자를 넣어 만들어요.\n프로젝트를 눌러 항목을 체크하면 진행률이 자동으로 올라가고, ‘항목 추가’로 늘려요. 100%가 되면 ‘완료 되돌리기’로 진행중으로 돌릴 수 있어요.\n목록 위 전체·진행중·완료로 걸러 봐요.'],
-  ['채팅', '■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.'],
+  ['채팅', '■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.\n■ 읽음 표시: 말풍선 시각 옆 노란 숫자 = 아직 안 읽은 사람 수. 모두 읽으면 숫자가 사라져요.'],
   ['일정 (달력)', '■ 일요일·공휴일은 빨간색(공휴일 이름 표시, 2026~2028년), 토요일은 파란색이에요. ‹ › 로 달을 넘기고 ‘오늘’로 돌아와요.\n■ 날짜를 누르면 그날 일정과 기한이 있는 업무가 보이고, 아래 ‘다가오는 일정’에 앞으로의 일정이 날짜 순으로 나와요.\n■ 일정을 누르면 내용이 보이고, 가맹점이 연결된 일정은 ‘가맹점 정보 보기’로 바로 가요.\n■ 일정 추가·삭제는 최고관리자만 해요(+ 버튼). 가맹점을 고르면 장소에 주소가 들어가요. 일반 직원은 업무에 기한을 넣으면 달력에 표시돼요.'],
   ['가맹점', '■ 검색: 상호, 초성(예: ㅅㅇㅍ), 사업자번호(- 없이도), 전화번호. 한글을 치는 중에도 바로 걸러져요. PC는 표로 보여요.\n■ 항목: 상호·사업자번호·전화번호·휴대폰번호·이메일·주소·VAN사·계약구분(임대면 월 CMS 금액, 판매면 판매 금액)·계약조건·등급 코드·메모. 칸마다 이름이 위에 있어요.\n■ 등급 코드(밴피 기준): 0 S·월 5만원 이상 / 1 A·3만원 이상 / 2 B·1만원 이상 / 3 C·1만원 미만 / 4 해지 / 5 신규 / 7 협력사.\n■ 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있어야 하고, 관리자가 수정 암호를 정해 두면 관리자도 암호를 넣어야 해요(한 번 넣으면 5분 동안 다시 묻지 않아요). 같은 사업자번호가 이미 있으면 등록할 때 알려 줘요.\n■ 삭제하면 목록에서만 사라지고 기록은 남아요(관리자가 복원 가능).\n■ 최고관리자는 가맹점 정보 창의 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.\n■ 계약기간·만료 예정: 등록·수정에 계약시작일·계약종료일. 목록 위 ‘계약 만료 예정’ 1·2·3개월 이내·만료됨을 누르면 그 가맹점만 종료일 빠른 순으로 보여요(검색과 같이 써요, 종료일이 빈 가맹점은 필터에서만 빠짐).\n■ VAN사: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG — 그 밖은 직접 입력하면 다음부터 목록에 같이 나와요.'],
   ['가맹점 응대 기록', '■ 가맹점을 열어 ‘+ 응대 기록 남기기’ → 날짜·종류(방문A/S·원격A/S·전화응대·기타)·요청사항·처리결과.\n■ 가맹점 창에서 종류 버튼과 날짜로 걸러 봐요.\n■ 전체 → 가맹점 응대 기록 조회: 상호·초성·사업자번호로 가맹점을 찾거나, 모든 가맹점의 최근 기록을 검색해요.\n■ 기록은 직원 누구나 고칠 수 있고 수정한 사람·시각이 남아요. 지우기는 쓴 사람과 최고관리자만 해요.'],

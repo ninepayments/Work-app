@@ -290,3 +290,4 @@ details.man[open]{padding-bottom:12px}
 .dmrow:hover{background:var(--card)}
 .dmrow small{display:block;color:var(--gray);font-size:12px}
 .dmrow .avimg,.dmrow .avtxt{flex:none}
+.unr{color:#d39e00;font-weight:800;font-size:11px}

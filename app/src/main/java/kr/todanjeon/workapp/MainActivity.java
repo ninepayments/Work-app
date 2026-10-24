@@ -4356,6 +4356,31 @@ public class MainActivity extends Activity {
     }
 
     /** 이 방에서 내가 마지막으로 읽은 시각. 처음 쓰는 폰은 지금부터 센다(옛 글이 모두 안 읽음으로 뜨지 않게). */
+    /** 읽음 표시(카톡처럼): 방 사람 중 아직 안 읽은 사람 수 — 각자 프로필의 rd{방: 시각}(웹·앱 v0.0.4 이상이 씀)으로 센다. */
+    private List<Integer> roomMemberIds(int roomId) {
+        List<Integer> out = new ArrayList<>();
+        JSONObject r = store.byId("rooms", roomId);
+        JSONArray ms = r == null ? null : r.optJSONArray("members");
+        if (ms != null && ms.length() > 0) {
+            for (int i = 0; i < ms.length(); i++) {
+                JSONObject u = store.user(ms.optInt(i));
+                if (u != null && u.optBoolean("active", true)) out.add(ms.optInt(i));
+            }
+        } else for (JSONObject u : store.list(store.users())) if (u.optBoolean("active", true)) out.add(u.optInt("id"));
+        return out;
+    }
+
+    private int unreadOf(JSONObject m, List<Integer> mem) {
+        int n = 0;
+        for (int uid : mem) {
+            if (uid == m.optInt("who") || uid == myId()) continue;
+            JSONObject pr = store.profile(uid);
+            JSONObject rd = pr == null ? null : pr.optJSONObject("rd");
+            if ((rd == null ? 0 : rd.optLong(String.valueOf(m.optInt("room")), 0)) < m.optLong("ts")) n++;
+        }
+        return n;
+    }
+
     /** 이 계정이 서버(내 프로필 rd)에 남긴 읽은 시각 — 웹·다른 폰과 같이 쓴다. */
     private long serverReadAt(int room) {
         JSONObject pr = store.profile(myId());
@@ -5072,6 +5097,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.9", "2026-10-24", "• 채팅 읽음 표시: 카톡처럼 말풍선 옆에 아직 안 읽은 사람 수(노란 숫자)가 보이고, 다 읽으면 사라져요 (상대가 웹 또는 앱 v0.0.4 이상을 쓸 때 정확해요)"},
             {"0.0.8", "2026-10-24", "• 업무 지시: 가맹점 요청사항 빠른 선택 '용지신청' (직접 입력과 같이 써요). 완료하면 응대 기록에 '용지신청'으로 남아요\n• 업무 지시·가맹점 조회에서 못 찾은 가맹점은 '새 가맹점 등록'으로 바로 등록 → 저장하면 이 업무에 자동 연결 (권한·암호 규칙 그대로)\n• 가맹점: 계약시작일·계약종료일 추가 (상세에 D-day 표시)\n• 가맹점 목록: 계약 만료 예정 필터 (1·2·3개월 이내, 만료됨) — 종료일 빠른 순, 검색과 같이 써요\n• VAN사 목록을 취급사로 정리: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG (그 밖은 직접 입력)\n• 응대 종류에 '용지신청' 추가"},
             {"0.0.7", "2026-10-24", "• 직원과 권한: '영업 실적·순위에서 빼기' 표시 추가 — 대표님처럼 켜 둔 계정은 실적 합계·직원별 순위·월별 비교·직원별 수익에 들어가지 않아요"},
             {"0.0.6", "2026-10-24", "• 새 버전 알림 다시 고침: 올린 시각이 가장 최근인 버전만 안내해요 (예전 시험판 0.14.x 가 뜨던 문제)"},
@@ -5767,6 +5793,7 @@ public class MainActivity extends Activity {
         SimpleDateFormat df = new SimpleDateFormat("yyyy년 M월 d일 EEEE", Locale.KOREA);
         SimpleDateFormat dk = new SimpleDateFormat("yyyyMMdd", Locale.KOREA);
         SimpleDateFormat tf = new SimpleDateFormat("a h:mm", Locale.KOREA);
+        final List<Integer> mem = roomMemberIds(chatRoom);
         String lastDay = "";
         JSONObject prev = null;
         for (final JSONObject m : ms) {
@@ -5792,7 +5819,12 @@ public class MainActivity extends Activity {
                         && tf.format(new Date(nx.optLong("ts"))).equals(tf.format(dt));
             }
             View bubble = buildBubble(m, mine);
-            TextView tm = Ui.text(this, nextSame ? "" : tf.format(dt), 10, Ui.GRAY, false);
+            int un = unreadOf(m, mem);
+            TextView tm = Ui.text(this, "", 10, Ui.GRAY, false);
+            String tt = nextSame ? "" : tf.format(dt);
+            if (un > 0) tm.setText(android.text.Html.fromHtml("<font color='#d39e00'><b>" + un + "</b></font>" + (tt.isEmpty() ? "" : "<br>" + tt), android.text.Html.FROM_HTML_MODE_LEGACY));
+            else tm.setText(tt);
+            if (mine) tm.setGravity(Gravity.END);
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.BOTTOM);
             if (mine) {
