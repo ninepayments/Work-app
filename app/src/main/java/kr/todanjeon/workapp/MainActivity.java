@@ -4895,19 +4895,21 @@ public class MainActivity extends Activity {
                 while ((line = rd.readLine()) != null) sb.append(line);
                 rd.close();
                 JSONArray rs = new JSONArray(sb.toString());
-                int[] best = verNums(cur);
-                for (int i = 0; i < rs.length(); i++) {
+                // 가장 최근에 올린 APK 릴리스 하나만 본다(목록은 최신순). 버전 번호를 0.0.1 로 새로 시작해서,
+                // 예전 0.14.x 같은 번호가 '더 높다'고 잘못 뜨지 않게 번호 크기 대신 '지금과 다른가'로 판단한다.
+                for (int i = 0; i < rs.length() && url == null; i++) {
                     JSONObject r = rs.optJSONObject(i);
                     String tg = r.optString("tag_name");
-                    if (!tg.matches("v\\d+\\.\\d+\\.\\d+.*")) continue; // pc-v… 는 PC 프로그램
+                    if (!tg.matches("v\\d+\\.\\d+\\.\\d+.*") || r.optBoolean("draft")) continue; // pc-v… 는 PC 프로그램
                     JSONArray as = r.optJSONArray("assets");
                     String apk = null;
                     for (int k = 0; as != null && k < as.length(); k++) if (as.optJSONObject(k).optString("name").endsWith(".apk")) apk = as.optJSONObject(k).optString("browser_download_url");
-                    if (apk != null && newer(verNums(tg), best)) {
-                        best = verNums(tg);
+                    if (apk == null) continue;
+                    if (!java.util.Arrays.equals(verNums(tg), verNums(cur))) {
                         tag = tg;
                         url = apk;
                     }
+                    break;
                 }
             } catch (Exception e) {
                 if (manual) runOnUiThread(() -> Ui.toast(this, "인터넷 연결을 확인해 주세요."));
@@ -4970,6 +4972,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.5", "2026-10-24", "• 새 버전 알림 고침: 예전 시험판 번호(0.14.x)를 새 버전으로 잘못 안내하던 문제 — 이제 가장 최근에 올린 버전만 봐요"},
             {"0.0.4", "2026-10-24", "• 앱 안에서 업데이트: 새 버전 안내에서 '업데이트'를 누르면 앱이 새 APK 를 받아 설치 화면을 바로 열어요 (처음 한 번만 '이 출처 허용'을 켜 주세요)\n• 채팅 읽음을 계정 단위로 맞춤: 웹·PC·다른 폰에서 읽은 대화는 이 폰에서도 읽은 것으로 보여요"},
             {"0.0.3", "2026-10-24", "• 업무 ↔ 응대 기록 연결: 업무를 올릴 때 가맹점을 고르고 '가맹점 요청사항'을 적으면, 처리 완료 때 적는 '처리결과'와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시, 응대 종류 선택)\n• 가맹점 정보에 그 가맹점의 진행 중인 업무가 보여요\n• 재고: 입고(같은 모델 수량에 더하기·입고처 메모·있던 모델 고르기), 출고(반품·불량·A/S 교체·분실 — 계약 없이), 수량 정정(재고 조사, 바코드 확인), 재고 이력(입고·출고·계약 출고·정정)\n• 새 버전 알림: 새 APK 가 나오면 앱을 열 때 '받기' 안내가 떠요 (전체 → 회사 → 앱 업데이트 확인으로 직접 확인도 돼요)\n• 웹앱(웹 0.0.17)과 같은 자료·같은 방식으로 맞췄어요"},
             {"0.0.2", "2026-10-24", "• 가맹점 정보에 항목 추가: 전화번호·휴대폰번호·이메일·VAN사·계약구분(임대 월 CMS / 판매 금액)을 넣을 수 있고, 모든 칸에 이름이 적혀요\n• 가맹점 등록·수정은 '가맹점 등록·수정' 권한이 있는 사람만, 관리자가 정한 암호를 입력해야 할 수 있어요(전체 → 가맹점 수정 암호)\n• 웹앱: 한글로 상호를 검색하면 결과가 안 나오던 문제 수정(상호·초성·사업자번호 모두 찾아요)\n• 웹앱: 기본 화면은 업무·프로젝트·채팅·일정·가맹점 5개, 나머지는 왼쪽 위 ☰ 전체 메뉴에서. 왼쪽 위 '나인패밀리'를 누르면 홈으로 가요"},
