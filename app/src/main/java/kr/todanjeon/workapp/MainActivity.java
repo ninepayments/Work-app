@@ -1921,20 +1921,30 @@ public class MainActivity extends Activity {
         e.add(new Entry("회사", "비상연락망 (눌러서 전화)", "비상연락망 연락처 전화 번호 비상 본사 카드사 밴사", () -> goSub("contacts")));
         e.add(new Entry("내 계정·설정", "내 프로필 (사진·상태 메시지)", "프로필 사진 상태 메시지 내 정보", () -> showProfile(myId())));
         final boolean vOn = getSharedPreferences("workapp", MODE_PRIVATE).getBoolean("voice", true);
-        Entry vo = new Entry("내 계정·설정", "알림 소리·음성 (업무 배정·나인톡)", "알림 소리 음성 끄기 켜기 나인톡 업무 배정", () -> {
+        Entry vo = new Entry("내 계정·설정", "업무 알림 소리 (\"업무가 배정되었습니다\")", "알림 소리 음성 끄기 켜기 업무 배정 물품요청 공지", () -> {
             getSharedPreferences("workapp", MODE_PRIVATE).edit().putBoolean("voice", !vOn).apply();
-            Ui.toast(this, vOn ? "알림 소리·음성을 껐어요." : "알림 소리·음성을 켰어요.");
+            Ui.toast(this, vOn ? "업무 알림 소리를 껐어요." : "업무 알림 소리를 켰어요.");
             render();
         });
         vo.badge = vOn ? "켜짐" : "꺼짐";
         e.add(vo);
-        e.add(new Entry("내 계정·설정", "알림 소리 들어 보기", "알림 소리 시험 듣기 테스트", () -> {
+        e.add(new Entry("내 계정·설정", "업무 알림 소리 들어 보기", "알림 소리 시험 듣기 테스트 업무", () -> {
+            if (!vOn) { Ui.toast(this, "업무 알림 소리가 꺼져 있어요. 먼저 켜 주세요."); return; }
             lastSay = 0;
             speak("업무가 배정되었습니다");
-            uiHandler.postDelayed(() -> {
-                lastSay = 0;
-                speak("나인톡");
-            }, 3200);
+        }));
+        final boolean cOn = getSharedPreferences("workapp", MODE_PRIVATE).getBoolean("voiceChat", true);
+        Entry vc = new Entry("내 계정·설정", "채팅 알림 소리 (\"나톡!\")", "채팅 알림 소리 음성 나톡 끄기 켜기 카톡", () -> {
+            getSharedPreferences("workapp", MODE_PRIVATE).edit().putBoolean("voiceChat", !cOn).apply();
+            Ui.toast(this, cOn ? "채팅 알림 소리를 껐어요." : "채팅 알림 소리(나톡)를 켰어요.");
+            render();
+        });
+        vc.badge = cOn ? "켜짐" : "꺼짐";
+        e.add(vc);
+        e.add(new Entry("내 계정·설정", "채팅 알림 소리 들어 보기", "채팅 나톡 소리 시험 듣기 테스트", () -> {
+            if (!cOn) { Ui.toast(this, "채팅 알림 소리가 꺼져 있어요. 먼저 켜 주세요."); return; }
+            lastSay = 0;
+            speak("나톡");
         }));
         e.add(new Entry("내 계정·설정", "앱 업데이트 확인 (새 버전 받기)", "업데이트 확인 새 버전 apk 받기 최신", () -> checkAppUpdate(true)));
         e.add(new Entry("내 계정·설정", "사용설명서", "사용설명서 매뉴얼 도움말 사용법", () -> goSub("manual")));
@@ -5353,7 +5363,7 @@ public class MainActivity extends Activity {
             {"프로필 · 버전", "■ 프로필\n- 전체 탭 맨 위 내 카드(또는 오른쪽 위 동그라미)를 누르면 프로필이 열립니다.\n- '사진 변경'으로 앨범에서 사진을 고르면 자동으로 동그랗게 잘려 저장되고, 채팅과 화면 위쪽에 나와요.\n- '상태 메시지'에 외근 중, 오후 복귀 같은 한 줄을 적어 두면 다른 직원이 프로필에서 볼 수 있어요.\n- 채팅에서 다른 직원 사진을 누르면 그 직원의 프로필과 전화하기 버튼이 나옵니다.\n\n■ 버전 보기\n- 전체 탭 맨 아래, 로그인 화면, 전체 → 버전·업데이트 내역에 현재 버전이 표시됩니다. (예: v0.0.1 (빌드 33))\n- 업데이트 내역에는 버전마다 무엇이 바뀌었는지 적혀 있어요.\n\n■ 버전 번호 규칙\n- 0.0.1에서 시작해 업데이트할 때마다 끝 숫자가 하나씩 올라갑니다 (0.0.2, 0.0.3 …).\n- 괄호 안 빌드 번호는 배포할 때마다 1씩 올라가요.\n- 실제 문자 인증으로 전 직원이 쓰기 시작하면 1.0.0이 됩니다.\n- 새 버전이 나올 때마다 이 사용설명서도 함께 새로 고쳐집니다."},
             {"자주 묻는 질문", "Q. 인증번호 문자가 안 와요.\nA. 번호가 등록되었는지, 폰 신호가 되는지 확인하세요. 하루에 받을 수 있는 횟수가 제한되어 있어 여러 번 시도하면 잠시 막힐 수 있어요.\n\nQ. 폰을 바꿨어요.\nA. 새 폰에 앱을 설치하고 같은 번호로 다시 인증하면 모든 자료가 그대로 나옵니다. 자료는 서버에 저장돼 있어요.\n\nQ. 인터넷이 없을 때도 써도 되나요?\nA. 열어서 보기와 입력은 가능하고, 인터넷이 다시 연결되면 자동으로 서버에 올라갑니다.\n\nQ. 실수로 지웠어요.\nA. 지운 자료도 서버에는 기록이 남아 있으니 관리자에게 말씀해 주세요."},
             {"물품요청 (본사 ← 지사)", "■ 요청\n- 전체 → 업무 → 물품요청, 또는 재고 화면 아래 '＋ 본사에 물품요청'.\n- 받을 곳(광주지사·본사), 품목과 수량(줄 추가 가능, '…'로 있던 모델 고르기), 본사 담당자, 희망 도착일, 메모를 적어 보내요.\n\n■ 본사 담당자\n- 업무 목록에 '미확인'으로 뜨고 알림(음성: 물품요청이 들어왔습니다)이 와요.\n- 요청을 열어 '주문함' → '발송 (발주처리)'(택배사·송장번호 메모)를 누르고, 안 되면 '반려'(사유).\n\n■ 요청한 사람\n- 발송되면 알림(음성: 물품이 발송되었습니다)과 업무 숫자가 떠요.\n- 물건을 받고 '입고 확인'에서 받은 수량·시리얼(바코드 스캔 가능)을 적으면 받은 곳 재고에 바로 들어가고, 재고 이력에 '물품요청 입고'로 남아요.\n\n■ 진행 단계: 요청 › 주문함 › 발송함 › 입고완료 (또는 반려). 모든 단계는 처리 이력에 남아요."},
-            {"알림 소리·음성", "■ 새 업무가 배정되면 '띵동' 소리와 함께 \"업무가 배정되었습니다\", 채팅이 오면 \"나인톡\", 물품요청은 \"물품요청이 들어왔습니다\"·\"물품이 발송되었습니다\", 공지는 \"새 공지가 있습니다\"라고 말해 줘요.\n■ 전체 → 내 계정·설정 → '알림 소리·음성'에서 끄고 켜요. '알림 소리 들어 보기'로 미리 들어 볼 수 있어요.\n■ 음성이 안 나오면 폰 설정 → 일반 → 텍스트 음성 변환(TTS)에서 한국어 음성을 받아 주세요."}
+            {"알림 소리·음성", "■ 새 업무가 배정되면 '띵동' 소리와 함께 \"업무가 배정되었습니다\", 물품요청은 \"물품요청이 들어왔습니다\"·\"물품이 발송되었습니다\", 공지는 \"새 공지가 있습니다\"라고 말해 줘요.\n■ 채팅이 오면 카톡처럼 짧게 \"나톡!\" 하고 울려요.\n■ 전체 → 내 계정·설정에서 '업무 알림 소리'와 '채팅 알림 소리(나톡)'를 따로 끄고 켜고, '들어 보기'로 미리 들어 봐요.\n■ 채팅방 하나만 조용히 하려면 대화방 메뉴 → 음소거.\n■ 소리가 안 나면 폰 미디어 볼륨을 올려 주세요."}
     };
 
     /** 사용설명서 순서: 시작하기 → 아래 탭(주 메뉴) → 전체 메뉴 묶음(메뉴와 같은 순서) → 도움말 */
@@ -5519,6 +5529,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.13", "2026-10-25", "• 채팅 알림 소리를 카톡처럼 짧게 \"나톡!\"으로 바꾸고, 업무는 '띵동' + \"업무가 배정되었습니다\"로 따로 울려요\n• 전체 → 내 계정·설정에 '업무 알림 소리'·'채팅 알림 소리(나톡)'를 따로 켜고 끄는 칸과 각각 들어 보기"},
             {"0.0.12", "2026-10-25", "• 알림 음성이 안 나던 문제 고침: 미리 녹음한 음성 파일을 앱에 넣어, 폰에 한국어 음성 엔진이 없어도 \"업무가 배정되었습니다\"·\"나인톡\"이 들려요 (전체 → 내 계정·설정 → 알림 소리 들어 보기)"},
             {"0.0.11", "2026-10-25", "• 알림 음성: 업무가 배정되면 \"업무가 배정되었습니다\", 채팅은 \"나인톡\", 물품요청·발송·공지도 '띵동' 소리와 음성으로 알려요 (전체 → 내 계정·설정 → 알림 소리 들어 보기)\n• 물품이 발송되면 요청한 사람에게 알림\n• 전체 메뉴에서 '내 계정·설정'을 맨 앞으로\n• 사용설명서를 시작하기 → 아래 탭 → 전체 메뉴 묶음 순서로 정리, 물품요청·알림 음성 설명 추가"},
             {"0.0.10", "2026-10-24", "• 재고 보관지(본사·광주지사): 입고 때 보관지 선택, 보관지별 보기, 보관지 바꾸면 '이동' 이력\n• 물품요청(지사 → 본사): 품목·수량·받을 곳·본사 담당자 → 담당자에게 알림 → 주문함·발송(발주처리, 송장 메모)·반려 → 요청한 사람이 '입고 확인'하면 그 보관지 재고에 자동 입고\n• 전체 메뉴를 업무·가맹점·계약·재고·실적·보고·회사·내 계정·설정·관리자로 나눔 (권한 없는 메뉴는 숨김)"},
@@ -6563,7 +6574,7 @@ public class MainActivity extends Activity {
             }
         } catch (Exception ignored) {
         }
-        try { // 음성 안내 ("업무가 배정되었습니다", "나인톡") — 폰에 들어 있는 한국어 음성을 쓴다
+        try { // 음성 안내 ("업무가 배정되었습니다", "나톡") — 폰에 들어 있는 한국어 음성을 쓴다
             tts = new android.speech.tts.TextToSpeech(this, st -> {
                 if (st == android.speech.tts.TextToSpeech.SUCCESS && tts != null) tts.setLanguage(Locale.KOREAN);
             });
@@ -6584,7 +6595,7 @@ public class MainActivity extends Activity {
             } else if ("msgs".equals(coll) && o.optInt("who") != me2 && o.optInt("ts", 1) != 0 && System.currentTimeMillis() - o.optLong("ts") < 120000 && !muted(o.optInt("room"))) {
                 title = "나인톡 · " + store.userName(o.optInt("who"));
                 body = snippet(o);
-                say = "나인톡";
+                say = "나톡";
             } else if ("library".equals(coll) && o.optInt("who") != me2) {
                 title = "자료실에 새 자료";
                 body = o.optString("title");
@@ -6612,11 +6623,22 @@ public class MainActivity extends Activity {
     private android.speech.tts.TextToSpeech tts;
     private long lastSay = 0;
 
-    /** 띵동 소리 + 음성 안내. 연달아 오면 한 번만 말한다. '알림 소리·음성'을 끄면 둘 다 안 난다. */
+    /** 업무: 띵동 소리 + 음성 안내 / 채팅: 카톡처럼 "나톡!"만 짧게. 연달아 오면 한 번만. 업무·채팅 소리는 따로 끈다. */
     private void speak(String say) {
-        if (say == null || !getSharedPreferences("workapp", MODE_PRIVATE).getBoolean("voice", true)) return;
-        if (System.currentTimeMillis() - lastSay < 2500) return;
+        if (say == null) return;
+        boolean chat = "나톡".equals(say);
+        if (!getSharedPreferences("workapp", MODE_PRIVATE).getBoolean(chat ? "voiceChat" : "voice", true)) return;
+        if (System.currentTimeMillis() - lastSay < (chat ? 1500 : 2500)) return;
         lastSay = System.currentTimeMillis();
+        if (chat) {
+            try {
+                android.media.MediaPlayer mp = android.media.MediaPlayer.create(this, R.raw.snd_talk);
+                if (mp != null) { mp.setOnCompletionListener(android.media.MediaPlayer::release); mp.start(); return; }
+                if (tts != null) tts.speak("나톡", android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "nine");
+            } catch (Exception ignored) {
+            }
+            return;
+        }
         try {
             android.media.ToneGenerator tg = new android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 80);
             tg.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 300);
@@ -6624,7 +6646,7 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {
         }
         uiHandler.postDelayed(() -> { // 미리 녹음한 음성(res/raw)을 튼다 — 폰에 한국어 음성 엔진이 없어도 들린다. 없으면 기기 음성으로.
-            int res = "업무가 배정되었습니다".equals(say) ? R.raw.snd_task : "나인톡".equals(say) ? R.raw.snd_talk : "물품요청이 들어왔습니다".equals(say) ? R.raw.snd_preq
+            int res = "업무가 배정되었습니다".equals(say) ? R.raw.snd_task : "물품요청이 들어왔습니다".equals(say) ? R.raw.snd_preq
                     : "물품이 발송되었습니다".equals(say) ? R.raw.snd_ship : "새 공지가 있습니다".equals(say) ? R.raw.snd_notice : 0;
             try {
                 if (res != 0) {

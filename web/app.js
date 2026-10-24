@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.24';
+const VERSION = '웹 0.0.25';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -130,11 +130,15 @@ function refreshMe() { if (S.uid) { const u = user(S.uid); if (u) S.me = u; } }
 // ---------- 알림 (웹앱을 열어 둔 동안) ----------
 // 화면이 꺼져 있거나 웹앱을 닫았을 때 오는 진짜 푸시 알림은 Blaze 전환 뒤 서버(FCM)가 있어야 한다.
 // 그 전까지: 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·화면 안내, PC는 다른 창을 보고 있어도 브라우저 알림, 탭 제목에 숫자.
-const soundOn = () => LS('snd_' + S.uid) !== '0';
+// 알림 소리는 업무·채팅을 따로 끄고 켠다. 채팅방마다 소리 끄기도 된다(이 기기에만 기억).
+const soundOn = () => LS('snd_' + S.uid) !== '0'; // 업무·물품요청·공지
+const chatSndOn = () => LS('sndc_' + S.uid) !== '0'; // 채팅 “나톡!”
+const mutedRooms = () => (LS('mute_' + S.uid) || '').split(',').filter(Boolean).map(Number);
+const roomMuted = id => mutedRooms().includes(Number(id));
 let actx = null;
 let lastSay = 0;
 // 미리 녹음한 음성 파일(web/snd)을 튼다 — 기기에 한국어 음성이 없어도 들린다. 파일을 못 틀면 기기 음성으로 말한다.
-const SND = {'업무가 배정되었습니다': 'snd/snd_task.mp3', '나인톡': 'snd/snd_talk.mp3', '물품요청이 들어왔습니다': 'snd/snd_preq.mp3', '물품이 발송되었습니다': 'snd/snd_ship.mp3', '새 공지가 있습니다': 'snd/snd_notice.mp3'};
+const SND = {'업무가 배정되었습니다': 'snd/snd_task.mp3', '나톡': 'snd/snd_talk.mp3', '물품요청이 들어왔습니다': 'snd/snd_preq.mp3', '물품이 발송되었습니다': 'snd/snd_ship.mp3', '새 공지가 있습니다': 'snd/snd_notice.mp3'};
 const sndEl = {};
 let audioOk = false;
 function unlockAudio() { // 브라우저는 사람이 한 번 누르기 전에는 소리를 막는다 → 첫 클릭·터치 때 소리를 깨워 둔다
@@ -148,7 +152,13 @@ function sayIt(say) {
   const src = SND[say]; if (!src) return ttsFallback();
   try { const el = sndEl[say] || (sndEl[say] = new Audio(src)); el.currentTime = 0; el.volume = 1; const p = el.play(); if (p && p.catch) p.catch(ttsFallback); } catch (e) { ttsFallback(); }
 }
-function beep(say) { // '띵동' 두 음 + 음성 안내 (업무: "업무가 배정되었습니다", 채팅: "나인톡") — 알림 소리를 끄면 둘 다 안 나요
+function beep(say) { // 업무: '띵동' 두 음 + “업무가 배정되었습니다” / 채팅: 카톡처럼 “나톡!”만 짧게
+  if (say === '나톡') {
+    if (!chatSndOn()) return;
+    if (navigator.vibrate) navigator.vibrate(80);
+    if (Date.now() - lastSay > 1500) { lastSay = Date.now(); sayIt(say); }
+    return;
+  }
   if (!soundOn()) return;
   try {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume();
@@ -170,7 +180,7 @@ function notify(title, body, go, say) {
 function watchNew(coll, o, prev) {
   if (!S.me || o.deleted) return;
   if (coll === 'msgs' && !prev && o.who !== S.uid && o.ts > Date.now() - 5 * 60000 && !(S.room === o.room && !document.hidden)) {
-    const r = byId('rooms', o.room); notify('💬 ' + (r ? roomTitle(r) : '채팅'), uname(o.who) + ': ' + msgText(o), () => { S.tab = 'chat'; S.sub = ''; S.room = o.room; render(); }, '나인톡');
+    const r = byId('rooms', o.room); notify('💬 ' + (r ? roomTitle(r) : '채팅'), uname(o.who) + ': ' + msgText(o), () => { S.tab = 'chat'; S.sub = ''; S.room = o.room; render(); }, roomMuted(o.room) ? '' : '나톡');
   }
   if (coll === 'tasks' && o.assignee === S.uid && o.status === '지시됨' && o.creator !== S.uid && (!prev || prev.assignee !== S.uid)) {
     notify('📋 새 업무', o.title + ' (' + uname(o.creator) + ')', () => { S.tab = 'task'; S.sub = ''; render(); ACT.task(o.id); }, o.preq ? '물품요청이 들어왔습니다' : '업무가 배정되었습니다');
@@ -381,8 +391,11 @@ ACT.notifyOn = () => {
   if (!('Notification' in window)) { toast('이 기기는 브라우저 알림을 못 써요. 웹앱을 열어 둔 동안 소리·진동으로 알려 드려요.'); return; }
   Notification.requestPermission().then(r => { toast(r === 'granted' ? '알림을 켰어요. 웹앱을 열어 둔 동안 새 업무·채팅·공지를 알려 드려요.' : '알림이 꺼져 있어요. 브라우저 설정에서 이 사이트 알림을 허용해 주세요.'); render(); });
 };
-ACT.soundTest = () => { if (!soundOn()) return toast('알림 소리가 꺼져 있어요. 먼저 켜 주세요.'); beep('업무가 배정되었습니다'); setTimeout(() => { lastSay = 0; beep('나인톡'); }, 3200); };
-ACT.soundToggle = () => { LS('snd_' + S.uid, soundOn() ? '0' : '1'); toast(soundOn() ? '알림 소리를 켰어요.' : '알림 소리를 껐어요.'); render(); };
+ACT.soundTest = () => { unlockAudio(); if (!soundOn()) return toast('업무 알림 소리가 꺼져 있어요. 먼저 켜 주세요.'); lastSay = 0; beep('업무가 배정되었습니다'); };
+ACT.chatSndTest = () => { unlockAudio(); if (!chatSndOn()) return toast('채팅 알림 소리가 꺼져 있어요. 먼저 켜 주세요.'); lastSay = 0; beep('나톡'); };
+ACT.soundToggle = () => { LS('snd_' + S.uid, soundOn() ? '0' : '1'); toast(soundOn() ? '업무 알림 소리를 켰어요.' : '업무 알림 소리를 껐어요.'); render(); };
+ACT.chatSndToggle = () => { LS('sndc_' + S.uid, chatSndOn() ? '0' : '1'); toast(chatSndOn() ? '채팅 알림 소리(나톡)를 켰어요.' : '채팅 알림 소리를 껐어요.'); render(); };
+ACT.roomMute = () => { const m = mutedRooms(), id = Number(S.room); LS('mute_' + S.uid, (m.includes(id) ? m.filter(x => x !== id) : m.concat(id)).join(',')); toast(roomMuted(id) ? '이 채팅방 알림 소리를 껐어요.' : '이 채팅방 알림 소리를 켰어요.'); render(); };
 
 // ---------- 업무 ----------
 function stColor(s) { return {'지시됨': ['#fff1db', '#8a5200'], '진행중': ['#f7efd9', '#8f6b14'], '보류': ['#ffe9e5', '#b3261e'], '완료': ['#e3f6ee', '#0b7a55']}[s] || ['#eef0f4', '#4a4f5e']; }
@@ -635,7 +648,7 @@ function viewChat() {
     const me = m.who === S.uid; const un = unreadOf(m, mem);
     html += '<div class="m ' + (me ? 'me' : '') + '"><div>' + (me || room.dm ? '' : '<div class="who">' + esc(uname(m.who)) + '</div>') + '<div class="bub' + (m.kind === 'img' ? ' pic' : m.kind === 'stk' ? ' pic' : '') + '" data-mid="' + m.id + '">' + (m.rto ? '<div class="rto">' + esc((uname(m.rto.who)) + ': ' + (m.rto.text || '')) + '</div>' : '') + msgBody(m) + '</div>' + reactLine(m) + '<div class="who" style="' + (me ? 'text-align:right' : '') + '">' + (un && me ? '<b class="unr">' + un + '</b> ' : '') + pad(d.getHours()) + ':' + pad(d.getMinutes()) + (un && !me ? ' <b class="unr">' + un + '</b>' : '') + '</div></div></div>';
   });
-  const roomView = '<div class="chatroom"><div class="hdr"><button data-act="leave">‹</button><div class="grow t1">' + esc(roomTitle(room)) + (room.grp ? ' <span class="sub">(' + (room.members || []).length + '명)</span>' : '') + '</div></div><div class="msgs" id="msgbox">' + (html || '<div class="empty">첫 메시지를 남겨 보세요.</div>') + '</div>' + (S.replyTo ? '<div class="replybar"><span>↩ ' + esc(uname(S.replyTo.who)) + '에게 답장: ' + esc(S.replyTo.text) + '</span><button data-act="replyOff" aria-label="답장 취소">✕</button></div>' : '') + stkPanelHTML() + '<div class="send"><button class="plus" data-act="attach" aria-label="사진·파일 보내기">+</button><input id="msgin" placeholder="메시지 입력" autocomplete="off"><button class="plus" data-act="stkPanel" aria-label="이모지·스티커">☺</button><button data-act="send">보내기</button></div><input type="file" id="fpick" hidden></div>';
+  const roomView = '<div class="chatroom"><div class="hdr"><button data-act="leave">‹</button><div class="grow t1">' + esc(roomTitle(room)) + (room.grp ? ' <span class="sub">(' + (room.members || []).length + '명)</span>' : '') + '</div><button data-act="roomMute" title="이 채팅방 알림 소리" aria-label="이 채팅방 알림 소리 ' + (roomMuted(room.id) ? '켜기' : '끄기') + '">' + (roomMuted(room.id) ? '🔕' : '🔔') + '</button></div><div class="msgs" id="msgbox">' + (html || '<div class="empty">첫 메시지를 남겨 보세요.</div>') + '</div>' + (S.replyTo ? '<div class="replybar"><span>↩ ' + esc(uname(S.replyTo.who)) + '에게 답장: ' + esc(S.replyTo.text) + '</span><button data-act="replyOff" aria-label="답장 취소">✕</button></div>' : '') + stkPanelHTML() + '<div class="send"><button class="plus" data-act="attach" aria-label="사진·파일 보내기">+</button><input id="msgin" placeholder="메시지 입력" autocomplete="off"><button class="plus" data-act="stkPanel" aria-label="이모지·스티커">☺</button><button data-act="send">보내기</button></div><input type="file" id="fpick" hidden></div>';
   return wide ? '<div class="chatwrap">' + lst + roomView + '</div>' : roomView;
 }
 const FRIENDS = ['나인이', '복이', '호야', '깍이', '도리'];
@@ -2038,7 +2051,8 @@ function menuItems() {
   add('내 계정·설정', '내 프로필 (사진·상태 메시지)', '프로필 사진 상태 메시지 내 정보', 'act:myProfile');
   const np = 'Notification' in window ? Notification.permission : 'none';
   add('내 계정·설정', '알림 받기 (이 기기)', '알림 푸시 소리 새 업무 채팅', 'act:notifyOn', np === 'granted' ? '켜짐' : np === 'none' ? '소리만' : '꺼짐');
-  add('내 계정·설정', '알림 소리·음성 (업무 배정·나인톡)', '알림 소리 음성 진동 끄기 켜기 나인톡 업무 배정', 'act:soundToggle', soundOn() ? '켜짐' : '꺼짐'); add('내 계정·설정', '알림 소리 들어 보기', '알림 소리 시험 듣기 테스트', 'act:soundTest');
+  add('내 계정·설정', '업무 알림 소리 (“업무가 배정되었습니다”)', '알림 소리 음성 진동 끄기 켜기 업무 배정 물품요청 공지', 'act:soundToggle', soundOn() ? '켜짐' : '꺼짐'); add('내 계정·설정', '업무 알림 소리 들어 보기', '알림 소리 시험 듣기 테스트 업무', 'act:soundTest');
+  add('내 계정·설정', '채팅 알림 소리 (“나톡!”)', '채팅 알림 소리 음성 나톡 끄기 켜기 카톡', 'act:chatSndToggle', chatSndOn() ? '켜짐' : '꺼짐'); add('내 계정·설정', '채팅 알림 소리 들어 보기', '채팅 나톡 소리 시험 듣기 테스트', 'act:chatSndTest');
   add('내 계정·설정', '업데이트 확인 (새 버전 받기)', '업데이트 확인 새 버전 새로고침 최신', 'act:checkUpdate');
   add('내 계정·설정', '사용설명서', '사용설명서 매뉴얼 도움말 사용법 설치', 'nav:all:manual'); add('내 계정·설정', '버전·업데이트 내역', '버전 업데이트 내역 변경 이력', 'nav:all:about');
   if (!/Electron/.test(navigator.userAgent)) add('내 계정·설정', 'PC 프로그램 설치 파일 받기 (윈도우)', 'PC 설치 파일 다운로드 윈도우 exe 프로그램', 'act:pcSetup');
@@ -2143,6 +2157,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.25', '2026-10-25', ['채팅 알림 소리를 카톡처럼 짧게 “나톡!”으로 바꾸고, 업무는 ‘띵동’ + “업무가 배정되었습니다”로 따로 울려요', '☰ → 내 계정·설정에 ‘업무 알림 소리’·‘채팅 알림 소리(나톡)’를 따로 켜고 끄는 칸과 각각 들어 보기', '채팅방 위 🔔 버튼으로 그 방만 알림 소리 끄기(🔕)']],
   ['웹 0.0.24', '2026-10-25', ['알림 음성이 안 나던 문제 고침: 미리 녹음한 음성 파일을 틀어서, 기기에 한국어 음성이 없어도 “업무가 배정되었습니다”·“나인톡”이 들려요. 화면을 한 번 누른 뒤부터 소리가 나요(브라우저 규칙)']],
   ['웹 0.0.23', '2026-10-25', ['알림 음성: 업무가 배정되면 “업무가 배정되었습니다”, 채팅은 “나인톡”, 물품요청·발송·공지도 소리와 음성으로 알려요 (☰ → 내 계정·설정 → 알림 소리 들어 보기)', '☰ 전체 메뉴에서 ‘내 계정·설정’을 맨 앞으로', '사용설명서를 시작하기 → 주 메뉴 → ☰ 메뉴 묶음 순서로 다시 정리, 물품요청 설명 추가']],
   ['웹 0.0.22', '2026-10-24', ['재고 보관지(본사·광주지사): 입고 때 보관지 선택, 보관지별 보기·수량, 보관지 바꾸면 ‘이동’ 이력', '물품요청(지사 → 본사): 품목·수량·받을 곳·본사 담당자 → 담당자에게 알림 → 주문함·발송(발주처리, 송장 메모)·반려 → 받는 쪽 ‘입고 확인’하면 그 보관지 재고에 자동 입고', '☰ 전체 메뉴를 업무·가맹점·계약·재고·실적·보고·회사·내 계정·설정·관리자로 나누고 넓은 화면을 다 쓰게, 권한 없는 메뉴는 숨김']],
@@ -2188,7 +2203,7 @@ const WEB_MANUAL = [
   ['일일보고 · 실적 보고서', '■ 일일보고 쓰기: ‹ › 로 날짜를 고르고 오늘 한 일·특이사항·내일 계획을 적어 제출해요. 그날 완료한 업무와 올린 계약은 자동으로 같이 들어가요. 같은 날 다시 내면 수정본으로 바뀌어요.\n■ 일일보고 종합 보기(보고 열람 권한자): 날짜별로 직원별 보고와 미제출자를 봐요.\n■ 실적 보고서: 실적 권한자는 자동 집계된 이달 실적을 고쳐 ‘대표님께 보고하기’, 보고 열람 권한자는 올라온 보고서를 봐요.'],
   ['자료실 · 비상연락망', '■ 자료실: 분류 버튼과 검색으로 찾고, 눌러서 첨부 파일을 받아요. + 로 제목·설명·분류와 파일(5개, 3MB까지, 사진은 자동으로 줄여서)을 올려요. 올린 사람과 관리자만 고치고 지워요. 개인정보 파일은 올리지 마세요.\n■ 비상연락망: 구분별로 모아 보이고, 번호를 누르면 전화가 걸려요. + 로 추가, ‘수정’으로 고치거나 지워요.'],
   ['내 프로필 · 공지사항', '■ 내 프로필: 전체 탭 맨 위 내 카드(또는 전체 → 계정 → 내 프로필)에서 사진과 상태 메시지(예: 외근 중)를 바꿔요. 다른 직원 프로필에서는 1:1 대화·전화하기.\n■ 공지사항: 읽지 않은 공지는 숫자로 표시돼요. ‘공지 작성’ 권한이 있으면 + 로 올리고 ‘맨 위에 고정’할 수 있어요. 작성 권한자·관리자는 공지 창에서 읽은 사람 목록을 봐요.'],
-  ['알림 · 저장 상태 · 뒤로가기', '■ 알림: 웹앱을 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·안내로 알려요. PC는 전체 → 계정 → 알림 받기를 허용하면 다른 창을 보고 있어도 알림이 떠요. 탭 제목에 안 본 개수가 보여요. (웹앱을 닫았을 때 오는 알림은 서버 연동 후 가능)\n■ 저장 상태: 저장하면 화면 위에 ‘저장 중’이 잠깐 보여요. 인터넷이 끊기면 ‘저장 대기’로 바뀌고, 연결되면 저절로 저장돼요. 이 띠가 있는 동안에는 닫지 마세요.\n■ 가맹점 수정 창을 연 사이 다른 직원이 같은 가맹점을 고치면, 저장할 때 바뀐 항목을 보여 주고 덮어쓸지 한 번 더 물어요.\n■ 뒤로가기: 폰 뒤로가기·브라우저 뒤로 버튼으로 팝업 → 대화방 → 메뉴 → 하위 화면 → 첫 화면 순서로 닫혀요. 첫 화면에서 한 번 더 누르면 나가요.\n■ 알림 소리·음성: 새 업무가 배정되면 ‘띵동’ 소리와 함께 “업무가 배정되었습니다”, 채팅이 오면 “나인톡”, 공지는 “새 공지가 있습니다”라고 말해 줘요. ☰ → 내 계정·설정 → 알림 소리·음성에서 끄고 켜고, ‘알림 소리 들어 보기’로 미리 들어 봐요.'],
+  ['알림 · 저장 상태 · 뒤로가기', '■ 알림: 웹앱을 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·안내로 알려요. PC는 전체 → 계정 → 알림 받기를 허용하면 다른 창을 보고 있어도 알림이 떠요. 탭 제목에 안 본 개수가 보여요. (웹앱을 닫았을 때 오는 알림은 서버 연동 후 가능)\n■ 저장 상태: 저장하면 화면 위에 ‘저장 중’이 잠깐 보여요. 인터넷이 끊기면 ‘저장 대기’로 바뀌고, 연결되면 저절로 저장돼요. 이 띠가 있는 동안에는 닫지 마세요.\n■ 가맹점 수정 창을 연 사이 다른 직원이 같은 가맹점을 고치면, 저장할 때 바뀐 항목을 보여 주고 덮어쓸지 한 번 더 물어요.\n■ 뒤로가기: 폰 뒤로가기·브라우저 뒤로 버튼으로 팝업 → 대화방 → 메뉴 → 하위 화면 → 첫 화면 순서로 닫혀요. 첫 화면에서 한 번 더 누르면 나가요.\n■ 알림 소리·음성: 새 업무가 배정되면 ‘띵동’ 소리와 함께 “업무가 배정되었습니다”, 채팅이 오면 카톡처럼 “나톡!”, 공지는 “새 공지가 있습니다”라고 말해 줘요. ☰ → 내 계정·설정에서 ‘업무 알림 소리’와 ‘채팅 알림 소리(나톡)’를 따로 끄고 켜고, ‘들어 보기’로 미리 들어 봐요. 채팅방 위 🔔 를 누르면 그 방만 소리를 꺼요(🔕).'],
   ['관리자: 직원과 권한', '■ 전체 → 관리자 → 직원과 권한. + 로 이름·휴대폰 번호·권한 묶음(영업직·사무직·관리자)을 넣어 등록하면 그 번호로 로그인할 수 있어요.\n■ 직원을 눌러 항목별 권한을 켜고 끄거나, ‘사용 중지’로 퇴사자의 접근을 막아요. 마지막 관리자는 중지하거나 관리 권한을 끌 수 없어요.\n■ 권한: 업무 만들기 / 다른 직원에게 업무 배정 / 전체 업무 보기 / 전체 이력 보기 / 공지 작성 / 실적 보기 / 일일보고·실적보고 종합 보기 / 가맹점 등록·수정 / 직원 관리(최고관리자).'],
   ['관리자: 백업 · 가맹점 보호·복원', '■ 자료는 여러 겹으로 지켜져요: ① 서버는 지우기가 막혀 있고 모든 변경이 기록돼요 ② 매일 새벽 서버 전체를 암호화해 90일 보관(비밀값 설정 후) ③ 관리자가 앱·웹을 열면 그 기기에 하루 한 번 14일치 자동 보관 ④ 데이터 백업 내려받기로 파일 보관(한 달에 한 번 이상 권장).\n■ 가맹점 보호·복원: 삭제한 가맹점 복원, 백업 파일(.json)로 복원, 되돌리기 기준점 만들기. 가져오기·복원·되돌리기 직전 상태는 그 PC에 자동 저장돼요(전체 → 관리자 → PC에 보관된 자동 백업).\n■ 가맹점 수정 암호: 전체 → 관리자에서 정하고 바꾸고 끄요.'],
   ['가맹점 일괄 가져오기 (엑셀·CSV)', '■ 이카운트 등에서 거래처 목록을 엑셀(.xlsx) 또는 CSV로 받아요. 옛 .xls 는 엑셀에서 .xlsx 로 다시 저장해 주세요.\n■ 머리글에 ‘거래처명’(또는 상호·가맹점명)이 있어야 하고, 사업자등록번호·거래처코드·대표자·전화·핸드폰·주소·등급·업태·종목·메모 열이 있으면 함께 가져와요.\n■ 전체 → 가맹점 일괄 가져오기 → 파일 고르기 → 미리보기(새로 등록·갱신·건너뜀) 확인 → 가져오기.\n■ 같은 거래처코드·사업자번호·상호가 있으면 새로 만들지 않고, 파일에 값이 있는 칸만 덮어써요. 잘못되면 가맹점 보호·복원에서 되돌려요.'],
