@@ -4885,7 +4885,7 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             String tag = null, url = null;
             try {
-                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL("https://api.github.com/repos/ninepayments/Work-app/releases?per_page=60").openConnection();
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL("https://api.github.com/repos/ninepayments/Work-app/releases?per_page=100").openConnection();
                 c.setConnectTimeout(8000);
                 c.setReadTimeout(8000);
                 c.setRequestProperty("Accept", "application/vnd.github+json");
