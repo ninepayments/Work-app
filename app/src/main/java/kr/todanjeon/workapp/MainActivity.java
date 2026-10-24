@@ -64,6 +64,9 @@ public class MainActivity extends Activity {
         Cloud.init(this);
         store = new Store(this);
         showSplash();
+        if (Cloud.auth().getCurrentUser() == null) { // 로그인 전이면 시작 화면 동안 사람 확인(reCAPTCHA) 설정을 미리 받아 둔다 → 인증번호 받기가 빨라진다
+            try { Cloud.auth().initializeRecaptchaConfig(); } catch (Exception ignored) { }
+        }
         new Handler().postDelayed(() -> {
             if (Cloud.auth().getCurrentUser() != null && store.sessionId() != 0) enterApp();
             else showLogin();
@@ -5529,6 +5532,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.15", "2026-10-25", "• 로그인: 시작 화면이 뜨는 동안 사람 확인(로봇 확인)을 미리 준비해, 인증번호 받기를 누른 뒤 기다리는 시간을 줄임 (웹과 같은 방식)"},
             {"0.0.14", "2026-10-25", "• 채팅 알림 음성을 밝은 여자 목소리 \"나인톡!\"으로 바꿈, 다른 알림 음성도 같은 목소리로"},
             {"0.0.13", "2026-10-25", "• 채팅 알림 소리를 카톡처럼 짧게 \"나톡!\"으로 바꾸고, 업무는 '띵동' + \"업무가 배정되었습니다\"로 따로 울려요\n• 전체 → 내 계정·설정에 '업무 알림 소리'·'채팅 알림 소리(나톡)'를 따로 켜고 끄는 칸과 각각 들어 보기"},
             {"0.0.12", "2026-10-25", "• 알림 음성이 안 나던 문제 고침: 미리 녹음한 음성 파일을 앱에 넣어, 폰에 한국어 음성 엔진이 없어도 \"업무가 배정되었습니다\"·\"나인톡\"이 들려요 (전체 → 내 계정·설정 → 알림 소리 들어 보기)"},
