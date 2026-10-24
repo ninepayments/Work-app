@@ -1920,6 +1920,22 @@ public class MainActivity extends Activity {
         e.add(new Entry("회사", "자료실", "자료실 게시판 양식 서식 계약서 파일 문서 자료 올리기 내려받기", () -> goSub("library")));
         e.add(new Entry("회사", "비상연락망 (눌러서 전화)", "비상연락망 연락처 전화 번호 비상 본사 카드사 밴사", () -> goSub("contacts")));
         e.add(new Entry("내 계정·설정", "내 프로필 (사진·상태 메시지)", "프로필 사진 상태 메시지 내 정보", () -> showProfile(myId())));
+        final boolean vOn = getSharedPreferences("workapp", MODE_PRIVATE).getBoolean("voice", true);
+        Entry vo = new Entry("내 계정·설정", "알림 소리·음성 (업무 배정·나인톡)", "알림 소리 음성 끄기 켜기 나인톡 업무 배정", () -> {
+            getSharedPreferences("workapp", MODE_PRIVATE).edit().putBoolean("voice", !vOn).apply();
+            Ui.toast(this, vOn ? "알림 소리·음성을 껐어요." : "알림 소리·음성을 켰어요.");
+            render();
+        });
+        vo.badge = vOn ? "켜짐" : "꺼짐";
+        e.add(vo);
+        e.add(new Entry("내 계정·설정", "알림 소리 들어 보기", "알림 소리 시험 듣기 테스트", () -> {
+            lastSay = 0;
+            speak("업무가 배정되었습니다");
+            uiHandler.postDelayed(() -> {
+                lastSay = 0;
+                speak("나인톡");
+            }, 3200);
+        }));
         e.add(new Entry("내 계정·설정", "앱 업데이트 확인 (새 버전 받기)", "업데이트 확인 새 버전 apk 받기 최신", () -> checkAppUpdate(true)));
         e.add(new Entry("내 계정·설정", "사용설명서", "사용설명서 매뉴얼 도움말 사용법", () -> goSub("manual")));
         e.add(new Entry("내 계정·설정", "버전·업데이트 내역", "버전 업데이트 내역 변경 이력", () -> goSub("about")));
@@ -1962,7 +1978,7 @@ public class MainActivity extends Activity {
             list.removeAllViews();
             String s = allQuery.trim();
             if (s.isEmpty()) {
-                for (String sec : new String[]{"업무", "가맹점", "계약·재고", "실적", "보고", "회사", "내 계정·설정", "관리자"}) { // 같은 이름은 한 묶음으로 (웹과 같은 순서)
+                for (String sec : new String[]{"내 계정·설정", "업무", "가맹점", "계약·재고", "실적", "보고", "회사", "관리자"}) { // 같은 이름은 한 묶음으로 (웹과 같은 순서)
                     boolean head = false;
                     for (Entry en : entries) {
                         if (!sec.equals(en.section)) continue;
@@ -5336,12 +5352,34 @@ public class MainActivity extends Activity {
             {"단체 문자 (가맹점)", "(전체 → 단체 문자 보내기, 또는 전체 탭 검색창에 '문자')\n\n■ 이렇게 동작해요\n- 내용을 쓰고, 보낼 가맹점을 고른 뒤 '문자 보내기 시작'을 누르면 가맹점 한 곳씩 이 폰의 문자 앱이 열립니다. 내용이 미리 채워져 있으니 확인하고 '전송'만 누르면 돼요.\n- 한 곳씩 따로 보내서 받는 분들끼리 번호가 보이지 않습니다. 문자 요금은 이 폰의 요금제로 나갑니다.\n- 내용에 {상호} 라고 쓰면 가맹점 이름으로 바뀝니다. 예: {상호} 사장님, 안녕하세요. 나인페이먼츠입니다.\n\n■ 받는 가맹점 고르기\n- 칸을 눌러 하나씩 고르거나, 위의 'S 등급 선택' 같은 버튼으로 등급 전체를 한 번에 고릅니다. '보이는 전체 선택'은 검색 결과 전체를 고르고, '선택 해제'는 모두 풉니다.\n- 유선 번호(02·062 등)는 문자를 받을 수 없어서 선택할 수 없어요.\n\n■ 보내는 순서\n1. '문자 앱 열기' → 문자 앱에서 전송.\n2. 이 앱으로 돌아오면 다음 가맹점이 준비돼 있습니다. 필요 없으면 '건너뛰기', 그만두려면 '중단'.\n3. 끝나면 문자 앱의 보낸 기록에서 보내졌는지 확인하세요. 앱은 전송을 눌렀는지 알 수 없어요.\n\n※ 수십 곳 이상을 한꺼번에 보내는 기능(문자 업체 연동)은 서버 요금제 전환 후에 만들 예정입니다."},
             {"프로필 · 버전", "■ 프로필\n- 전체 탭 맨 위 내 카드(또는 오른쪽 위 동그라미)를 누르면 프로필이 열립니다.\n- '사진 변경'으로 앨범에서 사진을 고르면 자동으로 동그랗게 잘려 저장되고, 채팅과 화면 위쪽에 나와요.\n- '상태 메시지'에 외근 중, 오후 복귀 같은 한 줄을 적어 두면 다른 직원이 프로필에서 볼 수 있어요.\n- 채팅에서 다른 직원 사진을 누르면 그 직원의 프로필과 전화하기 버튼이 나옵니다.\n\n■ 버전 보기\n- 전체 탭 맨 아래, 로그인 화면, 전체 → 버전·업데이트 내역에 현재 버전이 표시됩니다. (예: v0.0.1 (빌드 33))\n- 업데이트 내역에는 버전마다 무엇이 바뀌었는지 적혀 있어요.\n\n■ 버전 번호 규칙\n- 0.0.1에서 시작해 업데이트할 때마다 끝 숫자가 하나씩 올라갑니다 (0.0.2, 0.0.3 …).\n- 괄호 안 빌드 번호는 배포할 때마다 1씩 올라가요.\n- 실제 문자 인증으로 전 직원이 쓰기 시작하면 1.0.0이 됩니다.\n- 새 버전이 나올 때마다 이 사용설명서도 함께 새로 고쳐집니다."},
             {"자주 묻는 질문", "Q. 인증번호 문자가 안 와요.\nA. 번호가 등록되었는지, 폰 신호가 되는지 확인하세요. 하루에 받을 수 있는 횟수가 제한되어 있어 여러 번 시도하면 잠시 막힐 수 있어요.\n\nQ. 폰을 바꿨어요.\nA. 새 폰에 앱을 설치하고 같은 번호로 다시 인증하면 모든 자료가 그대로 나옵니다. 자료는 서버에 저장돼 있어요.\n\nQ. 인터넷이 없을 때도 써도 되나요?\nA. 열어서 보기와 입력은 가능하고, 인터넷이 다시 연결되면 자동으로 서버에 올라갑니다.\n\nQ. 실수로 지웠어요.\nA. 지운 자료도 서버에는 기록이 남아 있으니 관리자에게 말씀해 주세요."},
+            {"물품요청 (본사 ← 지사)", "■ 요청\n- 전체 → 업무 → 물품요청, 또는 재고 화면 아래 '＋ 본사에 물품요청'.\n- 받을 곳(광주지사·본사), 품목과 수량(줄 추가 가능, '…'로 있던 모델 고르기), 본사 담당자, 희망 도착일, 메모를 적어 보내요.\n\n■ 본사 담당자\n- 업무 목록에 '미확인'으로 뜨고 알림(음성: 물품요청이 들어왔습니다)이 와요.\n- 요청을 열어 '주문함' → '발송 (발주처리)'(택배사·송장번호 메모)를 누르고, 안 되면 '반려'(사유).\n\n■ 요청한 사람\n- 발송되면 알림(음성: 물품이 발송되었습니다)과 업무 숫자가 떠요.\n- 물건을 받고 '입고 확인'에서 받은 수량·시리얼(바코드 스캔 가능)을 적으면 받은 곳 재고에 바로 들어가고, 재고 이력에 '물품요청 입고'로 남아요.\n\n■ 진행 단계: 요청 › 주문함 › 발송함 › 입고완료 (또는 반려). 모든 단계는 처리 이력에 남아요."},
+            {"알림 소리·음성", "■ 새 업무가 배정되면 '띵동' 소리와 함께 \"업무가 배정되었습니다\", 채팅이 오면 \"나인톡\", 물품요청은 \"물품요청이 들어왔습니다\"·\"물품이 발송되었습니다\", 공지는 \"새 공지가 있습니다\"라고 말해 줘요.\n■ 전체 → 내 계정·설정 → '알림 소리·음성'에서 끄고 켜요. '알림 소리 들어 보기'로 미리 들어 볼 수 있어요.\n■ 음성이 안 나오면 폰 설정 → 일반 → 텍스트 음성 변환(TTS)에서 한국어 음성을 받아 주세요."}
     };
+
+    /** 사용설명서 순서: 시작하기 → 아래 탭(주 메뉴) → 전체 메뉴 묶음(메뉴와 같은 순서) → 도움말 */
+    private static final String[][] MAN_GROUPS = {
+            {"시작하기", "처음 시작하기 · 로그인", "전체 탭"},
+            {"주 메뉴 (아래 탭)", "업무 탭", "프로젝트 탭", "채팅 탭", "일정 탭 (달력)"},
+            {"전체 › 내 계정·설정", "프로필 · 버전", "알림 소리·음성"},
+            {"전체 › 업무", "물품요청 (본사 ← 지사)"},
+            {"전체 › 가맹점", "가맹점", "단체 문자 (가맹점)", "가맹점 일괄 가져오기 (엑셀·CSV)"},
+            {"전체 › 계약·재고", "신규 계약 올리기", "계약 관리 · 설치 완료 · 만료 알림", "입금 확인 · 비상연락망 · 알림 · 백업", "재고"},
+            {"전체 › 실적 · 보고", "실적 (권한자 전용)", "일일보고 · 실적 보고서"},
+            {"전체 › 회사", "자료실", "공지사항 · 직원과 권한"},
+            {"전체 › 관리자", "가맹점 보호·복원 (최고관리자)"},
+            {"도움말", "자주 묻는 질문"}};
 
     private void renderManual() {
         content.addView(title("사용설명서"));
-        content.addView(Ui.text(this, "메뉴별로 자세히 설명해 드려요. 궁금한 항목을 눌러 보세요.", 13, Ui.GRAY, false));
-        for (final String[] m : MANUAL) {
+        content.addView(Ui.text(this, "메뉴 순서대로 정리했어요. 궁금한 항목을 눌러 보세요.", 13, Ui.GRAY, false));
+        for (String[] g : MAN_GROUPS) {
+            content.addView(sectionLabel(g[0]));
+            for (int gi = 1; gi < g.length; gi++) for (final String[] m : MANUAL) if (m[0].equals(g[gi])) addManualRow(m);
+        }
+    }
+
+    private void addManualRow(final String[] m) {
+        {
             LinearLayout row = Ui.cardH(this);
             row.addView(Ui.text(this, m[0], 16, Ui.INK, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             row.addView(Ui.text(this, "›", 20, Ui.DEEP, true));
@@ -5481,6 +5519,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.11", "2026-10-25", "• 알림 음성: 업무가 배정되면 \"업무가 배정되었습니다\", 채팅은 \"나인톡\", 물품요청·발송·공지도 '띵동' 소리와 음성으로 알려요 (전체 → 내 계정·설정 → 알림 소리 들어 보기)\n• 물품이 발송되면 요청한 사람에게 알림\n• 전체 메뉴에서 '내 계정·설정'을 맨 앞으로\n• 사용설명서를 시작하기 → 아래 탭 → 전체 메뉴 묶음 순서로 정리, 물품요청·알림 음성 설명 추가"},
             {"0.0.10", "2026-10-24", "• 재고 보관지(본사·광주지사): 입고 때 보관지 선택, 보관지별 보기, 보관지 바꾸면 '이동' 이력\n• 물품요청(지사 → 본사): 품목·수량·받을 곳·본사 담당자 → 담당자에게 알림 → 주문함·발송(발주처리, 송장 메모)·반려 → 요청한 사람이 '입고 확인'하면 그 보관지 재고에 자동 입고\n• 전체 메뉴를 업무·가맹점·계약·재고·실적·보고·회사·내 계정·설정·관리자로 나눔 (권한 없는 메뉴는 숨김)"},
             {"0.0.9", "2026-10-24", "• 채팅 읽음 표시: 카톡처럼 말풍선 옆에 아직 안 읽은 사람 수(노란 숫자)가 보이고, 다 읽으면 사라져요 (상대가 웹 또는 앱 v0.0.4 이상을 쓸 때 정확해요)"},
             {"0.0.8", "2026-10-24", "• 업무 지시: 가맹점 요청사항 빠른 선택 '용지신청' (직접 입력과 같이 써요). 완료하면 응대 기록에 '용지신청'으로 남아요\n• 업무 지시·가맹점 조회에서 못 찾은 가맹점은 '새 가맹점 등록'으로 바로 등록 → 저장하면 이 업무에 자동 연결 (권한·암호 규칙 그대로)\n• 가맹점: 계약시작일·계약종료일 추가 (상세에 D-day 표시)\n• 가맹점 목록: 계약 만료 예정 필터 (1·2·3개월 이내, 만료됨) — 종료일 빠른 순, 검색과 같이 써요\n• VAN사 목록을 취급사로 정리: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG (그 밖은 직접 입력)\n• 응대 종류에 '용지신청' 추가"},
@@ -6523,26 +6562,41 @@ public class MainActivity extends Activity {
             }
         } catch (Exception ignored) {
         }
+        try { // 음성 안내 ("업무가 배정되었습니다", "나인톡") — 폰에 들어 있는 한국어 음성을 쓴다
+            tts = new android.speech.tts.TextToSpeech(this, st -> {
+                if (st == android.speech.tts.TextToSpeech.SUCCESS && tts != null) tts.setLanguage(Locale.KOREAN);
+            });
+        } catch (Exception ignored) {
+        }
         store.notifier = (coll, o) -> {
             int me2 = myId();
-            String title = null, body = null;
-            if ("tasks".equals(coll) && o.optInt("assignee") == me2 && o.optInt("by", o.optInt("author")) != me2) {
-                title = "새 업무가 지시됐어요";
+            String title = null, body = null, say = null;
+            if ("tasks".equals(coll) && o.optInt("assignee") == me2 && o.optInt("creator") != me2) {
+                boolean pq = o.optJSONObject("preq") != null;
+                title = pq ? "물품요청이 들어왔어요" : "새 업무가 배정됐어요";
                 body = o.optString("title");
+                say = pq ? "물품요청이 들어왔습니다" : "업무가 배정되었습니다";
+            } else if ("preqShip".equals(coll) && o.optInt("creator") == me2) {
+                title = "물품이 발송됐어요 — 입고 확인을 눌러 주세요";
+                body = o.optString("title");
+                say = "물품이 발송되었습니다";
             } else if ("msgs".equals(coll) && o.optInt("who") != me2 && o.optInt("ts", 1) != 0 && System.currentTimeMillis() - o.optLong("ts") < 120000 && !muted(o.optInt("room"))) {
-                title = store.userName(o.optInt("who"));
+                title = "나인톡 · " + store.userName(o.optInt("who"));
                 body = snippet(o);
+                say = "나인톡";
             } else if ("library".equals(coll) && o.optInt("who") != me2) {
                 title = "자료실에 새 자료";
                 body = o.optString("title");
             } else if ("notices".equals(coll) && o.optInt("author") != me2) {
                 title = "새 공지";
                 body = o.optString("title");
+                say = "새 공지가 있습니다";
             } else if ("deposits".equals(coll) && o.optInt("by") != me2) {
                 title = "입금 확인 요청";
                 body = o.optString("kind") + " " + won(o.optLong("amount")) + " " + o.optString("mname");
             }
             if (title == null) return;
+            speak(say);
             try {
                 Intent it = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 android.app.PendingIntent pi = android.app.PendingIntent.getActivity(this, 0, it, android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT);
@@ -6552,6 +6606,28 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {
             }
         };
+    }
+
+    private android.speech.tts.TextToSpeech tts;
+    private long lastSay = 0;
+
+    /** 띵동 소리 + 음성 안내. 연달아 오면 한 번만 말한다. '알림 소리·음성'을 끄면 둘 다 안 난다. */
+    private void speak(String say) {
+        if (say == null || !getSharedPreferences("workapp", MODE_PRIVATE).getBoolean("voice", true)) return;
+        if (System.currentTimeMillis() - lastSay < 2500) return;
+        lastSay = System.currentTimeMillis();
+        try {
+            android.media.ToneGenerator tg = new android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 80);
+            tg.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 300);
+            uiHandler.postDelayed(tg::release, 600);
+        } catch (Exception ignored) {
+        }
+        uiHandler.postDelayed(() -> {
+            try {
+                if (tts != null) tts.speak(say, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "nine");
+            } catch (Exception ignored) {
+            }
+        }, 450);
     }
 
     /** 관리자: 서버에서 받은 전체 자료를 파일(JSON)로 내려받아 보관한다. */

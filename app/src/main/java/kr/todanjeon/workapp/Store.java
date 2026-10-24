@@ -315,6 +315,7 @@ final class Store {
                 if (snap == null) return;
                 boolean changed = false;
                 final List<JSONObject> fresh = new ArrayList<>();
+                final List<JSONObject> shipped = new ArrayList<>();
                 for (DocumentChange dc : snap.getDocumentChanges()) {
                     if (dc.getType() == DocumentChange.Type.REMOVED) continue;
                     String j = dc.getDocument().getString("j");
@@ -325,7 +326,11 @@ final class Store {
                         String key = coll + "/" + id;
                         if (j.equals(pushed.get(key))) continue;
                         pushed.put(key, j);
-                        if (!firstSnap[0] && byId(coll, id) == null) fresh.add(o);
+                        JSONObject old = byId(coll, id);
+                        if (!firstSnap[0] && old == null) fresh.add(o);
+                        if (!firstSnap[0] && old != null && "tasks".equals(coll) && o.optJSONObject("preq") != null && old.optJSONObject("preq") != null
+                                && "발송함".equals(o.optJSONObject("preq").optString("stage")) && !"발송함".equals(old.optJSONObject("preq").optString("stage")))
+                            shipped.add(o); // 물품요청이 발송됨 → 요청한 사람에게 알림
                         replace(db.optJSONArray(coll), o);
                         if ("users".equals(coll)) pushedPhone.put(key, phoneSig(o));
                         changed = true;
@@ -338,6 +343,7 @@ final class Store {
                     if (onChange != null) main.post(onChange);
                     final java.util.function.BiConsumer<String, JSONObject> nf = notifier;
                     if (nf != null) for (final JSONObject o : fresh) main.post(() -> nf.accept(coll, o));
+                    if (nf != null) for (final JSONObject o : shipped) main.post(() -> nf.accept("preqShip", o));
                 }
             }));
         }
