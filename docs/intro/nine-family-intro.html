@@ -2,8 +2,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=Nanum+Myeongjo:wght@700;800&display=swap">
-<style>
-/* 레이아웃: 앱의 금색·먹색을 그대로 쓴 사업 소개 책자. 기능마다 실제 화면 + 핵심 문장, 넓은 화면은 2단 */
+<style>/* 레이아웃: 앱의 금색·먹색을 그대로 쓴 사업 소개 책자. 기능마다 실제 화면 + 핵심 문장, 넓은 화면은 2단 */
 :root{
   --paper:#fbfaf6; --card:#ffffff; --ink:#1f1b12; --sub:#6b6458; --line:#e8e1cf;
   --gold:#cdaa52; --deep:#8f6b14; --tint:#f5edd8; --band:#1f1b12; --bandink:#f5edd8;
@@ -71,223 +70,130 @@ footer{padding-block:48px 56px;color:var(--sub);font-size:13px}
 }
 @media print{.feat,.box,.tbl,.grid3,.soon,.facts,figure,img{break-inside:avoid}.sechead{break-after:avoid}h2,h3{break-after:avoid}section{break-inside:auto}}
 @media (prefers-reduced-motion:no-preference){.hero img{transition:transform .4s}.hero img:hover{transform:translateY(-3px)}}
+/* 상세판: 목차 · 장 · 기능 카드 */
+.toc{margin-top:28px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 22px}
+.toc ol{margin:8px 0 0;padding-left:1.4em;columns:2;column-gap:32px}
+.toc li{break-inside:avoid;margin:3px 0}
+.toc a{color:var(--ink);font-weight:700;text-decoration:none}.toc a:hover{color:var(--deep)}
+.toc .muted{font-size:13px}
+.ch{padding-block:44px 4px}
+.fn{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;padding-block:22px;border-top:1px solid var(--line)}
+.fn.wimg{grid-template-columns:minmax(0,7fr) minmax(0,5fr);align-items:start}
+.fn ul{margin:10px 0 0;padding-left:1.1em;display:grid;gap:5px}
+.fn li::marker{color:var(--gold)}
+.meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px;font-size:13px;color:var(--sub)}
+.meta span{background:var(--tint);border-radius:8px;padding:2px 9px}
+figure{margin:0}figure.tall{max-width:300px;justify-self:center}
+figcaption{font-size:12.5px;color:var(--sub);margin-top:6px}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+@media (max-width:820px){.fn.wimg{grid-template-columns:minmax(0,1fr)}.toc ol{columns:1}}
+@media print{.fn,.toc,.box,.tbl{break-inside:avoid}.ch .sechead{break-after:avoid}}
 </style>
-
-<header class="hero">
-  <div class="wrap">
-    <div>
-      <div class="eyebrow" style="color:var(--gold)">(주)나인페이먼츠 사내 업무 앱</div>
-      <h1>나인패밀리</h1>
-      <p class="lead">업무 요청부터 가맹점 응대, 재고와 물품요청, 계약·실적, 사내 메신저 나인톡까지. 본사와 광주지사가 한 서버에서 실시간으로 같은 자료를 봅니다.</p>
-      <div class="plat"><span>안드로이드 앱</span><span>아이폰 웹앱</span><span>윈도우 PC 프로그램</span></div>
-      <p class="who">앱 v0.0.23 · 웹 0.0.34 기준 · 2026년 10월 25일</p>
-    </div>
-    <img src="img/pc_home.jpg" alt="PC 화면: 위쪽 주 메뉴와 왼쪽 내 할 일, 오늘 현황" width="1440" height="860">
-  </div>
-</header>
-
+<header class="hero"><div class="wrap"><div>
+<div class="eyebrow" style="color:var(--gold)">(주)나인페이먼츠 사내 업무 앱 · 상세 기능 소개서</div>
+<h1>나인패밀리</h1>
+<p class="lead">업무 요청부터 가맹점 응대, 재고와 물품요청, 계약·실적·보고, 사내 메신저 나인톡까지. 본사와 광주지사가 한 서버에서 실시간으로 같은 자료를 봅니다.</p>
+<div class="plat"><span>안드로이드 앱</span><span>아이폰 웹앱</span><span>윈도우 PC 프로그램</span></div>
+<p class="who">앱 v0.0.23 · 웹 0.0.34 기준 · 2026년 10월 25일</p></div>
+<img src="img/pc_home.jpg" alt="PC 홈 화면" width="1440" height="860"></div></header>
 <div class="wrap">
-  <div class="facts">
-    <div class="fact"><b>3</b><span>기기 (안드로이드·아이폰·PC), 같은 자료</span></div>
-    <div class="fact"><b>9</b><span>전체 메뉴 묶음, 권한별로 보이는 메뉴가 달라요</span></div>
-    <div class="fact"><b>2</b><span>재고 보관지 (본사·광주지사)</span></div>
-    <div class="fact"><b>4중</b><span>자료 보호 (삭제 방지·변경 기록·자동 백업·삭제 비밀번호)</span></div>
-  </div>
-
-  <section>
-    <div class="sechead">
-      <div class="eyebrow">핵심 기능</div>
-      <h2>하루 일이 한 화면에서 이어집니다</h2>
-      <p class="muted">업무를 요청하면 담당자 폰이 "업무가 배정되었습니다"라고 알려 주고, 처리결과는 그 가맹점 응대 기록에 자동으로 남습니다. 지사에서 물품을 요청하면 본사가 주문·발송하고, 받는 쪽이 입고 확인하는 순간 재고에 들어갑니다.</p>
-    </div>
-
-    <article class="feat">
-      <div class="shot"><img src="img/pc_task.jpg" alt="업무 요청 창: 가맹점 조회, 빠른 선택 버튼, 가맹점 요청사항" width="1440" height="860" loading="lazy"></div>
-      <div>
-        <span class="tag">업무</span><h3 style="margin-top:8px">업무 요청과 처리, 응대 기록까지 한 번에</h3>
-        <ul>
-          <li>제목·종류·담당자·기한을 정해 요청하면, 기한이 일정 달력에도 표시됩니다.</li>
-          <li>가맹점을 고르면 전화·주소가 채워지고, 없는 가맹점은 그 자리에서 새로 등록해 바로 연결합니다.</li>
-          <li>가맹점 요청사항에 <b>용지신청</b> 같은 빠른 선택 버튼이 있고, 관리자가 버튼을 직접 추가·편집합니다.</li>
-          <li>완료할 때 처리결과를 적으면 요청사항과 함께 그 가맹점 <b>응대 기록</b>에 남습니다.</li>
-          <li>상태는 미확인 → 진행중 → 보류 → 완료. 열어 본 시각, 일정 변경까지 처리 이력에 남습니다.</li>
-        </ul>
-      </div>
-    </article>
-
-    <article class="feat flip">
-      <div class="shot phone">
-        <img src="img/ph_chat.jpg" alt="나인톡 대화방: 말풍선 옆 안 읽은 사람 수" width="780" height="1560" loading="lazy">
-        <img src="img/ph_task.jpg" alt="휴대폰 업무 화면" width="780" height="1560" loading="lazy">
-      </div>
-      <div>
-        <span class="tag">나인톡</span><h3 style="margin-top:8px">사내 메신저와 소리로 듣는 알림</h3>
-        <ul>
-          <li>1:1 대화와 그룹 채팅방. 직원이 많아도 이름·초성·번호로 찾습니다.</li>
-          <li>말풍선 옆 노란 숫자로 <b>아직 안 읽은 사람 수</b>를 보여 주고, 다 읽으면 사라집니다. 읽음은 계정 단위라 PC에서 읽으면 폰에서도 읽음이 됩니다.</li>
-          <li>사진·파일·스티커·반응·답장.</li>
-          <li>새 업무는 "띵동" + <b>"업무가 배정되었습니다"</b>, 채팅은 카톡처럼 짧고 밝게 <b>"나인톡!"</b>. 물품요청·발송·공지도 각각 다른 음성으로 알립니다.</li>
-          <li>☰ → 내 계정·설정 → <b>알림 및 소리 설정</b>에서 업무 소리·채팅 소리를 따로 켜고 끄고 들어 봅니다. 채팅방마다 음소거도 됩니다.</li>
-          <li>안드로이드 앱은 <b>화면이 꺼져 있거나 앱을 닫아도</b> 알림이 오고 화면이 켜집니다.</li>
-        </ul>
-      </div>
-    </article>
-
-    <article class="feat">
-      <div class="shot"><img src="img/pc_merch.jpg" alt="가맹점 목록: 계약 만료 예정 2개월 이내 필터, 계약종료 D-day" width="1440" height="860" loading="lazy"></div>
-      <div>
-        <span class="tag">가맹점</span><h3 style="margin-top:8px">가맹점 정보와 계약 만료 관리</h3>
-        <ul>
-          <li>상호·사업자번호·전화·휴대폰·이메일·주소·VAN사·계약구분(임대 월 CMS / 판매 금액)·등급·메모.</li>
-          <li>등급은 직원들이 부르는 대로 <b>0코드 · 1코드 · 2코드 · 3코드</b>(VAN 수수료 월 5만·3만·1만원 이상·미만), 그다음 해지가맹점 · 신규가맹점 · 협력사.</li>
-          <li><b>계약시작일·계약종료일</b>과 남은 날(D-day). 목록에서 1·2·3개월 이내, 만료됨으로 걸러 종료일 빠른 순으로 봅니다.</li>
-          <li>VAN·PG사 목록: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG.</li>
-          <li>상호·초성(ㅅㅇㅍㄷ)·사업자번호 검색. 이카운트 거래처 엑셀을 그대로 올리거나, <b>업로드 양식(.xlsx)</b>을 받아 채워 한꺼번에 가져옵니다.</li>
-          <li>수정은 권한과 관리자가 정한 <b>암호</b>가 있어야 하고, 삭제는 <b>삭제 비밀번호</b>를 한 번 더 묻습니다.</li>
-        </ul>
-      </div>
-    </article>
-
-    <article class="feat flip">
-      <div class="shot phone">
-        <img src="img/ph_merchant.jpg" alt="가맹점 상세: 계약기간 D-day, 진행 중인 업무, 응대 기록" width="780" height="1560" loading="lazy">
-        <img src="img/ph_stock.jpg" alt="휴대폰 재고 화면" width="780" height="1560" loading="lazy">
-      </div>
-      <div>
-        <span class="tag">응대 기록</span><h3 style="margin-top:8px">가맹점마다 쌓이는 응대 이력</h3>
-        <ul>
-          <li>방문A/S · 원격A/S · 전화응대 · 용지신청 · 기타로 나눠 요청사항과 처리결과를 남깁니다.</li>
-          <li>가맹점 화면에 진행 중인 업무와 응대 기록이 함께 보여, 전화를 받으면서 바로 확인합니다.</li>
-          <li>종류·날짜로 걸러 보고, 누가 언제 고쳤는지 남습니다.</li>
-        </ul>
-      </div>
-    </article>
-
-    <article class="feat">
-      <div class="shot"><img src="img/pc_stock.jpg" alt="재고 화면: 보관지별 재고와 [상품코드] 표시, 재고 일괄 등록" width="1440" height="860" loading="lazy"><img src="img/pc_preq.jpg" alt="물품요청: 요청 › 주문함 › 발송함 › 입고완료 단계" width="1440" height="860" loading="lazy" style="margin-top:12px"></div>
-      <div>
-        <span class="tag">재고 · 물품요청</span><h3 style="margin-top:8px">본사·광주지사 재고와 지사 물품요청</h3>
-        <ul>
-          <li>보관지별 재고: 입고 때 보관지를 고르고, 보관지를 바꾸면 '이동'으로 이력에 남습니다.</li>
-          <li>입고 · 출고(반품·불량·A/S 교체·분실) · 수량 정정(재고 조사) · 이력. 안전재고 아래로 떨어지면 빨갛게 알려 줍니다.</li>
-          <li><b>상품코드</b>(P0001…): 재고와 물품요청이 같은 상품 목록·코드를 씁니다. 관리자가 등록·수정합니다.</li>
-          <li><b>재고 일괄 등록(엑셀 양식)</b>: 상품코드·시리얼·수량·현재위치. 본사·광주지사는 우리 재고로, 가맹점 상호는 이미 설치된 장비로 기록만 합니다.</li>
-          <li>바코드: PC는 USB·블루투스 스캐너, 폰은 카메라로 찍습니다.</li>
-          <li><b>물품요청</b>: 재고 품목(상품코드·보관지별 재고 수)에서 고르거나, 없는 물품은 이름만 적어 본사 담당자에게 보내면 본사가 주문·발송(송장 메모)하고, 받는 쪽이 입고 확인하면 그 보관지 재고에 자동으로 들어갑니다.</li>
-        </ul>
-        <div class="flow"><span>요청</span><i>›</i><span>주문함</span><i>›</i><span>발송함</span><i>›</i><span>입고완료</span></div>
-      </div>
-    </article>
-
-    <article class="feat flip">
-      <div class="shot"><img src="img/pc_cal.jpg" alt="일정 달력과 왼쪽 이번 주 목록" width="1440" height="860" loading="lazy"></div>
-      <div>
-        <span class="tag">계약 · 실적 · 보고</span><h3 style="margin-top:8px">계약에서 실적 보고까지</h3>
-        <ul>
-          <li>신규 계약(판매·CMS·렌탈) 등록 때 재고에서 장비를 골라 출고하고, 설치 완료 처리, 만료 3개월 전 알림.</li>
-          <li>입금 확인 요청과 처리.</li>
-          <li>내 실적, 전체 실적(<b>순위순 / 직책순</b>), 지난달 비교, 6개월 추이. 수익 현황(입고·출고 단가)은 실적 권한자만 봅니다. 대표님 같은 계정은 실적에서 뺄 수 있습니다.</li>
-          <li>일일보고 쓰기와 종합 보기(직책순, 명단에 넣을 사람은 관리자가 체크), 대표님께 올리는 실적 보고서.</li>
-          <li>일정 달력에 한국 공휴일과 업무 기한이 함께 보입니다.</li>
-        </ul>
-      </div>
-    </article>
-
-    <article class="feat">
-      <div class="shot"><img src="img/pc_staff.jpg" alt="직원 정보 창: 사진, 부서, 직책, 생년월일, 연락처, 주소와 정보 수정·권한 설정·완전 삭제 버튼" width="1440" height="860" loading="lazy"></div>
-      <div>
-        <span class="tag">직원 · 권한</span><h3 style="margin-top:8px">직원 정보와 권한을 따로 관리</h3>
-        <ul>
-          <li>직원을 누르면 <b>직원 정보</b>(사진·부서·직책·생년월일·연락처·주소)가 열리고, 정보 수정과 <b>권한 설정</b>은 다른 창에서 합니다.</li>
-          <li><b>직책 목록</b>은 관리자가 추가·수정·삭제하고, 위에 있을수록 앞에 보입니다: 대표 · 이사 · 본부장 · 지사장 · 부장 · 차장 · 과장 · 대리 · 사원.</li>
-          <li>'직원 정보 보기' 권한이 있으면 ☰ → 회사 → 직원 정보(명부)를 봅니다.</li>
-          <li>퇴사자는 사용 중지, 또는 <b>삭제 비밀번호</b>를 넣고 완전 삭제(목록·로그인에서 빠짐).</li>
-        </ul>
-      </div>
-    </article>
-
-    <article class="feat flip">
-      <div class="shot"><img src="img/pc_memo.jpg" alt="PC 메모: 위쪽 메뉴 맨 끝 메모, 노란 메모 카드" width="1440" height="860" loading="lazy"></div>
-      <div>
-        <span class="tag">PC 메모</span><h3 style="margin-top:8px">업무 중 적어 둘 것은 메모에</h3>
-        <ul>
-          <li>PC 화면 위쪽 메뉴 맨 끝 <b>메모</b>. 적고 Ctrl+Enter, 고치면 자동 저장됩니다.</li>
-          <li>📌 맨 위 고정, 🗑 삭제, 초성 검색. 내 계정에 저장돼 다른 PC에서도 보입니다.</li>
-        </ul>
-      </div>
-    </article>
-  </section>
-
-  <section>
-    <div class="sechead">
-      <div class="eyebrow">화면 구성</div>
-      <h2>폰은 아래 탭, PC는 위쪽 메뉴</h2>
-      <p class="muted">휴대폰(안드로이드 앱, 아이폰 웹앱)은 아래 탭 업무·프로젝트·채팅·일정·☰. 안 본 개수는 빨간 동그라미 숫자로 보입니다. PC는 위쪽 주 메뉴와 ☰ 전체 메뉴를 쓰고, 왼쪽 칸에 화면마다 바로가기 목록이 붙습니다.</p>
-    </div>
-    <img src="img/pc_menu.jpg" alt="PC ☰ 전체 메뉴: 9개 묶음이 펼쳐진 화면" width="1440" height="860" loading="lazy">
-    <p class="cap">☰ 전체 메뉴 묶음 순서: 내 계정·설정 · 업무 · 가맹점 · 계약 · 재고 · 실적 · 보고 · 회사 · 관리자. 권한이 없는 메뉴는 보이지 않습니다.</p>
-  </section>
-
-  <section>
-    <div class="sechead">
-      <div class="eyebrow">권한</div>
-      <h2>직원마다 보이는 범위가 다릅니다</h2>
-      <p class="muted">관리자가 직원과 권한에서 켜고 끕니다. 실적과 보고 권한은 서버에서도 막혀 있어, 권한이 없는 폰으로는 그 자료가 아예 내려가지 않습니다.</p>
-    </div>
-    <div class="tbl"><table>
-      <thead><tr><th>권한</th><th>켜면 할 수 있는 일</th></tr></thead>
-      <tbody>
-        <tr><td>업무 만들기 · 배정</td><td>업무를 올리고 다른 직원을 담당자로 지정</td></tr>
-        <tr><td>전체 업무 · 전체 이력 보기</td><td>모든 직원의 업무와 완료 기록 (없으면 내 것만)</td></tr>
-        <tr><td>공지 작성</td><td>공지사항 올리기</td></tr>
-        <tr><td>실적 보기</td><td>전체 실적·순위·수익 현황·단가, 모든 계약</td></tr>
-        <tr><td>일일보고·실적보고 종합 보기</td><td>직원 전체 일일보고와 실적 보고서</td></tr>
-        <tr><td>가맹점 등록·수정</td><td>가맹점 등록·수정 (관리자가 정한 암호 필요)</td></tr>
-        <tr><td>직원 정보 보기</td><td>직원 명부(부서·직책·생년월일·연락처·주소)</td></tr>
-        <tr><td>직원 관리 (관리자)</td><td>직원 추가·정보·권한·사용 중지·완전 삭제, 직책 목록, 삭제 비밀번호, 백업, 가맹점 보호·복원</td></tr>
-      </tbody>
-    </table></div>
-  </section>
-
-  <section>
-    <div class="sechead">
-      <div class="eyebrow">자료 보호</div>
-      <h2>지워지지 않고, 되돌릴 수 있게</h2>
-    </div>
-    <div class="grid3" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
-      <div class="box"><h3>삭제 방지</h3><p class="muted">서버 규칙이 삭제를 막고 '삭제 표시'만 남깁니다. 지운 가맹점은 휴지통에서 되살립니다.</p></div>
-      <div class="box"><h3>변경 기록</h3><p class="muted">업무·가맹점·재고 같은 주요 자료는 저장할 때마다 누가 언제 무엇을 바꿨는지 기록됩니다(채팅·프로필 제외). 가맹점은 예전 내용으로 되돌릴 수 있습니다.</p></div>
-      <div class="box"><h3>자동 백업</h3><p class="muted">관리자 기기에 하루 한 번 14일치를 보관하고, 관리자가 언제든 백업 파일을 내려받습니다. 서버 전체 암호화 백업은 백업 비밀값을 등록하면 매일 돕니다.</p></div>
-      <div class="box"><h3>삭제 비밀번호</h3><p class="muted">직원 완전 삭제, 가맹점·재고·응대 기록·자료실 삭제 때 관리자가 정한 비밀번호를 한 번 더 묻습니다.</p></div>
-    </div>
-  </section>
-
-  <section>
-    <div class="sechead">
-      <div class="eyebrow">설치</div>
-      <h2>기기별로 받는 곳</h2>
-      <p class="muted">새 버전이 나오면 앱은 '업데이트' → '설치' 안내가 뜨고, 웹과 PC는 '지금 업데이트' 띠를 누르면 바로 바뀝니다.</p>
-    </div>
-    <div class="grid3">
-      <div class="box"><h3>안드로이드 앱</h3><p class="muted">APK를 받아 설치합니다. 처음 한 번 '이 출처 허용'이 필요합니다.</p><div class="url">github.com/ninepayments/Work-app/releases</div></div>
-      <div class="box"><h3>아이폰 · 웹</h3><p class="muted">사파리에서 열고 공유 → 홈 화면에 추가하면 앱처럼 씁니다.</p><div class="url">ninepayments.github.io/Work-app</div></div>
-      <div class="box"><h3>윈도우 PC</h3><p class="muted">설치 파일을 실행하면 바탕화면에 나인패밀리가 생깁니다. 바코드 스캐너를 바로 씁니다.</p><div class="url">github.com/ninepayments/Work-app/releases/latest/download/NineFamily-Setup.exe</div></div>
-    </div>
-  </section>
-
-  <section>
-    <div class="sechead">
-      <div class="eyebrow">다음 단계</div>
-      <h2>준비 중인 기능</h2>
-    </div>
-    <div class="soon">
-      <div class="box"><h3>가맹점 단체 문자 (알리고)</h3><p class="muted">앱·웹에서 바로 발송</p></div>
-      <div class="box"><h3>택배 송장 연동</h3><p class="muted">한진택배 접수·송장 출력, 운송장 번호 기록</p></div>
-      <div class="box"><h3>인쇄 · 엑셀 내보내기</h3><p class="muted">목록을 엑셀로, 화면을 인쇄용으로</p></div>
-      <div class="box"><h3>전자계약 서명</h3><p class="muted">링크로 보내고 고객이 폰에서 서명</p></div>
-      <div class="box"><h3>웹·아이폰 푸시 · 카톡 알림톡</h3><p class="muted">웹앱을 닫아 둬도 알림(안드로이드는 이미 됨), 고객 공지</p></div>
-    </div>
-  </section>
-
-  <footer>나인패밀리 · (주)나인페이먼츠 · 화면은 연습용 데모 자료로 찍었습니다.</footer>
+<div class="facts">
+<div class="fact"><b>50</b><span>이 문서에 정리한 기능</span></div>
+<div class="fact"><b>9</b><span>☰ 전체 메뉴 묶음 (권한별로 보여요)</span></div>
+<div class="fact"><b>12</b><span>직원별로 켜고 끄는 권한·설정</span></div>
+<div class="fact"><b>4중</b><span>자료 보호 (삭제 방지·변경 기록·백업·삭제 비밀번호)</span></div>
 </div>
+<nav class="toc"><div class="eyebrow">목차</div><ol><li><a href="#start">시작하기</a> <span class="muted">로그인 · 설치 · 업데이트</span></li><li><a href="#screen">화면 구성과 공통 기능</a> <span class="muted">아래 탭 · 위쪽 메뉴 · 검색 · 알림</span></li><li><a href="#task">업무</a> <span class="muted">요청 · 처리 · 응대 기록 연결</span></li><li><a href="#project">프로젝트</a> <span class="muted">체크리스트와 진행률</span></li><li><a href="#chat">채팅 (나인톡)</a> <span class="muted">사내 메신저</span></li><li><a href="#cal">일정 (달력)</a> <span class="muted">공휴일 · 업무 기한</span></li><li><a href="#me">☰ 내 계정·설정</a> <span class="muted">프로필 · 알림 · 설명서</span></li><li><a href="#merchant">☰ 가맹점</a> <span class="muted">가맹점 · 응대 기록 · 단체 문자 · 일괄 가져오기</span></li><li><a href="#contract">☰ 계약</a> <span class="muted">신규 계약 · 계약 관리 · 입금 확인</span></li><li><a href="#stock">☰ 재고</a> <span class="muted">재고 · 상품코드 · 일괄 등록 · 물품요청</span></li><li><a href="#perf">☰ 실적</a> <span class="muted">내 실적 · 전체 실적 · 수익</span></li><li><a href="#report">☰ 보고</a> <span class="muted">일일보고 · 실적 보고서</span></li><li><a href="#company">☰ 회사</a> <span class="muted">공지 · 자료실 · 비상연락망 · 직원 명부</span></li><li><a href="#admin">☰ 관리자</a> <span class="muted">직원 · 권한 · 설정 · 자료 보호</span></li><li><a href="#pc">PC 전용</a> <span class="muted">메모 · 스캐너 · 왼쪽 칸</span></li><li><a href="#perm">권한 한눈에 보기</a></li><li><a href="#protect">자료 보호</a></li><li><a href="#diff">앱과 웹 차이</a></li><li><a href="#soon">준비 중인 기능</a></li></ol></nav>
+<section id="start" class="ch"><div class="sechead"><div class="eyebrow">로그인 · 설치 · 업데이트</div><h2>시작하기</h2></div>
+<div class="fn"><div><h3>로그인</h3><div class="meta"><span>📍 첫 화면</span><span>👤 등록된 직원</span></div><ul><li>관리자가 등록한 <b>내 휴대폰 번호</b>를 넣고 ‘인증번호 받기’ → 문자로 온 6자리를 넣으면 로그인돼요. 6자리를 다 치면 저절로 확인해요.</li><li>한 번 로그인하면 계속 유지돼요. 기기를 바꿔도 같은 번호로 로그인하면 모든 자료가 그대로예요(자료는 서버에 있어요).</li><li>‘등록되지 않은 번호입니다’ → 관리자에게 번호 등록 요청. 짧은 시간에 여러 번 요청하면 30분쯤 막힐 수 있어요.</li><li>사람 확인(로봇 확인)은 로그인 화면이 열릴 때 미리 준비해서 인증번호 받기를 기다리는 시간을 줄였어요.</li></ul></div></div>
+<div class="fn"><div><h3>기기별 설치</h3><div class="meta"><span>📍 -</span><span>👤 모든 직원</span></div><ul><li><b>안드로이드 앱</b>: APK 파일을 받아 설치(처음 한 번 ‘이 출처 허용’).</li><li><b>아이폰</b>: 사파리로 웹앱 주소를 열고 공유 → ‘홈 화면에 추가’ 하면 앱처럼 써요.</li><li><b>윈도우 PC</b>: 설치 파일(NineFamily-Setup.exe)을 실행하면 바탕화면·시작 메뉴에 나인패밀리가 생겨요. 처음 ‘Windows의 PC 보호’ 창이 뜨면 ‘추가 정보’ → ‘실행’.</li><li>세 기기가 같은 서버를 써서 어디서 고쳐도 다른 기기에 바로 보여요.</li></ul></div></div>
+<div class="fn"><div><h3>업데이트</h3><div class="meta"><span>📍 ☰ → 내 계정·설정 → 업데이트 확인</span><span>👤 모든 직원</span></div><ul><li><b>안드로이드 앱</b>: 앱을 열면 새 버전을 찾아 ‘업데이트’ → ‘설치’ 안내가 떠요. 앱 안에서 내려받아 바로 설치해요.</li><li><b>웹앱·PC</b>: 화면 위에 ‘지금 업데이트’ 띠가 뜨면 누르기, 또는 새로고침(F5)·프로그램을 껐다 켜면 최신이에요(10분마다 확인).</li><li>버전은 ☰ → 내 계정·설정 → 버전·업데이트 내역에서 바뀐 내용과 함께 봐요.</li></ul></div></div>
+</section>
+<section id="screen" class="ch"><div class="sechead"><div class="eyebrow">아래 탭 · 위쪽 메뉴 · 검색 · 알림</div><h2>화면 구성과 공통 기능</h2></div>
+<div class="fn wimg"><div><h3>휴대폰 화면</h3><div class="meta"><span>📍 안드로이드 앱 · 아이폰 웹앱</span><span>👤 모든 직원</span></div><ul><li>아래 탭: <b>업무 · 프로젝트 · 채팅 · 일정 · ☰(전체)</b>. 나머지 기능은 ☰ 안에 있어요.</li><li>안 본 개수는 탭 오른쪽 위 <b>빨간 동그라미 숫자</b>로 보여요(업무 미확인, 안 읽은 채팅, 새 공지·입고 확인).</li></ul></div><figure class="tall"><img src="img/ph_task.jpg" alt="휴대폰 업무 화면" loading="lazy" width="780" height="1560"><figcaption>휴대폰 업무 화면</figcaption></figure></div>
+<div class="fn wimg"><div><h3>PC 화면</h3><div class="meta"><span>📍 윈도우 PC · 넓은 화면 브라우저</span><span>👤 모든 직원</span></div><ul><li>위쪽 주 메뉴: <b>업무 · 프로젝트 · 채팅 · 일정 · 가맹점 · 응대 기록 · 메모</b>. 로고를 누르면 홈(오늘 현황).</li><li>홈 ‘오늘 현황’: 새 업무·진행 중·오늘 일정·안 읽은 채팅·이번 주 응대 기록 수, 내 업무, 오늘 일정, 공지.</li><li><b>왼쪽 칸</b>: 화면마다 바로가기 목록(기한 지난 업무·내 업무, 진행 중인 가맹점 업무, 최근 연 가맹점, 이번 주 일정, 같은 묶음 메뉴).</li><li>왼쪽 위 <b>☰</b> 를 누르면 전체 메뉴가 화면 전체에 펼쳐져요.</li></ul></div><figure class=""><img src="img/pc_home.jpg" alt="PC 홈: 오늘 현황과 왼쪽 내 할 일" loading="lazy" width="1440" height="860"><figcaption>PC 홈: 오늘 현황과 왼쪽 내 할 일</figcaption></figure></div>
+<div class="fn wimg"><div><h3>☰ 전체 메뉴와 기능 검색</h3><div class="meta"><span>📍 ☰</span><span>👤 모든 직원(권한별로 보이는 메뉴가 달라요)</span></div><ul><li>9개 묶음: <b>내 계정·설정 · 업무 · 가맹점 · 계약 · 재고 · 실적 · 보고 · 회사 · 관리자</b>.</li><li>맨 위 기능 검색에 단어나 초성(예: ㅈㄱ → 재고)을 치면 기능을 바로 찾아요.</li><li>권한이 없는 메뉴는 아예 보이지 않아요.</li></ul></div><figure class=""><img src="img/pc_menu.jpg" alt="PC ☰ 전체 메뉴 9묶음" loading="lazy" width="1440" height="860"><figcaption>PC ☰ 전체 메뉴 9묶음</figcaption></figure></div>
+<div class="fn"><div><h3>한글 검색</h3><div class="meta"><span>📍 모든 검색칸</span><span>👤 모든 직원</span></div><ul><li>초성(ㅅㅇㅍㄷ), 치는 중인 글자(‘삼영ㅍ’), 사업자번호·전화번호(- 없이도)로 찾아요. 한글을 치는 동안에도 바로 걸러져요.</li></ul></div></div>
+<div class="fn"><div><h3>저장 상태 · 인터넷 끊김</h3><div class="meta"><span>📍 화면 위 띠</span><span>👤 모든 직원</span></div><ul><li>저장하면 ‘저장 중’이 잠깐 보여요. 인터넷이 끊기면 ‘저장 대기’로 바뀌고, 연결되면 저절로 서버에 올라가요(웹).</li><li>받아 둔 자료로 인터넷이 없어도 보기·입력이 돼요.</li></ul></div></div>
+<div class="fn"><div><h3>뒤로가기</h3><div class="meta"><span>📍 폰 뒤로가기 · 브라우저 뒤로</span><span>👤 모든 직원</span></div><ul><li>팝업 → 대화방 → 메뉴 → 하위 화면 → 첫 화면 순서로 한 단계씩 닫혀요. 첫 화면에서 한 번 더 누르면 나가요.</li></ul></div></div>
+</section>
+<section id="task" class="ch"><div class="sechead"><div class="eyebrow">요청 · 처리 · 응대 기록 연결</div><h2>업무</h2></div>
+<div class="fn"><div><h3>업무 목록</h3><div class="meta"><span>📍 아래 탭 업무 · PC 업무</span><span>👤 모든 직원</span></div><ul><li>위쪽 금색 카드에 남은 업무 수(미확인·진행·보류, 오늘 완료).</li><li>‘상태별로 보기’: 미완료 · 미확인 · 진행중 · 보류 · 완료.</li><li>‘전체 업무 보기’ 권한이 있으면 <b>내 업무 / 전체 업무</b>를 바꿔 봐요.</li><li>계약 만료가 3개월 안으로 남은 계약이 있으면 위에 빨간 알림 카드가 떠요.</li></ul></div></div>
+<div class="fn wimg"><div><h3>업무 요청하기</h3><div class="meta"><span>📍 업무 화면 + · ☰ → 업무 → 업무 요청하기</span><span>👤 업무 만들기 권한(다른 사람에게는 배정 권한)</span></div><ul><li>제목 · 종류(신규 설치·AS·서류 접수·카드사 서류·기타 등) · 거래처 · 전화 · 주소 · 기한(날짜·시간) · 메모 · 담당 직원.</li><li><b>가맹점 조회</b>로 고르면 거래처·전화·주소가 자동으로 채워져요. 못 찾으면 그 자리에서 <b>새 가맹점 등록</b> 후 자동 연결(가맹점 권한·암호 필요).</li><li><b>가맹점 요청사항</b>: 빠른 선택 버튼(예: ＋ 용지신청)과 직접 입력. 버튼은 관리자가 추가·편집해요.</li><li>기한을 넣으면 일정 달력에도 표시돼요. 서류 업무는 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.</li><li>담당자 폰에 ‘띵동’ + <b>“업무가 배정되었습니다”</b> 음성 알림.</li></ul></div><figure class=""><img src="img/pc_task.jpg" alt="업무 요청 창" loading="lazy" width="1440" height="860"><figcaption>업무 요청 창</figcaption></figure></div>
+<div class="fn"><div><h3>업무 처리</h3><div class="meta"><span>📍 업무를 눌러서</span><span>👤 담당자 · 최고관리자</span></div><ul><li>진행 시작 → 보류·연기(다시 할 날짜) → <b>완료(처리결과)</b>. 상태는 담당자 본인과 최고관리자만 바꿔요.</li><li>완료 때 적은 처리결과는 가맹점 요청사항과 함께 그 가맹점 <b>응대 기록</b>에 자동으로 남아요(📋 업무에서 표시).</li><li>담당자가 처음 열어 본 시각, 일정 변경, 상태 변경이 모두 <b>처리 이력</b>에 남아요.</li><li>삭제는 업무를 만든 사람과 최고관리자만.</li></ul></div></div>
+<div class="fn"><div><h3>지난 업무 기록</h3><div class="meta"><span>📍 ☰ → 업무 → 지난 업무 기록</span><span>👤 모든 직원(전체 이력 권한이 없으면 내 것만)</span></div><ul><li>완료된 업무를 제목·거래처·담당자·완료 메시지로 찾아요.</li></ul></div></div>
+</section>
+<section id="project" class="ch"><div class="sechead"><div class="eyebrow">체크리스트와 진행률</div><h2>프로젝트</h2></div>
+<div class="fn"><div><h3>프로젝트</h3><div class="meta"><span>📍 아래 탭 프로젝트 · PC 프로젝트</span><span>👤 모든 직원</span></div><ul><li>+ 로 이름·마감일·메모·체크리스트(한 줄에 하나)·담당자를 넣어 만들어요.</li><li>항목을 체크하면 <b>진행률</b>이 자동으로 올라가고 ‘항목 추가’로 늘려요. 100%면 완료, ‘완료 되돌리기’도 돼요.</li><li>전체·진행중·완료로 걸러 봐요. (앱: 항목 삭제·진행 기록도)</li></ul></div></div>
+</section>
+<section id="chat" class="ch"><div class="sechead"><div class="eyebrow">사내 메신저</div><h2>채팅 (나인톡)</h2></div>
+<div class="fn wimg"><div><h3>대화방</h3><div class="meta"><span>📍 아래 탭 채팅 · PC 채팅</span><span>👤 모든 직원</span></div><ul><li>‘+ 새 채팅’ → <b>그룹 채팅방</b> 또는 <b>1:1 대화</b>. 직원은 이름·초성·번호로 찾고, 많으면 ‹ › 로 넘겨요.</li><li>1:1 대화는 두 사람만 볼 수 있어요(서버에서도 막혀 있어요).</li><li>사진·파일(3MB까지), 이모지, <b>나인이 프렌즈 스티커 80종</b>, 글 속 웹 주소는 눌러서 열려요. 사진은 크게 보고 저장.</li><li>말풍선을 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️.</li><li>말풍선 옆 노란 숫자 = <b>아직 안 읽은 사람 수</b>. 읽음은 계정 단위라 PC에서 읽으면 폰에서도 읽음이 돼요.</li></ul></div><figure class="tall"><img src="img/ph_chat.jpg" alt="대화방: 안 읽은 사람 수" loading="lazy" width="780" height="1560"><figcaption>대화방: 안 읽은 사람 수</figcaption></figure></div>
+<div class="fn"><div><h3>채팅 알림</h3><div class="meta"><span>📍 -</span><span>👤 모든 직원</span></div><ul><li>새 메시지가 오면 카톡처럼 짧고 밝게 <b>“나인톡!”</b>.</li><li>채팅방마다 소리 끄기: 웹은 방 위 🔔/🔕, 앱은 대화방 메뉴 → 음소거.</li><li>(앱) 대화방 메뉴: 대화 검색, 참여자·방 정보, 이름 변경, 배경화면 변경, 대화 내용 비우기, 대화방 삭제.</li></ul></div></div>
+</section>
+<section id="cal" class="ch"><div class="sechead"><div class="eyebrow">공휴일 · 업무 기한</div><h2>일정 (달력)</h2></div>
+<div class="fn wimg"><div><h3>달력</h3><div class="meta"><span>📍 아래 탭 일정 · PC 일정</span><span>👤 모든 직원(일정 추가·삭제는 최고관리자)</span></div><ul><li>일요일·공휴일 빨간색(공휴일 이름, 2026~2028년), 토요일 파란색. ‹ › 로 달 이동, ‘오늘’로 돌아와요.</li><li>날짜를 누르면 그날 일정과 기한이 있는 업무, 아래에 ‘다가오는 일정’이 날짜순으로 나와요.</li><li>가맹점이 연결된 일정은 ‘가맹점 정보 보기’로 바로 가요. 일정 추가 때 가맹점을 고르면 장소에 주소가 들어가요.</li><li>일반 직원은 업무에 기한을 넣으면 달력에 표시돼요.</li></ul></div><figure class=""><img src="img/pc_cal.jpg" alt="일정 달력과 왼쪽 이번 주 목록" loading="lazy" width="1440" height="860"><figcaption>일정 달력과 왼쪽 이번 주 목록</figcaption></figure></div>
+</section>
+<section id="me" class="ch"><div class="sechead"><div class="eyebrow">프로필 · 알림 · 설명서</div><h2>☰ 내 계정·설정</h2></div>
+<div class="fn"><div><h3>내 프로필</h3><div class="meta"><span>📍 ☰ → 내 계정·설정 → 내 프로필</span><span>👤 모든 직원</span></div><ul><li>사진과 상태 메시지(예: 외근 중, 오후 3시 복귀). 다른 직원 프로필에서 1:1 대화·전화하기.</li></ul></div></div>
+<div class="fn wimg"><div><h3>알림 및 소리 설정</h3><div class="meta"><span>📍 ☰ → 내 계정·설정 → 알림 및 소리 설정</span><span>👤 모든 직원(기기마다)</span></div><ul><li><b>업무 알림 소리</b>: ‘띵동’ + “업무가 배정되었습니다”(물품요청 “물품요청이 들어왔습니다”, 발송 “물품이 발송되었습니다”, 공지 “새 공지가 있습니다”). 켜기·끄기·▶ 들어 보기.</li><li><b>채팅 알림 소리</b>: “나인톡!”. 켜기·끄기·▶ 들어 보기.</li><li>(앱) <b>화면 꺼져도 알림 받기</b>: 화면이 꺼져 있거나 앱을 닫아도 알림이 오고 화면이 켜져요. 처음 한 번 ‘배터리 절약에서 빼기’를 허용하면 돼요. 폰을 다시 켜도 저절로 다시 시작.</li><li>(웹·PC) 화면 알림(이 기기): 허용하면 다른 창을 보고 있어도 알림이 떠요. 탭 제목에 안 본 개수.</li></ul></div><figure class=""><img src="img/pc_sound.jpg" alt="알림 및 소리 설정" loading="lazy" width="1440" height="860"><figcaption>알림 및 소리 설정</figcaption></figure></div>
+<div class="fn"><div><h3>사용설명서 · 버전 내역 · 로그아웃</h3><div class="meta"><span>📍 ☰ → 내 계정·설정</span><span>👤 모든 직원</span></div><ul><li>사용설명서는 시작하기 → 주 메뉴 → ☰ 묶음 순서, 검색(초성)도 돼요.</li><li>(웹) PC 프로그램 설치 파일 받기.</li></ul></div></div>
+</section>
+<section id="merchant" class="ch"><div class="sechead"><div class="eyebrow">가맹점 · 응대 기록 · 단체 문자 · 일괄 가져오기</div><h2>☰ 가맹점</h2></div>
+<div class="fn wimg"><div><h3>가맹점 목록 · 정보</h3><div class="meta"><span>📍 ☰ → 가맹점 · PC 위쪽 가맹점</span><span>👤 모든 직원(등록·수정은 가맹점 권한)</span></div><ul><li>항목: 상호 · 사업자번호 · 전화 · 휴대폰 · 이메일 · 주소 · VAN사 · 계약구분(임대 월 CMS / 판매 금액) · 계약조건 · <b>등급</b> · 계약시작일·종료일 · 메모.</li><li><b>등급</b>: 0코드(VAN 수수료 월 5만원 이상) · 1코드(3만원 이상) · 2코드(1만원 이상) · 3코드(1만원 미만) · 해지가맹점 · 신규가맹점 · 협력사.</li><li>VAN사: 다우데이타 · 다우데이타PG · KIS정보통신 · KIS정보통신PG · NHN KCP · KOVAN · KOPAY PG, 그 밖은 직접 입력(다음부터 목록에 나와요).</li><li><b>계약 만료 예정</b> 필터: 1·2·3개월 이내·만료됨 → 종료일 빠른 순, D-day 표시. PC는 표로 보여요.</li><li>가맹점 화면에 전화 걸기, 진행 중인 업무, 응대 기록이 함께 보여요.</li><li>같은 사업자번호가 이미 있으면 등록할 때 알려 줘요. 수정 창을 연 사이 다른 직원이 고치면 바뀐 항목을 보여 주고 다시 물어요(웹).</li></ul></div><figure class=""><img src="img/pc_merch.jpg" alt="가맹점 목록: 계약 만료 2개월 이내" loading="lazy" width="1440" height="860"><figcaption>가맹점 목록: 계약 만료 2개월 이내</figcaption></figure></div>
+<div class="fn"><div><h3>가맹점 수정 암호 · 삭제</h3><div class="meta"><span>📍 가맹점 정보 창</span><span>👤 가맹점 등록·수정 권한</span></div><ul><li>관리자가 <b>수정 암호</b>를 정하면 등록·수정 때 암호를 물어요(한 번 넣으면 5분 동안 다시 안 물어요).</li><li>삭제하면 목록에서만 사라지고 기록은 남아요. <b>삭제 비밀번호</b>를 정해 두면 한 번 더 물어요. 웹은 가맹점 권한자, 앱은 최고관리자가 삭제해요.</li><li>최고관리자는 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.</li></ul></div></div>
+<div class="fn wimg"><div><h3>응대 기록</h3><div class="meta"><span>📍 가맹점 창 · ☰ → 가맹점 → 응대 기록 조회 · PC 위쪽 응대 기록</span><span>👤 모든 직원</span></div><ul><li>‘+ 응대 기록 남기기’ → 날짜 · 종류(<b>방문A/S · 원격A/S · 전화응대 · 용지신청 · 기타</b>) · 요청사항 · 처리결과.</li><li>가맹점 창에서 종류 버튼과 날짜로 걸러 봐요. 응대 기록 조회에서 가맹점을 찾거나 모든 가맹점의 최근 기록을 검색해요.</li><li>업무 완료 때 처리결과가 자동으로 들어온 기록은 📋 업무에서 표시.</li><li>누구나 고칠 수 있고 수정한 사람·시각이 남아요. 지우기는 쓴 사람·최고관리자(삭제 비밀번호).</li></ul></div><figure class="tall"><img src="img/ph_merchant.jpg" alt="가맹점 상세: 진행 중인 업무와 응대 기록" loading="lazy" width="780" height="1560"><figcaption>가맹점 상세: 진행 중인 업무와 응대 기록</figcaption></figure></div>
+<div class="fn"><div><h3>단체 문자 보내기</h3><div class="meta"><span>📍 ☰ → 가맹점 → 단체 문자 보내기</span><span>👤 모든 직원</span></div><ul><li>내용에 {상호} 를 쓰면 가맹점 이름으로 바뀌어요. 등급 버튼(0코드 선택…)·검색·체크로 받을 곳을 골라요(휴대폰 번호가 있는 곳만).</li><li>‘문자 보내기 시작’ → 한 곳씩 휴대폰 문자 앱이 열리고 내용이 채워져 있어요. 받는 분끼리 번호가 안 보이고 요금은 그 휴대폰 요금제로 나가요.</li><li>PC에는 문자 앱이 없어 보낼 수 없어요(알리고 연동 후 가능 예정).</li></ul></div></div>
+<div class="fn"><div><h3>가맹점 일괄 가져오기 (엑셀·이카운트)</h3><div class="meta"><span>📍 ☰ → 가맹점 → 가맹점 일괄 가져오기</span><span>👤 가맹점 권한(암호)</span></div><ul><li>이카운트 ‘거래처등록’ 목록을 엑셀(.xlsx)·CSV로 내려받아 그대로 올려요. 옛 .xls 는 .xlsx 로 다시 저장.</li><li><b>📄 업로드 양식 받기</b>: 거래처코드 · 거래처명(상호) · 사업자등록번호 · 대표자명 · 전화 · 핸드폰 · 주소 · 등급 · 업태 · 종목 · VAN사 · 계약시작일 · 계약종료일 · 메모. ‘(예시)’ 줄은 지우지 않아도 건너뛰어요.</li><li>미리보기(새로 등록·갱신·건너뜀·읽은 열) → 가져오기. 같은 거래처코드·사업자번호·상호가 있으면 파일에 값이 있는 칸만 바꿔요.</li><li>가져오기 직전 상태를 저장해 두어 가맹점 보호·복원에서 되돌릴 수 있어요.</li></ul></div></div>
+</section>
+<section id="contract" class="ch"><div class="sechead"><div class="eyebrow">신규 계약 · 계약 관리 · 입금 확인</div><h2>☰ 계약</h2></div>
+<div class="fn"><div><h3>신규 계약 올리기</h3><div class="meta"><span>📍 ☰ → 계약 → 신규 계약 올리기</span><span>👤 모든 직원</span></div><ul><li>가맹점 찾기 → 결제 연동(VAN/PG·업체명) → 구분(판매·CMS·렌탈)과 금액 → 나가는 장비(재고에서 고르기·스캔·직접 입력) → 장비 메모 → 계약일·만료일(+12/24/36개월 버튼).</li><li>고른 장비는 재고에서 <b>출고중</b>이 돼요.</li></ul></div></div>
+<div class="fn"><div><h3>계약 관리</h3><div class="meta"><span>📍 ☰ → 계약 → 계약 관리</span><span>👤 실적 권한(없으면 내가 올린 계약만)</span></div><ul><li>만료 3개월 이내 계약이 위에 빨간 D-day 로 나와요.</li><li>계약을 눌러 장비 추가, <b>설치 완료</b>(장비가 재고에서 빠짐).</li></ul></div></div>
+<div class="fn"><div><h3>입금 확인</h3><div class="meta"><span>📍 ☰ → 계약 → 입금 확인</span><span>👤 모든 직원</span></div><ul><li>+ 로 종류(판매대금·미납금·정보변경수수료 등)·금액·가맹점·메모를 올리면 ‘입금확인’ 채팅방에 알림이 가고, 확인한 사람이 ‘확인 처리’를 눌러요.</li></ul></div></div>
+</section>
+<section id="stock" class="ch"><div class="sechead"><div class="eyebrow">재고 · 상품코드 · 일괄 등록 · 물품요청</div><h2>☰ 재고</h2></div>
+<div class="fn wimg"><div><h3>재고</h3><div class="meta"><span>📍 ☰ → 재고 → 재고</span><span>👤 모든 직원(단가는 실적 권한)</span></div><ul><li><b>보관지</b>: 본사 · 광주지사. 보관지별로 나눠 보고, 장비의 보관지를 바꾸면 ‘이동’으로 이력에 남아요.</li><li><b>입고</b>: 상품(상품코드·이름) · 시리얼(한 줄에 하나, 스캐너로 계속 찍으면 여러 대) · 시리얼 없는 물품 수량 · 보관지 · 입고처 메모 · 안전재고 · 입고 단가.</li><li><b>출고</b>(계약 없이): 반품 · 불량·폐기 · A/S 교체(가맹점 연결) · 분실 · 기타.</li><li><b>수량 정정</b>(재고 조사): 실제 수량을 적고 없는 시리얼은 체크를 끄면 차이만큼 바로잡고 이력에 남아요.</li><li>상품별 재고·출고중 수, 안전재고보다 적으면 빨간색. 실적 권한자는 입고·출고 단가와 <b>보유 재고 자산</b>.</li><li><b>바코드</b>: PC는 USB·블루투스 스캐너, 폰은 📷 카메라. 검색칸에 시리얼을 찍으면 그 장비가 바로 열려요. (앱) 시리얼 사진 인식도.</li><li>흐름: 재고 → (계약에서 고르면) 출고중 → (설치 완료) 재고에서 빠짐.</li></ul></div><figure class=""><img src="img/pc_stock.jpg" alt="재고: 보관지별 재고와 [상품코드]" loading="lazy" width="1440" height="860"><figcaption>재고: 보관지별 재고와 [상품코드]</figcaption></figure></div>
+<div class="fn"><div><h3>재고 이력</h3><div class="meta"><span>📍 ☰ → 재고 → 재고 이력 · 재고 화면 ‘이력’</span><span>👤 모든 직원</span></div><ul><li>입고 · 출고 · 계약 출고 · 정정 · 이동 · 기존 설치를 날짜·직원·메모와 함께 시간 순으로. 종류별로 걸러 보고 검색해요.</li></ul></div></div>
+<div class="fn wimg"><div><h3>상품 목록 (상품코드)</h3><div class="meta"><span>📍 ☰ → 재고 → 상품 목록</span><span>👤 모든 직원(등록·수정은 관리자)</span></div><ul><li>재고 입고와 물품요청이 <b>같은 상품코드(P0001…)·상품명</b>을 써요.</li><li>관리자가 처음 열면 기존 재고 상품에 코드가 자동으로 붙어요. 이름을 바꾸면 같은 이름의 재고도 함께 바뀌어요.</li><li>목록에 없는 상품을 관리자가 입고·처리하면 새 코드로 바로 등록돼요.</li></ul></div><figure class=""><img src="img/pc_products.jpg" alt="상품 목록" loading="lazy" width="1440" height="860"><figcaption>상품 목록</figcaption></figure></div>
+<div class="fn"><div><h3>재고 일괄 등록 (엑셀 양식)</h3><div class="meta"><span>📍 ☰ → 재고 → 재고 일괄 등록 · 재고 화면</span><span>👤 관리자</span></div><ul><li>처음 재고를 옮길 때. <b>업로드 양식</b>: 상품코드 · 상품명 · 시리얼 · 수량 · <b>현재위치</b> · 사업자번호 · 설치일 · 메모.</li><li>현재위치가 <b>본사·광주지사</b> → 우리 재고로 입고. <b>가맹점 상호</b> → 이미 설치된 장비로 기록만(재고 수·수익 제외). 가맹점을 먼저 올려 두세요.</li><li>미리보기에서 입고 개수, 설치 장비 수, 새로 만들 상품코드, <b>못 올리는 줄과 이유</b>를 보여 줘요.</li></ul></div></div>
+<div class="fn wimg"><div><h3>물품요청 (본사 ← 지사)</h3><div class="meta"><span>📍 ☰ → 업무 또는 재고 → 물품요청 · 재고 화면 아래</span><span>👤 모든 직원(처리는 본사 담당)</span></div><ul><li>받을 곳 · 품목과 수량(줄 추가) · 본사 담당자 · 희망 도착일 · 메모.</li><li>품목은 <b>재고 품목</b>(상품코드·보관지별 재고 수)에서 고르거나, 없는 물품은 이름만 적어 ‘새 물품’으로 요청해요.</li><li>본사 담당: “물품요청이 들어왔습니다” 알림 → <b>주문함 → 발송(송장 메모)</b> 또는 반려(사유). 이때 새 물품은 상품 목록에 올라가고 코드가 붙어요.</li><li>요청한 사람: “물품이 발송되었습니다” 알림 → <b>입고 확인</b>(받은 수량·시리얼)하면 받은 곳 재고에 바로 들어가요.</li><li>단계: 요청 › 주문함 › 발송함 › 입고완료(또는 반려). 모든 단계가 처리 이력에 남아요.</li></ul></div><figure class=""><img src="img/pc_preq.jpg" alt="물품요청 단계와 처리 이력" loading="lazy" width="1440" height="860"><figcaption>물품요청 단계와 처리 이력</figcaption></figure></div>
+</section>
+<section id="perf" class="ch"><div class="sechead"><div class="eyebrow">내 실적 · 전체 실적 · 수익</div><h2>☰ 실적</h2></div>
+<div class="fn"><div><h3>내 실적</h3><div class="meta"><span>📍 ☰ → 실적 → 내 실적</span><span>👤 모든 직원(나만 봄)</span></div><ul><li>이번 달 내 신규 계약 대수·판매금액, 지난달 대비 성장률, 최근 6개월 추이. ‹ › 로 달 이동.</li></ul></div></div>
+<div class="fn"><div><h3>전체 실적 · 직원별 순위</h3><div class="meta"><span>📍 ☰ → 실적 → 전체 실적</span><span>👤 실적 보기 권한</span></div><ul><li>이달 신규 계약 합계·판매금액, 6개월 추이.</li><li>직원별 <b>순위순</b>(계약 대수, 같으면 판매금액) / <b>직책순</b> 선택. ‘실적 제외’ 계정(대표님 등)은 빠져요.</li></ul></div></div>
+<div class="fn"><div><h3>수익 현황</h3><div class="meta"><span>📍 ☰ → 실적 → 수익 현황</span><span>👤 실적 보기 권한</span></div><ul><li>출고된 장비의 출고 단가 − 입고 단가. 단가를 안 적은 장비는 목록에서 눌러 적으면 바로 반영.</li></ul></div></div>
+</section>
+<section id="report" class="ch"><div class="sechead"><div class="eyebrow">일일보고 · 실적 보고서</div><h2>☰ 보고</h2></div>
+<div class="fn"><div><h3>일일보고 쓰기</h3><div class="meta"><span>📍 ☰ → 보고 → 일일보고 쓰기</span><span>👤 모든 직원</span></div><ul><li>날짜를 고르고 오늘 한 일 · 특이사항 · 내일 계획. 그날 완료한 업무와 올린 계약이 자동으로 들어가요. 같은 날 다시 내면 수정본.</li></ul></div></div>
+<div class="fn"><div><h3>일일보고 종합 보기</h3><div class="meta"><span>📍 ☰ → 보고 → 일일보고 종합 보기</span><span>👤 보고 열람 권한(대표님)</span></div><ul><li>날짜별로 직원별 보고와 <b>미제출자</b>를 <b>직책순</b>으로. 명단에 넣을 사람은 관리자가 권한 설정에서 체크해요.</li></ul></div></div>
+<div class="fn"><div><h3>실적 보고서</h3><div class="meta"><span>📍 ☰ → 보고 → 실적 보고서</span><span>👤 작성: 실적 권한(본부장) · 열람: 보고 권한(대표님)</span></div><ul><li>자동 집계된 이달 실적을 고쳐 ‘대표님께 보고하기’. 대표님은 올라온 보고서를 봐요.</li></ul></div></div>
+</section>
+<section id="company" class="ch"><div class="sechead"><div class="eyebrow">공지 · 자료실 · 비상연락망 · 직원 명부</div><h2>☰ 회사</h2></div>
+<div class="fn"><div><h3>공지사항</h3><div class="meta"><span>📍 ☰ → 회사 → 공지사항</span><span>👤 모든 직원(작성은 공지 권한)</span></div><ul><li>안 읽은 공지는 숫자로. 작성 권한자는 + 로 올리고 ‘맨 위 고정’, 읽은 사람 목록 보기. 새 공지는 “새 공지가 있습니다” 알림.</li></ul></div></div>
+<div class="fn"><div><h3>자료실</h3><div class="meta"><span>📍 ☰ → 회사 → 자료실</span><span>👤 모든 직원</span></div><ul><li>분류(양식·서식 · 계약·약정 · 가맹점 안내 · 교육·매뉴얼 · 사진·홍보물 · 기타)와 검색. 눌러서 첨부 파일 받기.</li><li>+ 로 제목·설명·분류·파일(5개, 3MB까지, 사진은 자동으로 줄여서). 올린 사람과 관리자가 고치고 지워요(삭제 비밀번호).</li></ul></div></div>
+<div class="fn"><div><h3>비상연락망</h3><div class="meta"><span>📍 ☰ → 회사 → 비상연락망</span><span>👤 모든 직원</span></div><ul><li>구분별로 모아 보이고 번호를 누르면 전화가 걸려요. 추가·수정·삭제.</li></ul></div></div>
+<div class="fn"><div><h3>직원 정보 (명부)</h3><div class="meta"><span>📍 ☰ → 회사 → 직원 정보</span><span>👤 직원 정보 보기 권한</span></div><ul><li>사진 · 부서 · 직책 · 생년월일 · 연락처(눌러서 전화) · 주소를 <b>직책순</b>으로.</li></ul></div></div>
+</section>
+<section id="admin" class="ch"><div class="sechead"><div class="eyebrow">직원 · 권한 · 설정 · 자료 보호</div><h2>☰ 관리자</h2></div>
+<div class="fn wimg"><div><h3>직원과 권한</h3><div class="meta"><span>📍 ☰ → 관리자 → 직원과 권한</span><span>👤 직원 관리 권한(최고관리자)</span></div><ul><li>+ 로 이름(직함 없이) · 휴대폰 번호 · 권한 묶음(영업직·사무직·관리자) → 그 번호로 로그인 가능.</li><li>직원을 누르면 <b>직원 정보 창</b>(사진·부서·직책·생년월일·연락처·주소) → <b>정보 수정 / 권한 설정 / 완전 삭제</b>를 따로.</li><li><b>권한 설정 창</b>: 항목별 권한 체크 + 영업 실적·순위에서 빼기 + 일일보고·실적보고 명단에 넣기 + 사용 중지(퇴사).</li><li><b>완전 삭제</b>: 삭제 비밀번호를 넣으면 목록·명단·담당자 고르기에서 사라지고 로그인이 막혀요(지난 기록의 이름은 남음).</li><li>마지막 관리자는 중지·삭제하거나 관리 권한을 끌 수 없어요.</li></ul></div><figure class=""><img src="img/pc_staff.jpg" alt="직원 정보 창" loading="lazy" width="1440" height="860"><figcaption>직원 정보 창</figcaption></figure></div>
+<div class="fn"><div><h3>직책 목록 (정렬 순서)</h3><div class="meta"><span>📍 ☰ → 관리자 → 직책 목록</span><span>👤 관리자</span></div><ul><li>한 줄에 하나, 위에 있을수록 앞. 기본: 대표 · 이사 · 본부장 · 지사장 · 부장 · 차장 · 과장 · 대리 · 사원. 추가·수정·삭제 가능.</li></ul></div></div>
+<div class="fn"><div><h3>업무 요청 빠른 선택 버튼</h3><div class="meta"><span>📍 ☰ → 관리자 → 업무 요청 빠른 선택 버튼</span><span>👤 관리자</span></div><ul><li>업무 요청 창의 ‘가맹점 요청사항’ 버튼(예: 용지신청)을 한 줄에 하나씩. 모든 직원에게 똑같이 보여요.</li></ul></div></div>
+<div class="fn"><div><h3>삭제 비밀번호</h3><div class="meta"><span>📍 ☰ → 관리자 → 삭제 비밀번호</span><span>👤 관리자</span></div><ul><li>직원 완전 삭제(필수), 가맹점 · 재고 · 응대 기록 · 자료실 삭제 때 한 번 더 물어요.</li></ul></div></div>
+<div class="fn"><div><h3>가맹점 수정 암호</h3><div class="meta"><span>📍 ☰ → 관리자 → 가맹점 수정 암호</span><span>👤 관리자</span></div><ul><li>정하기 · 바꾸기 · 끄기.</li></ul></div></div>
+<div class="fn"><div><h3>백업 · 가맹점 보호·복원</h3><div class="meta"><span>📍 ☰ → 관리자</span><span>👤 관리자</span></div><ul><li><b>데이터 백업 내려받기</b>(.json, 한 달에 한 번 이상 권장). <b>PC에 보관된 자동 백업</b>(관리자가 열면 하루 한 번 14일치).</li><li><b>가맹점 보호·복원</b>: 삭제한 가맹점 복원, 백업 파일로 복원, 되돌리기 기준점. 가져오기·복원 직전 상태는 자동 저장.</li></ul></div></div>
+</section>
+<section id="pc" class="ch"><div class="sechead"><div class="eyebrow">메모 · 스캐너 · 왼쪽 칸</div><h2>PC 전용</h2></div>
+<div class="fn wimg"><div><h3>메모</h3><div class="meta"><span>📍 PC 위쪽 메뉴 맨 끝</span><span>👤 모든 직원(내 것만 보임)</span></div><ul><li>새 메모를 적고 ‘추가’(Ctrl+Enter). 고치면 잠시 뒤 <b>자동 저장</b>. 📌 맨 위 고정, 🗑 삭제, 초성 검색.</li><li>내 계정에 저장돼 다른 PC에서도 보여요.</li></ul></div><figure class=""><img src="img/pc_memo.jpg" alt="PC 메모" loading="lazy" width="1440" height="860"><figcaption>PC 메모</figcaption></figure></div>
+</section>
+<section id="perm" class="ch"><div class="sechead"><div class="eyebrow">권한</div><h2>권한 한눈에 보기</h2><p class="muted">관리자가 ☰ → 관리자 → 직원과 권한 → 직원 → 권한 설정에서 켜고 끕니다. 실적·보고·1:1 대화·단가는 서버에서도 막혀 있어 권한이 없는 기기로는 자료가 내려가지 않습니다.</p></div><div class="tbl"><table><thead><tr><th>권한·설정</th><th>켜면</th></tr></thead><tbody><tr><td>업무 만들기</td><td>업무 올리기(나에게)</td></tr><tr><td>다른 직원에게 업무 배정</td><td>다른 직원을 담당자로 지정</td></tr><tr><td>전체 업무 보기</td><td>모든 직원의 업무 (없으면 내 것만)</td></tr><tr><td>전체 이력 보기</td><td>모든 직원의 지난 업무 기록</td></tr><tr><td>공지 작성</td><td>공지 올리기·고정·읽은 사람 보기</td></tr><tr><td>실적 보기 (본부장·대표님)</td><td>전체 실적·순위·수익·단가·모든 계약, 실적 보고서 작성</td></tr><tr><td>일일보고·실적보고 종합 보기 (대표님)</td><td>직원 전체 일일보고와 실적 보고서 열람</td></tr><tr><td>가맹점 등록·수정 (암호 필요)</td><td>가맹점 등록·수정·일괄 가져오기</td></tr><tr><td>직원 정보 보기</td><td>직원 명부(부서·직책·생년월일·연락처·주소)</td></tr><tr><td>직원 관리 (관리자 전용)</td><td>직원·권한·직책·삭제 비밀번호·백업·보호·복원·상품 목록·재고 일괄 등록</td></tr><tr><td>영업 실적·순위에서 빼기</td><td>체크하면 실적 합계·순위에서 빠짐 (대표님 등)</td></tr><tr><td>일일보고·실적보고 명단에 넣기</td><td>끄면 일일보고 종합 명단·직책순 실적에서 빠짐</td></tr></tbody></table></div></section>
+<section id="protect" class="ch"><div class="sechead"><div class="eyebrow">자료 보호</div><h2>지워지지 않고, 되돌릴 수 있게</h2></div><div class="grid4">
+<div class="box"><h3>삭제 방지</h3><p class="muted">서버 규칙이 실제 삭제를 막고 ‘삭제 표시’만 남깁니다. 지운 가맹점은 보호·복원에서 되살립니다.</p></div>
+<div class="box"><h3>변경 기록</h3><p class="muted">업무·가맹점·재고 같은 주요 자료는 저장할 때마다 누가 언제 무엇을 바꿨는지 기록됩니다(채팅·프로필 제외). 가맹점은 예전 내용으로 되돌립니다.</p></div>
+<div class="box"><h3>백업</h3><p class="muted">관리자 기기에 하루 한 번 14일치 자동 보관, 백업 파일 내려받기. 서버 전체 암호화 백업은 백업 비밀값을 등록하면 매일 돕니다.</p></div>
+<div class="box"><h3>삭제 비밀번호</h3><p class="muted">직원 완전 삭제와 가맹점·재고·응대 기록·자료실 삭제 때 관리자가 정한 비밀번호를 한 번 더 묻습니다.</p></div></div></section>
+<section id="diff" class="ch"><div class="sechead"><div class="eyebrow">기기</div><h2>안드로이드 앱과 웹(아이폰·PC) 차이</h2><p class="muted">나머지 기능은 모두 같습니다.</p></div><div class="tbl"><table><thead><tr><th>기능</th><th>안드로이드 앱</th><th>웹앱 (아이폰·PC)</th></tr></thead><tbody><tr><td>화면 꺼져도 알림</td><td>○ (상시 알림)</td><td>열어 둔 동안만</td></tr><tr><td>채팅방 이름 변경·검색·배경·비우기</td><td>○</td><td>음소거만</td></tr><tr><td>프로젝트 항목 삭제·진행 기록</td><td>○</td><td>-</td></tr><tr><td>시리얼 사진 인식</td><td>○</td><td>바코드 스캔</td></tr><tr><td>PC 메모 · 왼쪽 칸</td><td>-</td><td>○ (PC)</td></tr><tr><td>저장 상태 띠 · 가맹점 동시 수정 경고</td><td>-</td><td>○</td></tr><tr><td>가맹점 삭제</td><td>최고관리자</td><td>가맹점 권한 + 암호</td></tr><tr><td>단체 문자</td><td>○ (폰 문자 앱)</td><td>아이폰 ○ · PC ×</td></tr></tbody></table></div></section>
+<section class="ch"><div class="sechead"><div class="eyebrow">설치</div><h2>기기별로 받는 곳</h2></div><div class="grid3">
+<div class="box"><h3>안드로이드 앱</h3><p class="muted">APK를 받아 설치. 처음 한 번 ‘이 출처 허용’.</p><div class="url">github.com/ninepayments/Work-app/releases</div></div>
+<div class="box"><h3>아이폰 · 웹</h3><p class="muted">사파리에서 열고 공유 → 홈 화면에 추가.</p><div class="url">ninepayments.github.io/Work-app</div></div>
+<div class="box"><h3>윈도우 PC</h3><p class="muted">설치 파일 실행 → 바탕화면에 나인패밀리.</p><div class="url">github.com/ninepayments/Work-app/releases/latest/download/NineFamily-Setup.exe</div></div></div></section>
+<section id="soon" class="ch"><div class="sechead"><div class="eyebrow">다음 단계</div><h2>준비 중인 기능</h2></div><div class="soon"><div class="box"><h3>가맹점 단체 문자 (알리고)</h3><p class="muted">PC에서도 바로 발송</p></div><div class="box"><h3>택배 송장 연동</h3><p class="muted">한진택배 접수·송장 출력·운송장 기록, 로지아이 PC 창</p></div><div class="box"><h3>인쇄 · 엑셀 내보내기</h3><p class="muted">목록을 엑셀로, 화면을 인쇄용으로</p></div><div class="box"><h3>전자계약 서명</h3><p class="muted">링크로 보내고 고객이 폰에서 서명</p></div><div class="box"><h3>웹·아이폰 푸시 · 카톡 알림톡</h3><p class="muted">웹앱을 닫아도 알림, 고객 공지</p></div></div></section>
+<footer>나인패밀리 · (주)나인페이먼츠 · 앱 v0.0.23 · 웹 0.0.34 기준 · 2026년 10월 25일 · 화면은 연습용 데모 자료로 찍었습니다.</footer></div>
