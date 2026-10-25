@@ -306,3 +306,5 @@ details.man[open]{padding-bottom:12px}
 .menupg .mi{font-size:15px}
 .menupg .msec{margin-top:0}
 .menupg .mhead2{margin-bottom:12px}
+.nav button.hm .t{font-size:24px;line-height:1}
+.nav button.hm .badge{right:calc(50% - 26px)}

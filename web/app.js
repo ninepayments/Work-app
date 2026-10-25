@@ -2,12 +2,16 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.27';
+const VERSION = '웹 0.0.28';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
 const KINDS = ['방문A/S', '원격A/S', '전화응대', '용지신청', '기타'];
-const REQ_QUICK = ['용지신청']; // 업무 요청 '가맹점 요청사항' 빠른 선택
+// 업무 요청 '가맹점 요청사항' 빠른 선택 버튼 — 관리자가 ☰ → 관리자 → 빠른 선택 버튼에서 바꾼다 (config key 'req_quick')
+const reqQuickDoc = () => list('config').find(c => c.key === 'req_quick');
+const reqQuick = () => { const c = reqQuickDoc(); return c && Array.isArray(c.items) ? c.items.filter(Boolean) : ['용지신청']; };
+// 직원 이름은 이름만(직함 X): '박상언 대표님' → '박상언'. 권한은 권한 설정으로 준다.
+const stripTitle = n => String(n || '').trim().replace(/\s+(대표님|대표이사|대표|회장님|회장|본부장님|본부장|지사장님|지사장|부장님|부장|차장|과장|대리|주임|팀장님|팀장|실장님|실장|이사님|이사|사원)$/, '').trim();
 const logKind = k => (k === 'AS' || k === '방문' || k === '방문 A/S') ? '방문A/S' : k === '원격 A/S' ? '원격A/S' : k === '전화 응대' ? '전화응대' : k;
 const logReq = g => (g.req !== undefined || g.res !== undefined) ? (g.req || '') : (g.text || '');
 const logRes = g => g.res || '';
@@ -291,7 +295,7 @@ async function logout() {
 // ---------- 화면 틀 ----------
 // 휴대폰(아이폰)은 안드로이드 앱과 같은 화면: 아래 탭 5개(업무·프로젝트·채팅·일정·전체), 나머지 기능은 '전체' 탭 안에 있다.
 // PC(넓은 화면)는 토스포스 방식: 위쪽 가로줄에 주 메뉴, 왼쪽 위 ☰ 를 누르면 영역별 전체 메뉴가 펼쳐진다.
-const NAVPHONE = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['chat', '채팅', 'chat', ''], ['calendar', '일정', 'calendar', ''], ['all', '전체', 'all', '']];
+const NAVPHONE = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['chat', '채팅', 'chat', ''], ['calendar', '일정', 'calendar', ''], ['all', '☰', 'all', '']];
 const NAVPC = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['chat', '채팅', 'chat', ''], ['calendar', '일정', 'calendar', ''], ['merchants', '가맹점', 'all', 'merchants'], ['logs', '응대 기록', 'all', 'logs']];
 const isWide = () => window.innerWidth >= 900;
 function newTaskCount() { return list('tasks').filter(t => t.assignee === S.uid && t.status === '지시됨').length + list('tasks').filter(t => t.preq && t.preq.stage === '발송함' && t.creator === S.uid).length; } // 물품요청이 발송되면 요청한 사람에게 '입고 확인' 알림
@@ -313,7 +317,7 @@ function render() {
   syncTitle(badges.task + badges.all + badges.chat); armBack();
   const k = S.sub || S.tab;
   const on = key => wide ? !S.menu && k === key : (key === 'all' ? S.tab === 'all' : k === key);
-  const btn = ([key, lb, tab, sub]) => { const n = badges[key]; return '<button data-nav="' + tab + '" data-sub="' + sub + '" class="' + (on(key) ? 'on' : '') + '"><span class="t">' + lb + '</span>' + (n ? '<span class="badge">' + n + '</span>' : '') + '</button>'; };
+  const btn = ([key, lb, tab, sub]) => { const n = badges[key]; return '<button data-nav="' + tab + '" data-sub="' + sub + '" class="' + (on(key) ? 'on' : '') + (lb === '☰' ? ' hm" aria-label="전체 메뉴' : '') + '"><span class="t">' + lb + '</span>' + (n ? '<span class="badge">' + n + '</span>' : '') + '</button>'; };
   const body = bodyHTML();
   if (wide) {
     const top = '<header class="pctop"><button class="hamb" data-act="menu" aria-label="' + (S.menu ? '전체 메뉴 닫기' : '전체 메뉴 열기') + '">' + (S.menu ? '✕' : '☰') + (!S.menu && badges.all ? '<span class="badge">' + badges.all + '</span>' : '') + '</button>' +
@@ -478,7 +482,7 @@ ACT.newTask = draft => {
   const staff = list('users').filter(u => u.active !== false && (can('task_assign') || u.id === S.uid));
   formModal('업무 요청', '<label class="fl" for="f_t1">업무 제목 (필수)</label><input id="f_t1" placeholder="예: A마트 포스 설치"><label class="fl" for="f_ty">종류</label><select id="f_ty">' + TYPES.map(x => '<option>' + x + '</option>').join('') + '</select>' + MP_FILL +
     '<label class="fl" for="f_c">거래처 (상호)</label><input id="f_c" placeholder="가맹점을 고르면 자동으로 채워져요"><label class="fl" for="f_p">매장 전화</label><input id="f_p" type="tel" placeholder="예: 062-123-4567"><label class="fl" for="f_a">매장 주소</label><input id="f_a" placeholder="예: 광주 동구 …">' +
-    '<label class="fl" for="f_rq">가맹점 요청사항 (빠른 선택 + 직접 입력 — 완료하면 처리결과와 함께 응대 기록에 남아요)</label><div class="pills" style="margin-top:4px">' + REQ_QUICK.map(w => '<button type="button" class="pill rqq" data-w="' + w + '">＋ ' + w + '</button>').join('') + '</div><textarea id="f_rq" placeholder="예: 카드 결제가 안 된다고 함, 영수증 출력 안 됨"></textarea>' +
+    '<label class="fl" for="f_rq">가맹점 요청사항 (빠른 선택 + 직접 입력 — 완료하면 처리결과와 함께 응대 기록에 남아요)</label><div class="pills" style="margin-top:4px">' + reqQuick().map(w => '<button type="button" class="pill rqq" data-w="' + w + '">＋ ' + w + '</button>').join('') + '</div><textarea id="f_rq" placeholder="예: 카드 결제가 안 된다고 함, 영수증 출력 안 됨"></textarea>' +
     '<label class="fl" for="f_d">기한 날짜 (선택 — 고르면 일정 달력에도 표시돼요)</label><input id="f_d" type="date"><label class="fl" for="f_tm">기한 시간 (선택)</label><input id="f_tm" type="time"><label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모"></textarea><label class="fl" for="f_w">담당 직원</label><select id="f_w">' + staff.map(u => '<option value="' + u.id + '"' + (u.id === S.uid ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('') + '</select>', () => {
     const ti = $('#f_t1').value.trim(); if (!ti) return warn('업무 제목을 입력해 주세요.');
     const d = $('#f_d').value, tm = $('#f_tm').value; const as = Number($('#f_w').value);
@@ -1675,13 +1679,18 @@ function syncPhone(u) { // 로그인 허용 번호와 서버 규칙용 권한 �
 }
 function viewStaff() {
   if (!can('staff_manage')) return '<h1>직원과 권한</h1><div class="empty">최고관리자만 볼 수 있어요.</div>';
+  if (!S.titlesDone) { S.titlesDone = true; setTimeout(() => { let n = 0; list('users').forEach(u => { const c = stripTitle(u.name); if (c && c !== u.name && !list('users').some(x => x.name === c)) { u.name = c; put('users', u); n++; } }); if (n) { toast('직원 이름에서 직함을 뺐어요 (이름만 표시).'); render(); } }, 0); }
   const us = [...S.data.users.values()].sort((a, b) => (a.active === false) - (b.active === false) || (a.name || '').localeCompare(b.name || ''));
   return '<h1>직원과 권한</h1><div class="sub">직원을 눌러 권한을 켜고 끄거나 사용을 멈춰요. 등록된 번호로만 로그인할 수 있어요. 오른쪽 아래 + 로 직원을 추가합니다.</div>' +
     us.map(u => { const ps = PERMS.filter(x => hasP(u, x[0])).map(x => x[1]); return '<div class="card" data-act="staffEdit" data-arg="' + u.id + '"><div class="row">' + avatarHTML(u.id, 40) + '<div class="grow"><div class="t1" style="' + (u.active === false ? 'color:var(--gray)' : '') + '">' + esc(u.name) + (u.active === false ? ' (사용 중지)' : '') + '</div><div class="t2">' + esc(u.phone || '') + '</div></div></div><div class="sub">' + esc(ps.length ? ps.join(', ') : '기본 권한(내 업무만)') + '</div></div>'; }).join('');
 }
-ACT.newStaff = () => formModal('직원 추가', '<label class="fl" for="f_n">직원 이름</label><input id="f_n" placeholder="예: 김영업"><label class="fl" for="f_p">휴대폰 번호</label><input id="f_p" type="tel" placeholder="예: 01012345678">' +
+ACT.reqQuickEdit = () => formModal('빠른 선택 버튼 관리', '<div class="sub" style="margin-top:0">업무 요청 창의 ‘가맹점 요청사항’ 빠른 선택 버튼이에요. 한 줄에 하나씩 적으면 그 순서대로 버튼이 생겨요. (모든 직원에게 똑같이 보여요)</div><textarea id="f_q" style="min-height:120px" placeholder="예: 용지신청">' + esc(reqQuick().join('\n')) + '</textarea>', () => {
+  const items = [...new Set($('#f_q').value.split(/[\n,]+/).map(x => x.trim()).filter(Boolean))];
+  const o = reqQuickDoc() || create('config', {key: 'req_quick'}); o.items = items; o.changedBy = S.uid; o.changedAt = nowStr(); put('config', o); render(); toast('빠른 선택 버튼 ' + items.length + '개를 저장했어요.'); return true;
+}, '저장');
+ACT.newStaff = () => formModal('직원 추가', '<label class="fl" for="f_n">직원 이름 (이름만, 직함 없이)</label><input id="f_n" placeholder="예: 김영업"><label class="fl" for="f_p">휴대폰 번호</label><input id="f_p" type="tel" placeholder="예: 01012345678">' +
   '<label class="fl" for="f_ps">권한 묶음 (추가 후 항목별로 바꿀 수 있어요)</label><select id="f_ps">' + Object.keys(PRESETS).map(k => '<option>' + k + '</option>').join('') + '</select>', () => {
-  const n = $('#f_n').value.trim(), ph = e164($('#f_p').value);
+  const n = stripTitle($('#f_n').value), ph = e164($('#f_p').value);
   if (!n || ph.length < 12) return warn('이름과 휴대폰 번호를 입력해 주세요.');
   if (list('users').some(u => u.name === n)) return warn('같은 이름의 직원이 있습니다.');
   if ([...S.data.users.values()].some(u => u.phone === ph)) return warn('이미 등록된 번호입니다.');
@@ -2059,6 +2068,7 @@ function menuItems() {
   add('내 계정·설정', '로그아웃', '로그아웃 나가기', 'act:logout');
   if (A) {
     add('관리자', '직원과 권한', '직원 권한 등록 사용 중지 관리자', 'nav:all:staff');
+    add('관리자', '업무 요청 빠른 선택 버튼', '빠른 선택 버튼 용지신청 요청사항 추가 관리', 'act:reqQuickEdit');
     add('관리자', '데이터 백업 내려받기', '데이터 백업 내려받기 저장 내보내기 json', 'act:backupDownload'); add('관리자', 'PC에 보관된 자동 백업', '자동 백업 보관 PC 복원', 'act:pcBackups'); add('관리자', '가맹점 보호·복원', '가맹점 보호 복원 되돌리기 삭제 복구 휴지통', 'act:safety');
     add('관리자', '가맹점 수정 암호', '가맹점 수정 암호 잠금 비밀번호 설정 변경', 'act:mlockSet', lk ? '설정됨' : '아직 없음');
     if (lk) add('관리자', '가맹점 수정 암호 끄기', '가맹점 수정 암호 끄기 잠금 해제', 'act:mlockOff');
@@ -2157,6 +2167,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.28', '2026-10-25', ['업무 요청 ‘가맹점 요청사항’ 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)', '직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)', '휴대폰 아래 탭: ‘전체’를 ☰ 로']],
   ['웹 0.0.27', '2026-10-25', ['‘업무 지시’를 ‘업무 요청’으로 이름 바꿈 (요청하기·요청한 사람)']],
   ['웹 0.0.26', '2026-10-25', ['채팅 알림 음성을 밝은 여자 목소리 “나인톡!”으로 바꿈, 다른 알림 음성도 같은 목소리로']],
   ['웹 0.0.25', '2026-10-25', ['채팅 알림 소리를 카톡처럼 짧게 “나톡!”으로 바꾸고, 업무는 ‘띵동’ + “업무가 배정되었습니다”로 따로 울려요', '☰ → 내 계정·설정에 ‘업무 알림 소리’·‘채팅 알림 소리(나톡)’를 따로 켜고 끄는 칸과 각각 들어 보기', '채팅방 위 🔔 버튼으로 그 방만 알림 소리 끄기(🔕)']],

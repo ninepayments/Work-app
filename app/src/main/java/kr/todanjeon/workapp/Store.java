@@ -231,6 +231,28 @@ final class Store {
         return inst;
     }
 
+    /** 직원 이름은 이름만 쓴다(직함 X): "박상언 대표님" → "박상언". 권한은 권한 설정으로 준다. */
+    static String stripTitle(String n) {
+        return n == null ? "" : n.trim().replaceAll("\\s+(대표님|대표이사|대표|회장님|회장|본부장님|본부장|지사장님|지사장|부장님|부장|차장|과장|대리|주임|팀장님|팀장|실장님|실장|이사님|이사|사원)$", "").trim();
+    }
+
+    /** 관리자가 열 때 한 번: 직함이 붙은 직원 이름을 이름만 남긴다. 바꾼 사람 수를 돌려준다. */
+    int stripTitles() {
+        int n = 0;
+        for (JSONObject u : list(users())) {
+            String nm = u.optString("name"), cl = stripTitle(nm);
+            if (!cl.isEmpty() && !cl.equals(nm) && !nameExists(cl)) {
+                try {
+                    u.put("name", cl);
+                    n++;
+                } catch (JSONException ignored) {
+                }
+            }
+        }
+        if (n > 0) save();
+        return n;
+    }
+
     boolean isOnline() {
         return online;
     }

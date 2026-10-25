@@ -107,6 +107,18 @@ final class Ui {
         return t;
     }
 
+    /** 안 본 개수: 빨간 동그라미 안 숫자 (앱 전체에서 같은 모양) */
+    static TextView dot(Context c, int n, int bg) {
+        TextView t = text(c, n > 99 ? "99+" : String.valueOf(n), 11, android.graphics.Color.WHITE, true);
+        t.setGravity(Gravity.CENTER);
+        t.setIncludeFontPadding(false);
+        t.setMinWidth(dp(c, 20));
+        t.setMinHeight(dp(c, 20));
+        t.setPadding(dp(c, 5), 0, dp(c, 5), 0);
+        t.setBackground(round(bg, 10, c));
+        return t;
+    }
+
     static TextView tile(Context c, String s, int bg, int fg) {
         TextView t = text(c, s, 13, fg, true);
         t.setGravity(Gravity.CENTER);

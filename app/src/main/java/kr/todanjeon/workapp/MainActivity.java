@@ -627,7 +627,7 @@ public class MainActivity extends Activity {
         addNav("project", "프로젝트", 0);
         addNav("chat", "채팅", unreadChatTotal());
         addNav("calendar", "일정", 0);
-        addNav("all", "전체", unreadNotices());
+        addNav("all", "☰", unreadNotices());
         content.removeAllViews();
         if (fixedTop != null) fixedTop.removeAllViews();
         String k = sub != null ? sub : tab;
@@ -732,10 +732,27 @@ public class MainActivity extends Activity {
 
     private void addNav(final String key, String label, int badge) {
         boolean on = key.equals(tab);
-        TextView t = Ui.text(this, label + (badge > 0 ? " " + badge : ""), 14, on ? Ui.DARK : Ui.GRAY, on);
+        boolean menu = "☰".equals(label);
+        FrameLayout cell = new FrameLayout(this);
+        if (on) cell.setBackground(Ui.round(Ui.TINT, 16, this));
+        cell.setContentDescription(menu ? "전체 메뉴" + (badge > 0 ? ", 새 소식 " + badge : "") : label + (badge > 0 ? ", 미확인 " + badge : ""));
+        TextView t = Ui.text(this, label, menu ? 24 : 14, on ? Ui.DARK : Ui.GRAY, on || menu);
         t.setGravity(Gravity.CENTER);
-        if (on) t.setBackground(Ui.round(Ui.TINT, 16, this));
-        t.setOnClickListener(v -> {
+        cell.addView(t, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (badge > 0) { // 글자 오른쪽 위에 빨간 동그라미 숫자
+            TextView d = Ui.dot(this, badge, Ui.RED);
+            FrameLayout.LayoutParams dp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (wide()) {
+                dp.gravity = Gravity.CENTER_VERTICAL | Gravity.END;
+                dp.rightMargin = Ui.dp(this, 14);
+            } else {
+                dp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+                dp.topMargin = Ui.dp(this, 6);
+                d.setTranslationX(Ui.dp(this, menu ? 16 : 22));
+            }
+            cell.addView(d, dp);
+        }
+        cell.setOnClickListener(v -> {
             tab = key;
             sub = null;
             render();
@@ -743,9 +760,9 @@ public class MainActivity extends Activity {
         if (wide()) {
             LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 52));
             wp.bottomMargin = Ui.dp(this, 6);
-            nav.addView(t, wp);
+            nav.addView(cell, wp);
         } else {
-            nav.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+            nav.addView(cell, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
         }
     }
 
@@ -1000,7 +1017,7 @@ public class MainActivity extends Activity {
         f.addView(phone);
         f.addView(addr);
         LinearLayout quick = new LinearLayout(this);
-        for (final String qk : REQ_QUICK) {
+        for (final String qk : reqQuick()) {
             Button qb = Ui.button(this, "＋ " + qk, Ui.TINT, Ui.DEEP);
             qb.setOnClickListener(v -> toggleReq(req, qk));
             quick.addView(qb, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1197,7 +1214,52 @@ public class MainActivity extends Activity {
     }
 
     /** 가맹점 요청사항 빠른 선택 — 누르면 요청사항 칸에 넣고, 한 번 더 누르면 뺀다(직접 쓴 내용은 그대로). */
-    private static final String[] REQ_QUICK = {"용지신청"};
+    /** 빠른 선택 버튼 목록은 관리자가 앱에서 바꾼다 (config 문서 key 'req_quick'). 없으면 '용지신청'. */
+    private JSONObject reqQuickDoc() {
+        for (JSONObject c : store.list(store.arr("config"))) if ("req_quick".equals(c.optString("key"))) return c;
+        return null;
+    }
+
+    private java.util.List<String> reqQuick() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        JSONObject c = reqQuickDoc();
+        JSONArray a = c == null ? null : c.optJSONArray("items");
+        if (a == null) out.add("용지신청");
+        else for (int i = 0; i < a.length(); i++) if (!a.optString(i).trim().isEmpty()) out.add(a.optString(i).trim());
+        return out;
+    }
+
+    private void showReqQuickEdit() {
+        final EditText ed = Ui.field(this, "한 줄에 하나씩 (예: 용지신청)", false);
+        ed.setSingleLine(false);
+        ed.setMinLines(4);
+        ed.setGravity(Gravity.TOP);
+        ed.setText(android.text.TextUtils.join("\n", reqQuick()));
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(Ui.dp(this, 20), Ui.dp(this, 4), Ui.dp(this, 20), 0);
+        box.addView(Ui.text(this, "업무 요청 창의 '가맹점 요청사항' 빠른 선택 버튼이에요. 한 줄에 하나씩 적으면 그 순서대로 버튼이 생겨요. (모든 직원에게 똑같이 보여요)", 13, Ui.GRAY, false));
+        box.addView(ed, Ui.lp(this, 10));
+        new Dlg(this).setTitle("빠른 선택 버튼 관리").setView(box).setNegativeButton("취소", null)
+                .setPositiveButton("저장", (d, w) -> {
+                    JSONArray items = new JSONArray();
+                    java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+                    for (String x : ed.getText().toString().split("[\\n,]+")) if (!x.trim().isEmpty()) seen.add(x.trim());
+                    for (String x : seen) items.put(x);
+                    JSONObject o = reqQuickDoc();
+                    if (o == null) o = store.create("config");
+                    try {
+                        o.put("key", "req_quick");
+                        o.put("items", items);
+                        o.put("changedBy", myId());
+                        o.put("changedAt", store.now());
+                    } catch (Exception ignored) {
+                    }
+                    store.save();
+                    Ui.toast(this, "빠른 선택 버튼 " + items.length() + "개를 저장했어요.");
+                    render();
+                }).show();
+    }
 
     private void toggleReq(EditText req, String word) {
         String s = req.getText().toString();
@@ -1425,6 +1487,7 @@ public class MainActivity extends Activity {
 
     // ---------------- 직원/권한 ----------------
     private void renderStaff() {
+        if (store.stripTitles() > 0) Ui.toast(this, "직원 이름에서 직함을 뺐어요 (이름만 표시).");
         for (final JSONObject u : store.list(store.users())) {
             LinearLayout c = Ui.card(this);
             boolean active = u.optBoolean("active", true);
@@ -1441,7 +1504,7 @@ public class MainActivity extends Activity {
         LinearLayout f = new LinearLayout(this);
         f.setOrientation(LinearLayout.VERTICAL);
         f.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0);
-        final EditText name = Ui.field(this, "직원 이름", false);
+        final EditText name = Ui.field(this, "직원 이름 (이름만, 직함 없이)", false);
         final EditText pin = Ui.field(this, "휴대폰 번호 (예: 01012345678)", false);
         pin.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
         final Spinner preset = new Spinner(this);
@@ -1453,7 +1516,7 @@ public class MainActivity extends Activity {
         new Dlg(this).setTitle("직원 추가").setView(f)
                 .setNegativeButton("취소", null)
                 .setPositiveButton("추가", (d, w) -> {
-                    String n = name.getText().toString().trim();
+                    String n = Store.stripTitle(name.getText().toString());
                     String p = Cloud.e164(pin.getText().toString());
                     if (n.isEmpty() || p.length() < 12) {
                         Ui.toast(this, "이름과 휴대폰 번호를 입력해 주세요.");
@@ -1974,6 +2037,7 @@ public class MainActivity extends Activity {
                 .setPositiveButton("로그아웃", (d, w) -> doLogout()).show()));
         if (can(Perm.STAFF_MANAGE)) {
             e.add(new Entry("관리자", "직원과 권한", "직원 권한 등록 사용 중지 관리자", () -> goSub("staff")));
+            e.add(new Entry("관리자", "업무 요청 빠른 선택 버튼", "빠른 선택 버튼 용지신청 요청사항 추가 관리", () -> showReqQuickEdit()));
             e.add(new Entry("관리자", "데이터 백업 내려받기", "데이터 백업 내려받기 저장 내보내기 json", () -> exportBackup()));
             e.add(new Entry("관리자", "가맹점 보호·복원", "가맹점 보호 복원 백업 되돌리기 삭제 복구 휴지통", () -> showSafetyMenu()));
             e.add(new Entry("관리자", "가맹점 수정 암호", "가맹점 수정 암호 잠금 비밀번호 설정 변경 끄기", () -> showMerchantLockSet()));
@@ -2064,7 +2128,13 @@ public class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, Ui.dp(this, 14), 0, Ui.dp(this, 14));
         row.addView(Ui.text(this, label, 16, Ui.INK, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        if (!badge.isEmpty()) row.addView(Ui.text(this, badge, 12, Ui.DEEP, true));
+        if (!badge.isEmpty()) { // 숫자는 빨간 동그라미로 ("만료 3" → 만료 ③)
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(.*?)\\s*(\\d+)$").matcher(badge);
+            if (m.matches()) {
+                if (!m.group(1).isEmpty()) row.addView(Ui.text(this, m.group(1) + " ", 12, Ui.DEEP, true));
+                row.addView(Ui.dot(this, Integer.parseInt(m.group(2)), Ui.RED));
+            } else row.addView(Ui.text(this, badge, 12, Ui.DEEP, true));
+        }
         row.setOnClickListener(v -> r.run());
         return row;
     }
@@ -4664,7 +4734,7 @@ public class MainActivity extends Activity {
             if (lt > 0) rt.addView(Ui.text(this, new SimpleDateFormat("M/d HH:mm", Locale.KOREA).format(new Date(lt)), 11, Ui.GRAY, false));
             Integer uc = unread.get(r.optInt("id"));
             if (uc != null && uc > 0) {
-                TextView bd = Ui.chip(this, uc > 99 ? "99+" : String.valueOf(uc), muted(r.optInt("id")) ? Ui.GRAY : Ui.RED, Color.WHITE);
+                TextView bd = Ui.dot(this, uc, muted(r.optInt("id")) ? Ui.GRAY : Ui.RED);
                 rt.addView(bd, Ui.lp(this, 4));
             }
             row.addView(rt);
@@ -5549,6 +5619,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.17", "2026-10-25", "• 아래 탭의 안 본 개수를 빨간 동그라미 숫자로 (업무·채팅·☰), 전체 메뉴·채팅 목록도 같은 모양\n• 아래 탭 '전체'를 ☰ 로\n• 업무 요청 '가맹점 요청사항' 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)\n• 직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)"},
             {"0.0.16", "2026-10-25", "• 화면이 꺼져 있거나 앱을 닫아도 새 업무·채팅 알림이 와요: 상단에 '알림 받는 중' 표시가 작게 남고, 알림이 오면 화면이 켜지며 음성이 나와요. 처음 한 번 '배터리 절약에서 빼기'를 허용해 주세요 (전체 → 내 계정·설정 → 화면 꺼져도 알림 받기)\n• 폰을 다시 켜도 알림 받기가 저절로 다시 시작돼요\n• '업무 지시'를 '업무 요청'으로 이름 바꿈"},
             {"0.0.15", "2026-10-25", "• 로그인: 시작 화면이 뜨는 동안 사람 확인(로봇 확인)을 미리 준비해, 인증번호 받기를 누른 뒤 기다리는 시간을 줄임 (웹과 같은 방식)"},
             {"0.0.14", "2026-10-25", "• 채팅 알림 음성을 밝은 여자 목소리 \"나인톡!\"으로 바꿈, 다른 알림 음성도 같은 목소리로"},
