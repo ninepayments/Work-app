@@ -26,7 +26,7 @@
 - 일반 컬렉션(앱 `Store.COLLS` = 웹 `COLLS`): `users, tasks, notices, projects, contracts, events, merchants, stock, rooms, msgs, reports, profiles, costs, contacts, deposits, library, mlogs, config`
 - 그 밖: `phones/{+8210…}`(로그인 허용·권한: uid, active, admin, perf, report), `prooms`·`pmsgs`(1:1 비공개, 참가자 번호 `mem`), `blobs`(사진·파일 600KB 조각), `audit`(모든 변경 기록, 관리자만 읽기).
 - **삭제는 항상 소프트 삭제**(`deleted: true`). 서버 규칙이 실제 삭제를 막는다.
-- 저장된 값은 화면 글을 바꿔도 그대로 둔다: 업무 status `지시됨`(화면엔 '미확인'), stock status `설치완료`+`gone`, config key `merchant_lock`·`req_quick`·`products`(상품 목록 {items:[{code,name}]}), 재고·요청 품목의 `model`(상품명)+`code`(상품코드).
+- 저장된 값은 화면 글을 바꿔도 그대로 둔다: 업무 status `지시됨`(화면엔 '미확인'), stock status `설치완료`+`gone`(엑셀로 올린 가맹점 설치 장비는 gone `기존 설치`+merchant), profiles `memos`(PC 메모), config key `merchant_lock`·`req_quick`·`products`(상품 목록 {items:[{code,name}]}), 재고·요청 품목의 `model`(상품명)+`code`(상품코드).
 - 기기 설정 키 — 앱 prefs `workapp`: `voice`(업무 소리), `voiceChat`(채팅 소리), `bgNotify`(화면 꺼짐 알림), `session`. 채팅방 음소거 prefs `chatprefs` `mute_<내id>_<방id>`. 웹 localStorage: `snd_<uid>`, `sndc_<uid>`, `mute_<uid>`.
 
 ## 수정할 때 꼭 (사용자 지시: "항상 수정 전에 기존 코드 기억하고 수정")

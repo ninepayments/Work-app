@@ -1971,6 +1971,7 @@ public class MainActivity extends Activity {
         e.add(new Entry("계약·재고", "입금 확인", "입금 확인 입금 내역 미납금 판매대금 정보변경수수료 입금확인", () -> goSub("deposit")));
         e.add(new Entry("계약·재고", "재고 (입고·출고·정정)", "재고 장비 바코드 시리얼 단가 입고 출고 정정 스캔 본사 광주지사 보관지", () -> goSub("stock")));
         e.add(new Entry("계약·재고", "재고 이력", "재고 이력 입고 출고 정정 이동 실사 조사 반품 불량", () -> goSub("stocklog")));
+        if (prodAdmin()) e.add(new Entry("계약·재고", "재고 일괄 등록 (엑셀 양식)", "재고 일괄 등록 엑셀 업로드 양식 옮기기 설치 가맹점", () -> showStockImport()));
         e.add(new Entry("계약·재고", "상품 목록 (상품코드)", "상품 목록 상품코드 품목 코드 등록 물품요청 재고", () -> goSub("products")));
         e.add(new Entry("실적", "내 실적", "내 실적 월별 성장률 계약", () -> goSub("myperf")));
         if (canPerf()) {
@@ -3043,6 +3044,9 @@ public class MainActivity extends Activity {
         Button imp = Ui.button(this, "📥 엑셀·CSV 로 가맹점 일괄 가져오기 (이카운트 등)", Ui.TINT, Ui.DEEP);
         imp.setOnClickListener(v -> startMerchantImport());
         content.addView(imp, Ui.lp(this, 10));
+        Button mtp = Ui.button(this, "📄 가맹점 업로드 양식 받기 (.xlsx)", Ui.FIELD, Ui.INK);
+        mtp.setOnClickListener(v -> shareMerchantTemplate());
+        content.addView(mtp, Ui.lp(this, 6));
         if (can(Perm.STAFF_MANAGE)) {
             Button sf = Ui.button(this, "🛡 가맹점 보호·복원 (삭제 복원 · 백업 · 되돌리기)", Ui.FIELD, Ui.INK);
             sf.setOnClickListener(v -> showSafetyMenu());
@@ -3177,6 +3181,11 @@ public class MainActivity extends Activity {
             sa.addView(bt, lpp);
         }
         content.addView(sa, Ui.lp(this, 10));
+        if (prodAdmin()) {
+            Button si = Ui.button(this, "📥 재고 일괄 등록 (엑셀)", Ui.FIELD, Ui.INK);
+            si.setOnClickListener(v -> showStockImport());
+            content.addView(si, Ui.lp(this, 6));
+        }
         if (canPerf()) {
             long asset = 0;
             int noPrice = 0;
@@ -5666,7 +5675,8 @@ public class MainActivity extends Activity {
             {"신규 계약 올리기", "계약이 되면 바로 올려 주세요. (전체 → 신규 계약 올리기, 또는 계약 관리 화면의 + 버튼)\n\n1. 가맹점 조회·선택: 등록된 가맹점을 고릅니다. 없으면 '새 가맹점 등록'.\n2. 결제 연동: VAN사 또는 PG사, 업체명 (예: 다우데이타).\n3. 구분을 고르면 금액 입력 이름이 바뀝니다.\n   - 판매 → 판매금액\n   - CMS → CMS 금액\n   - 렌탈 → 월 렌탈료\n4. 나가는 장비: '+ 장비 추가'를 눌러 재고에서 체크해 고릅니다. 재고에 없으면 '직접 입력'으로 모델명·시리얼을 적어요. 잘못 고른 장비는 오른쪽 − 로 뺍니다. 장비를 여러 번 + 해서 여러 대를 넣을 수 있어요.\n5. 장비 메모: 설치 조건 등 자유롭게 적습니다.\n6. 계약일과 만료일: 만료일 아래 '+12개월 / +24개월 / +36개월' 버튼을 누르면 계약일 기준으로 자동 계산됩니다.\n7. '올리기'.\n\n※ 올리면 고른 장비는 재고에서 '출고중'이 됩니다."},
             {"계약 관리 · 설치 완료 · 만료 알림", "(전체 → 계약 관리)\n\n■ 계약 보기\n- 위쪽에 '만료가 가까운 계약(3개월 이내)'이 빨간 D-숫자와 함께 먼저 나옵니다. 아래는 전체 계약입니다.\n- 일반 직원은 내가 올린 계약만, 실적 권한이 있는 사람은 전체 계약이 보입니다.\n\n■ 설치 완료\n- 계약을 누르고 '설치 완료'를 누르면 나간 장비가 재고에서 완전히 빠집니다.\n\n■ 장비 추가\n- 같은 가맹점에 장비가 더 나가면 계약을 열어 '장비 추가'를 눌러 모델명·시리얼을 이어서 추가합니다.\n\n■ 만료 알림\n- 만료가 90일 이하로 남은 계약이 있으면 '업무' 탭 위에 알림 카드가 뜨고, 전체 탭에도 숫자가 표시됩니다."},
             {"실적 (권한자 전용)", "■ 내 실적 (전체 → 내 실적)\n- 나만 볼 수 있습니다. 이번 달 신규 계약 대수, 판매금액, 올린 계약 목록, 지난달과의 비교가 나와요.\n\n■ 전체 실적·직원별 순위 (실적 보기 권한자)\n- 위 ‹ › 로 월을 바꿉니다.\n- 신규 계약 대수와 판매금액, 직원별 순위 막대 그래프, 올라온 계약 목록이 나옵니다.\n- 월별 성과: '지난달 → 선택한 달' 계약 대수와 성장률(▲ 늘어남 / ▼ 줄어듦, 지난달이 0이면 '신규')을 직원별 막대 두 개(회색 지난달, 금색 이번 달)로 보여 줍니다. 그 아래 최근 6개월 추이 그래프도 있어요.\n- 계약을 누르면 상세 정보와 장비를 볼 수 있어요.\n\n■ 수익 현황 (실적 보기 권한자, 전체 → 수익 현황)\n- 지금까지 총 수익, 선택한 달 수익(매출·매입), 최근 6개월 수익 그래프, 직원별 수익이 나옵니다.\n- 계약에 올라가 출고된 장비(출고중·설치완료)의 '출고 단가 − 입고 단가'를 합산하고, 월은 계약일 기준이에요.\n- 단가를 아직 안 적은 장비는 수익에서 빠지고, 맨 아래 목록에 나옵니다. 눌러서 단가를 적으면 바로 반영돼요."},
-            {"가맹점 일괄 가져오기 (엑셀·CSV)", "(전체 → 가맹점 → 맨 위 '가맹점 일괄 가져오기')\n\n■ 준비\n- 이카운트(또는 다른 곳)에서 거래처 목록을 엑셀로 내려받아요. 형식은 .xlsx 또는 CSV 입니다. 옛 .xls 는 엑셀에서 .xlsx 로 다시 저장해 주세요.\n- 첫 줄(머리글)에 '거래처명'(또는 상호·가맹점명)이 있어야 합니다. 사업자등록번호, 거래처코드, 대표자, 전화, 핸드폰, 주소, 등급, 업태, 종목, 메모 열이 있으면 함께 가져와요.\n\n■ 가져오기\n1. 버튼을 눌러 파일을 고릅니다.\n2. 미리보기에서 새로 등록·갱신·건너뜀 개수와 읽은 열을 확인합니다.\n3. '가져오기'를 누르면 등록됩니다.\n\n■ 다시 올려도 안전해요\n- 같은 거래처코드, 사업자번호, 상호가 있으면 새로 만들지 않고 갱신합니다. 파일에 값이 있는 칸만 덮어쓰고 빈 칸은 그대로예요.\n- 새 가맹점의 등급은 파일에 등급이 없으면 '5코드 · 신규가맹점'으로 들어갑니다.\n- 핸드폰 열이 있으면 단체 문자에 그 번호를 씁니다."},
+            {"재고 일괄 등록 (엑셀)", "(관리자) 재고 화면의 '📥 재고 일괄 등록 (엑셀)' 또는 전체 → 계약·재고\n\n■ '업로드 양식 받기'로 양식을 받아(PC로 보내서) 상품코드 또는 상품명·시리얼·수량·현재위치·사업자번호·설치일·메모를 채워요. '(예시)' 줄은 건너뛰어요.\n■ 현재위치가 본사·광주지사면 우리 재고로 입고돼요.\n■ 가맹점 상호면 이미 설치된 장비로 기록만 하고 재고 수에는 넣지 않아요(가맹점이 먼저 등록돼 있어야 해요).\n■ 상품 목록에 없는 상품명은 새 상품코드로 등록돼요. 올리기 전에 미리보기로 개수와 못 올리는 줄(이유)을 보여 줘요.\n■ 앞으로 가맹점에 나가는 것은 계약·출고로 처리해요."},
+            {"가맹점 일괄 가져오기 (엑셀·CSV)", "('📄 가맹점 업로드 양식 받기'로 양식을 받을 수 있어요 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요)\n\n(전체 → 가맹점 → 맨 위 '가맹점 일괄 가져오기')\n\n■ 준비\n- 이카운트(또는 다른 곳)에서 거래처 목록을 엑셀로 내려받아요. 형식은 .xlsx 또는 CSV 입니다. 옛 .xls 는 엑셀에서 .xlsx 로 다시 저장해 주세요.\n- 첫 줄(머리글)에 '거래처명'(또는 상호·가맹점명)이 있어야 합니다. 사업자등록번호, 거래처코드, 대표자, 전화, 핸드폰, 주소, 등급, 업태, 종목, 메모 열이 있으면 함께 가져와요.\n\n■ 가져오기\n1. 버튼을 눌러 파일을 고릅니다.\n2. 미리보기에서 새로 등록·갱신·건너뜀 개수와 읽은 열을 확인합니다.\n3. '가져오기'를 누르면 등록됩니다.\n\n■ 다시 올려도 안전해요\n- 같은 거래처코드, 사업자번호, 상호가 있으면 새로 만들지 않고 갱신합니다. 파일에 값이 있는 칸만 덮어쓰고 빈 칸은 그대로예요.\n- 새 가맹점의 등급은 파일에 등급이 없으면 '5코드 · 신규가맹점'으로 들어갑니다.\n- 핸드폰 열이 있으면 단체 문자에 그 번호를 씁니다."},
             {"입금 확인 · 비상연락망 · 알림 · 백업", "\n\n■ 입금 확인 (전체 → 입금 확인)\n- 오른쪽 아래 + → 종류(판매대금/미납금/정보변경수수료/기타), 금액, 가맹점 선택, 메모를 넣고 '올리기'.\n- 올리면 '입금확인' 채팅방에 자동으로 글이 올라가요(방이 없으면 만들어요). 다른 직원 폰에는 알림이 갑니다.\n- 내역을 눌러 '확인 처리'를 하면 확인한 사람 이름이 남고 채팅방에도 알려요.\n\n■ 비상연락망 (전체 → 비상연락망)\n- + 로 이름·구분(본사, 카드사, 밴사, 직원 등)·번호를 등록해요. 연락처를 누르면 전화 화면이 열립니다. 길게 누르면 수정·삭제.\n\n■ 서류 업무 자동 알림\n- 업무 요청에서 종류가 '서류 접수' 또는 '카드사 서류'이면 '서류접수' 채팅방에 담당자·거래처·기한이 자동으로 올라갑니다.\n\n■ 폰 알림\n- 내게 새 업무가 요청되거나, 새 채팅·공지·입금 요청이 오면 폰 알림이 떠요. 처음 한 번 알림 허용을 눌러 주세요. 앱이 완전히 종료된 뒤에는 알림이 오지 않을 수 있습니다(완전한 푸시는 서버 요금제 전환 후 지원).\n\n■ 데이터 백업 (관리자)\n- 전체 → 데이터 백업 내려받기: 업무·가맹점·계약·재고·채팅 글 등 전체 자료를 파일로 만들어 드라이브 등에 보관할 수 있어요. 정기적으로(예: 매주) 받아 두세요."},
             {"자료실", "양식·계약서·안내문 같은 파일을 올려 두고 직원 모두가 내려받아 쓰는 게시판이에요.\n\n■ 찾아가기\n- 전체 탭 → 회사 → 자료실\n\n■ 자료 올리기\n- 오른쪽 아래 + 를 누르고 제목(필수)·설명·분류를 적어요.\n- '📎 파일 추가'로 파일을 고르면 바로 올라가고, 한 글에 5개까지 붙일 수 있어요. 사진은 자동으로 줄여서 올라가고, 문서·엑셀·PDF 같은 파일은 3MB까지입니다.\n- 파일이 다 올라간 뒤(올리는 중 표시가 사라지면) '올리기'를 누르세요.\n- 분류: 양식·서식 / 계약·약정 / 가맹점 안내 / 교육·매뉴얼 / 사진·홍보물 / 기타\n\n■ 찾기·내려받기\n- 위쪽 분류 버튼으로 걸러 보고, 검색창에 제목·설명·파일 이름(초성도 가능)을 적어 찾아요.\n- 글을 누르면 설명과 첨부 파일이 나와요. 파일을 누르면 내려받아 열리고, 열린 앱에서 저장·공유할 수 있어요.\n\n■ 고치기·지우기\n- 올린 사람과 최고관리자만 수정·삭제할 수 있어요. 삭제해도 서버에는 기록이 남습니다.\n- 새 자료가 올라오면 다른 직원 폰에 알림이 떠요(앱이 켜져 있을 때).\n\n※ 개인정보가 든 파일(신분증 사본 등)은 올리지 마세요. 모든 직원이 볼 수 있습니다."},
             {"가맹점 보호·복원 (최고관리자)", "가맹점 정보가 사라지지 않도록 여러 겹으로 지켜요.\n\n■ 지켜 주는 장치\n1) 서버에서는 어떤 자료도 지울 수 없게 막아 두었어요.\n2) 가맹점 삭제는 목록에서 '숨김' 처리일 뿐이라 언제든 복원할 수 있어요.\n3) 가맹점을 열면 '🕘 변경 이력 · 되돌리기'가 있어요. 누가 언제 무엇을 바꿨는지 보고, 눌러서 그 시점으로 되돌립니다.\n4) 엑셀 가져오기 직전, 복원 직전, 이력 되돌리기 직전에 현재 상태를 자동 저장해요('되돌리기 기준점'). 저장에 실패하면 작업을 시작하지 않습니다.\n5) 최고관리자 폰은 앱을 열면 하루 한 번 전체 자료를 14일치까지 자동 백업해요.\n6) 전체 → '데이터 백업 내려받기'로 만든 파일은 드라이브·카톡 등 폰 밖에 따로 보관하세요.\n\n■ 복원하는 방법\n- 가맹점 화면 위쪽 '🛡 가맹점 보호·복원' (또는 전체 → 관리자 → 가맹점 보호·복원)\n- '삭제한 가맹점 복원': 숨긴 가맹점 목록에서 눌러 복원\n- '백업·되돌리기 목록에서 복원': 자동백업이나 되돌리기 기준점을 고르면 지금과 비교해 미리 보여 주고, 확인하면 복원해요. 가져오기를 취소하고 싶으면 '가져오기전' 기준점을 고르세요(그 뒤 새로 생긴 가맹점은 숨김 처리됩니다).\n- '백업 파일을 직접 골라 복원': 내려받아 둔 백업(.json)을 골라요.\n- 복원할 때도 직전 상태가 자동 저장되니, 잘못 복원해도 다시 돌릴 수 있어요.\n\n※ 폰 안 백업은 이 폰을 바꾸거나 앱을 지우면 함께 사라져요. 중요한 시점(큰 가져오기 전)에는 '데이터 백업 내려받기'로 파일을 따로 받아 두세요. 카드(Blaze) 등록 후에는 서버 자동 백업도 켜겠습니다."},
@@ -5686,7 +5696,7 @@ public class MainActivity extends Activity {
             {"전체 › 내 계정·설정", "프로필 · 버전", "알림 소리·음성"},
             {"전체 › 업무", "물품요청 (본사 ← 지사)"},
             {"전체 › 가맹점", "가맹점", "단체 문자 (가맹점)", "가맹점 일괄 가져오기 (엑셀·CSV)"},
-            {"전체 › 계약·재고", "신규 계약 올리기", "계약 관리 · 설치 완료 · 만료 알림", "입금 확인 · 비상연락망 · 알림 · 백업", "재고"},
+            {"전체 › 계약·재고", "신규 계약 올리기", "계약 관리 · 설치 완료 · 만료 알림", "입금 확인 · 비상연락망 · 알림 · 백업", "재고", "재고 일괄 등록 (엑셀)"},
             {"전체 › 실적 · 보고", "실적 (권한자 전용)", "일일보고 · 실적 보고서"},
             {"전체 › 회사", "자료실", "공지사항 · 직원과 권한"},
             {"전체 › 관리자", "가맹점 보호·복원 (최고관리자)"},
@@ -5842,6 +5852,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.20", "2026-10-25", "• 가맹점 일괄 가져오기에 업로드 양식(.xlsx) 받기 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요\n• 재고 일괄 등록(엑셀, 관리자): 상품코드/상품명·시리얼·수량·현재위치 — 본사·광주지사는 우리 재고, 가맹점 상호는 이미 설치된 장비로 기록만(재고 수 제외)\n• (PC 웹에는 위쪽 메뉴 끝에 메모가 생겼어요)"},
             {"0.0.19", "2026-10-25", "• 상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 계약·재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요\n• 재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색\n• 목록에 없는 상품은 관리자가 입고·요청할 때 새 코드로 바로 등록돼요"},
             {"0.0.18", "2026-10-25", "• 전체 → 내 계정·설정 → '알림 및 소리 설정' 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기, 화면 꺼져도 알림 받기도 여기서"},
             {"0.0.17", "2026-10-25", "• 아래 탭의 안 본 개수를 빨간 동그라미 숫자로 (업무·채팅·☰), 전체 메뉴·채팅 목록도 같은 모양\n• 아래 탭 '전체'를 ☰ 로\n• 업무 요청 '가맹점 요청사항' 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)\n• 직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)"},
@@ -6360,6 +6371,16 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     if (raw == null) Ui.toast(this, "파일을 읽지 못했어요. (8MB 이하만 가능)");
                     else previewImport(raw, Media.name(cr, u));
+                });
+            }).start();
+        } else if (req == REQ_SIMPORT) {
+            final Uri u = data.getData();
+            if (u == null) return;
+            new Thread(() -> {
+                final byte[] raw = Media.readAll(cr, u, 8 * 1024 * 1024);
+                runOnUiThread(() -> {
+                    if (raw == null) Ui.toast(this, "파일을 읽지 못했어요. (8MB 이하만 가능)");
+                    else previewStockImport(raw, Media.name(cr, u));
                 });
             }).start();
         } else if (req == REQ_LIB) {
@@ -7049,7 +7070,7 @@ public class MainActivity extends Activity {
         for (int i = hr + 1; i < rows.size(); i++) {
             List<String> r = rows.get(i);
             String nm = MerchantImport.cell(r, map, "name");
-            if (nm.isEmpty()) {
+            if (nm.isEmpty() || MerchantImport.isSample(nm) || (!r.isEmpty() && MerchantImport.isSample(r.get(0)))) {
                 skip++;
                 continue;
             }
@@ -7062,7 +7083,7 @@ public class MainActivity extends Activity {
         for (java.util.Map.Entry<String, Integer> en : map.entrySet()) found.append(en.getKey()).append(" ← ").append(rows.get(hr).get(en.getValue())).append("\n");
         final int fa = add, fu = upd;
         new Dlg(this).setTitle("가져오기 미리보기")
-                .setMessage("새로 등록 " + add + "곳\n기존 가맹점 갱신 " + upd + "곳\n건너뜀(상호 없음) " + skip + "곳\n\n[읽은 열]\n" + found
+                .setMessage("새로 등록 " + add + "곳\n기존 가맹점 갱신 " + upd + "곳\n건너뜀(상호 없음·예시 줄) " + skip + "곳\n\n[읽은 열]\n" + found
                         + "\n※ 같은 거래처코드·사업자번호·상호가 있으면 새로 만들지 않고, 파일에 값이 있는 칸만 덮어씁니다(빈 칸은 그대로 둠).\n※ 가져오기 직전 상태를 자동 저장해 두므로 언제든 되돌릴 수 있어요.")
                 .setNegativeButton("취소", null)
                 .setPositiveButton("가져오기", (d, w) -> applyImport(data, map, fa, fu)).show();
@@ -7089,6 +7110,9 @@ public class MainActivity extends Activity {
                 put(m, "mobile", MerchantImport.cell(r, map, "mobile"), false);
                 if (m.optString("phone").isEmpty() && !m.optString("mobile").isEmpty()) m.put("phone", m.optString("mobile"));
                 put(m, "addr", MerchantImport.cell(r, map, "addr"), false);
+                put(m, "van", MerchantImport.cell(r, map, "van"), false);
+                put(m, "cstart", MerchantImport.dateCell(MerchantImport.cell(r, map, "cstart")), false);
+                put(m, "cend", MerchantImport.dateCell(MerchantImport.cell(r, map, "cend")), false);
                 int g = MerchantImport.gradeOf(MerchantImport.cell(r, map, "grade"));
                 if (g >= 0) m.put("grade", g);
                 else if (isNew) m.put("grade", 5);
@@ -7107,6 +7131,211 @@ public class MainActivity extends Activity {
 
     private static void put(JSONObject m, String k, String v, boolean force) throws Exception {
         if (!v.isEmpty() || force) m.put(k, v);
+    }
+
+    // ======================= 업로드 양식(.xlsx) · 재고 일괄 등록 (웹 0.0.31 과 같은 규칙) =======================
+    /** 양식 파일을 만들어 보내기 창(카톡 나에게·드라이브·메일)으로 넘긴다 */
+    private void shareXlsx(String name, byte[] data) {
+        try {
+            File out = new File(Media.dir(this), name);
+            Media.write(out, data);
+            Uri u = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".files", out);
+            Intent it = new Intent(Intent.ACTION_SEND).setType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet").putExtra(Intent.EXTRA_STREAM, u).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(it, "양식 파일 보내기 (PC로 보내서 엑셀로 채우기)"));
+        } catch (Exception e) {
+            Ui.toast(this, "양식 파일을 만들 수 없어요.");
+        }
+    }
+
+    private void shareMerchantTemplate() {
+        try {
+            shareXlsx("나인패밀리_가맹점_업로드양식.xlsx", MerchantImport.xlsx(MerchantImport.M_TPL_NOTES, MerchantImport.M_TPL_HEAD, MerchantImport.M_TPL_ROWS, MerchantImport.M_TPL_W));
+        } catch (Exception e) {
+            Ui.toast(this, "양식 파일을 만들 수 없어요.");
+        }
+    }
+
+    private void shareStockTemplate() {
+        try {
+            shareXlsx("나인패밀리_재고_업로드양식.xlsx", MerchantImport.xlsx(MerchantImport.S_TPL_NOTES, MerchantImport.S_TPL_HEAD, MerchantImport.S_TPL_ROWS, MerchantImport.S_TPL_W));
+        } catch (Exception e) {
+            Ui.toast(this, "양식 파일을 만들 수 없어요.");
+        }
+    }
+
+    private static final int REQ_SIMPORT = 109;
+
+    private void showStockImport() {
+        if (!prodAdmin()) {
+            Ui.toast(this, "재고 일괄 등록은 관리자만 할 수 있어요 (상품코드를 새로 만들 수 있어서).");
+            return;
+        }
+        LinearLayout f = form();
+        f.addView(Ui.text(this, "처음 재고를 옮길 때 써요. 양식을 받아 상품코드(또는 상품명)·시리얼·수량·현재위치를 채워 올려 주세요.\n· 현재위치가 본사·광주지사면 우리 재고로 잡혀요.\n· 가맹점 상호면 이미 설치된 장비로 기록만 하고 재고 수에는 넣지 않아요.\n· 앞으로 가맹점에 나가는 것은 계약·출고로 처리해요.", 13, Ui.GRAY, false));
+        final AlertDialog[] dh = new AlertDialog[1];
+        Button tpl = Ui.button(this, "📄 업로드 양식 받기 (.xlsx)", Ui.TINT, Ui.DEEP);
+        tpl.setOnClickListener(v -> shareStockTemplate());
+        f.addView(tpl, Ui.lp(this, 10));
+        Button pick = Ui.button(this, "파일 고르기", Ui.GOLD, Ui.DARK);
+        pick.setOnClickListener(v -> {
+            if (dh[0] != null) dh[0].dismiss();
+            Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+            i.setType("*/*");
+            i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv", "text/comma-separated-values", "text/plain", "application/vnd.ms-excel", "application/octet-stream"});
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(Intent.createChooser(i, "재고 엑셀·CSV 고르기"), REQ_SIMPORT);
+        });
+        f.addView(pick, Ui.lp(this, 8));
+        dh[0] = new Dlg(this).setTitle("재고 일괄 등록 (엑셀)").setView(f).setNegativeButton("닫기", null).show();
+    }
+
+    /** 한 줄 해석 결과 */
+    private static final class SRow {
+        int line, qty;
+        boolean ok;
+        String why = "", serial = "", newName = "", loc = "", date = "", memo = "";
+        JSONObject prod, mer;
+    }
+
+    private void previewStockImport(byte[] raw, String fname) {
+        final List<List<String>> rows;
+        try {
+            rows = MerchantImport.read(raw, fname);
+        } catch (Exception e) {
+            new Dlg(this).setTitle("읽을 수 없어요").setMessage(e.getMessage() == null ? "파일 형식을 확인해 주세요." : e.getMessage()).setPositiveButton("확인", null).show();
+            return;
+        }
+        seedProducts(); // 기존 재고 이름에 코드가 먼저 붙어 있어야 파일의 상품코드와 맞춰진다
+        Object[] h = MerchantImport.findStockHeader(rows);
+        if (h == null) {
+            new Dlg(this).setTitle("머리글을 못 찾았어요").setMessage("머리글에 '상품명'(또는 상품코드)과 '현재위치' 열이 있어야 해요. 양식을 받아 써 주세요.").setPositiveButton("확인", null).show();
+            return;
+        }
+        final int hr = (Integer) h[0];
+        @SuppressWarnings("unchecked") final java.util.Map<String, Integer> map = (java.util.Map<String, Integer>) h[1];
+        final List<SRow> ok = new ArrayList<>();
+        List<SRow> bad = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        List<JSONObject> mers = store.list(store.arr("merchants"));
+        for (int i = hr + 1; i < rows.size(); i++) {
+            List<String> r = rows.get(i);
+            String code = MerchantImport.cell(r, map, "code"), name = MerchantImport.cell(r, map, "name"), serial = MerchantImport.cell(r, map, "serial");
+            String where = MerchantImport.cell(r, map, "where").replaceAll("\\s+", " ");
+            if (MerchantImport.isSample(code) || MerchantImport.isSample(name) || (!r.isEmpty() && MerchantImport.isSample(r.get(0)))) continue;
+            if (code.isEmpty() && name.isEmpty() && serial.isEmpty() && where.isEmpty()) continue;
+            SRow o = new SRow();
+            o.line = i + 1;
+            o.serial = serial;
+            String qs = MerchantImport.cell(r, map, "qty").replaceAll("[^0-9]", "");
+            o.qty = !serial.isEmpty() ? 1 : qs.isEmpty() ? (MerchantImport.cell(r, map, "qty").isEmpty() ? 1 : 0) : Integer.parseInt(qs.length() > 7 ? qs.substring(0, 7) : qs);
+            o.memo = MerchantImport.cell(r, map, "memo");
+            o.date = MerchantImport.dateCell(MerchantImport.cell(r, map, "date"));
+            o.prod = !code.isEmpty() ? prodFind(code) : null;
+            if (o.prod == null && !name.isEmpty()) o.prod = prodFind(name);
+            if (o.prod == null) {
+                if (name.isEmpty()) o.why = "상품코드 " + code + "가 상품 목록에 없고 상품명도 비었어요";
+                else o.newName = name;
+            }
+            if (o.why.isEmpty() && serial.isEmpty() && o.qty < 1) o.why = "시리얼도 수량도 없어요";
+            if (o.why.isEmpty() && !serial.isEmpty()) {
+                String k = serial.toLowerCase(Locale.ROOT);
+                if (!seen.add(k)) o.why = "파일 안에 같은 시리얼이 또 있어요";
+                else for (JSONObject x : store.list(store.arr("stock")))
+                    if (!"설치완료".equals(x.optString("status")) && x.optString("serial").trim().equalsIgnoreCase(serial)) o.why = "이미 재고에 있는 시리얼이에요";
+            }
+            if (o.why.isEmpty() && where.isEmpty()) o.why = "현재위치가 비었어요";
+            if (o.why.isEmpty()) {
+                for (String l : LOCS) if (l.equals(where) || l.replace("지사", "").equals(where.replace("지사", ""))) o.loc = l;
+                if (o.loc.isEmpty()) {
+                    String bd = MerchantImport.cell(r, map, "bizno").replaceAll("[^0-9]", "");
+                    if (bd.length() == 10) for (JSONObject m : mers) if (bd.equals(m.optString("bizno").replaceAll("[^0-9]", ""))) o.mer = m;
+                    if (o.mer == null) for (JSONObject m : mers) if (m.optString("name").trim().equals(where)) o.mer = m;
+                    if (o.mer == null) o.why = "가맹점 '" + where + "'을(를) 찾지 못했어요 (먼저 가맹점을 등록해 주세요)";
+                }
+            }
+            o.ok = o.why.isEmpty();
+            (o.ok ? ok : bad).add(o);
+        }
+        int inQ = 0, siteQ = 0;
+        java.util.Map<String, Integer> byLoc = new java.util.LinkedHashMap<>();
+        for (String l : LOCS) byLoc.put(l, 0);
+        java.util.Set<Integer> sites = new java.util.HashSet<>();
+        java.util.TreeSet<String> newNames = new java.util.TreeSet<>();
+        for (SRow o : ok) {
+            if (!o.newName.isEmpty()) newNames.add(o.newName);
+            if (o.mer == null) {
+                inQ += o.qty;
+                byLoc.put(o.loc, byLoc.get(o.loc) + o.qty);
+            } else {
+                siteQ += o.qty;
+                sites.add(o.mer.optInt("id"));
+            }
+        }
+        StringBuilder msg = new StringBuilder("우리 재고로 입고: " + inQ + "개 (");
+        int k0 = 0;
+        for (java.util.Map.Entry<String, Integer> en : byLoc.entrySet()) msg.append(k0++ > 0 ? " · " : "").append(en.getKey()).append(" ").append(en.getValue());
+        msg.append(")\n가맹점 설치 장비(재고 수 제외): ").append(siteQ).append("대 · ").append(sites.size()).append("곳");
+        if (!newNames.isEmpty()) msg.append("\n새로 만들 상품코드: ").append(newNames.size()).append("개");
+        if (!bad.isEmpty()) {
+            msg.append("\n\n⚠ 올리지 않는 줄 ").append(bad.size()).append("개:");
+            for (int i = 0; i < Math.min(12, bad.size()); i++) msg.append("\n").append(bad.get(i).line).append("번째 줄 — ").append(bad.get(i).why);
+            if (bad.size() > 12) msg.append("\n…");
+        }
+        if (ok.isEmpty()) {
+            new Dlg(this).setTitle("올릴 줄이 없어요").setMessage(msg.toString()).setPositiveButton("확인", null).show();
+            return;
+        }
+        new Dlg(this).setTitle("재고 일괄 등록 미리보기").setMessage(msg.toString()).setNegativeButton("취소", null)
+                .setPositiveButton(ok.size() + "줄 올리기", (d, w) -> applyStockImport(ok, newNames)).show();
+    }
+
+    private void applyStockImport(List<SRow> ok, java.util.Set<String> newNames) {
+        java.util.Map<String, JSONObject> made = new java.util.HashMap<>();
+        if (!newNames.isEmpty()) {
+            List<JSONObject> ps = products();
+            for (String n : newNames) {
+                JSONObject ex = null;
+                for (JSONObject p : ps) if (p.optString("name").equals(n)) ex = p;
+                if (ex == null) {
+                    ex = new JSONObject();
+                    try {
+                        ex.put("code", nextProdCode(ps)).put("name", n);
+                    } catch (Exception ignored) {
+                    }
+                    ps.add(ex);
+                }
+                made.put(n, ex);
+            }
+            saveProducts(ps);
+        }
+        try {
+            for (SRow o : ok) {
+                JSONObject pr = o.prod != null ? o.prod : made.get(o.newName);
+                String nm = pr.optString("name"), pc = pr.optString("code"), memo = "엑셀 일괄 등록" + (o.memo.isEmpty() ? "" : " · " + o.memo);
+                if (o.mer == null) {
+                    JSONObject same = null;
+                    if (o.serial.isEmpty()) for (JSONObject x : inStock()) if (x.optString("serial").isEmpty() && x.optString("model").trim().equals(nm) && locOf(x).equals(o.loc)) same = x;
+                    if (same != null) {
+                        store.slog(same, "입고", o.qty, memo);
+                        same.put("qty", same.optInt("qty", 1) + o.qty).put("code", pc);
+                    } else {
+                        JSONObject r = store.create("stock");
+                        r.put("log", new JSONArray()).put("model", nm).put("code", pc).put("serial", o.serial).put("qty", o.qty).put("safe", 0).put("status", "재고").put("loc", o.loc).put("deleted", false);
+                        store.slog(r, "입고", o.qty, memo);
+                    }
+                } else { // 이미 가맹점에 설치된 장비: 기록만 (재고 수 제외)
+                    JSONObject r = store.create("stock");
+                    String mn = o.mer.optString("name");
+                    r.put("model", nm).put("code", pc).put("serial", o.serial).put("qty", o.qty).put("safe", 0).put("status", "설치완료").put("gone", "기존 설치")
+                            .put("goneAt", o.date.isEmpty() ? store.now().substring(0, 10) : o.date).put("merchant", o.mer.optInt("id")).put("mname", mn).put("deleted", false)
+                            .put("log", new JSONArray().put(new JSONObject().put("d", store.now()).put("by", myId()).put("k", "기존 설치").put("q", 0).put("m", mn + (o.date.isEmpty() ? "" : " · 설치 " + o.date) + " · " + memo)));
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        store.save();
+        Ui.toast(this, "재고 " + ok.size() + "줄을 올렸어요.");
+        render();
     }
 
 

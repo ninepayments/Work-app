@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.30';
+const VERSION = '웹 0.0.31';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -296,7 +296,7 @@ async function logout() {
 // 휴대폰(아이폰)은 안드로이드 앱과 같은 화면: 아래 탭 5개(업무·프로젝트·채팅·일정·전체), 나머지 기능은 '전체' 탭 안에 있다.
 // PC(넓은 화면)는 토스포스 방식: 위쪽 가로줄에 주 메뉴, 왼쪽 위 ☰ 를 누르면 영역별 전체 메뉴가 펼쳐진다.
 const NAVPHONE = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['chat', '채팅', 'chat', ''], ['calendar', '일정', 'calendar', ''], ['all', '☰', 'all', '']];
-const NAVPC = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['chat', '채팅', 'chat', ''], ['calendar', '일정', 'calendar', ''], ['merchants', '가맹점', 'all', 'merchants'], ['logs', '응대 기록', 'all', 'logs']];
+const NAVPC = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['chat', '채팅', 'chat', ''], ['calendar', '일정', 'calendar', ''], ['merchants', '가맹점', 'all', 'merchants'], ['logs', '응대 기록', 'all', 'logs'], ['memo', '메모', 'all', 'memo']];
 const isWide = () => window.innerWidth >= 900;
 function newTaskCount() { return list('tasks').filter(t => t.assignee === S.uid && t.status === '지시됨').length + list('tasks').filter(t => t.preq && t.preq.stage === '발송함' && t.creator === S.uid).length; } // 물품요청이 발송되면 요청한 사람에게 '입고 확인' 알림
 function bodyHTML() {
@@ -350,6 +350,7 @@ function viewBody(k) {
     case 'stock': return viewStock();
     case 'stocklog': return viewStockLog();
     case 'products': return viewProducts();
+    case 'memo': return viewMemo();
     case 'preqs': return viewPreqs();
     case 'contracts': return viewContracts();
     case 'deposit': return viewDeposits();
@@ -1094,6 +1095,27 @@ function viewProducts() {
     '<input id="prq" data-q="pq" placeholder="🔍 상품코드·상품명 (초성)" value="' + esc(S.pq || '') + '" autocomplete="off">' +
     '<div class="qres" data-for="pq">' + (ps.length ? ps.map(p => '<div class="card"' + (prodAdmin() ? ' data-act="prodEdit" data-arg="' + esc(p.code) + '"' : '') + '><div class="row"><span class="chip">' + esc(p.code) + '</span><div class="grow t1">' + esc(p.name) + '</div><span class="sub" style="margin:0">재고 ' + (cnt[p.name] || 0) + '</span></div></div>').join('') : '<div class="empty">등록된 상품이 없어요.</div>') + '</div>';
 }
+// ---------- 메모 (PC 위쪽 주 메뉴 맨 끝) — 업무 중 적어 둘 것. 내 profiles 문서의 memos 에 저장(다른 PC에서도 보임, 다른 직원 화면엔 안 보임) ----------
+const memos = () => ((myProf() || {}).memos || []).slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || (b.u || 0) - (a.u || 0));
+function saveMemos(ms) { const p = myProf() || {id: S.uid}; p.memos = ms; put('profiles', p); }
+function viewMemo() {
+  const ms = memos().filter(m => kmatch(m.t || '', S.memoQ || ''));
+  const fmt = u => { const d = new Date(u || 0); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+  return '<h1>메모</h1><div class="sub">업무 중에 적어 둘 것을 메모해요. 쓰는 대로 저장돼요(내 계정에만 보여요).</div>' +
+    '<div class="memonew"><textarea id="memonew" placeholder="새 메모를 적고 ‘추가’ (Ctrl+Enter)"></textarea><button class="btn gold" data-act="memoAdd">＋ 추가</button></div>' +
+    '<input id="memoq" data-q="memoQ" placeholder="🔍 메모 검색 (초성)" value="' + esc(S.memoQ || '') + '" autocomplete="off">' +
+    '<div class="qres memogrid" data-for="memoQ">' + (ms.length ? ms.map(m => '<div class="memo' + (m.pin ? ' pin' : '') + '"><textarea id="memo_' + m.id + '" data-memo="' + m.id + '">' + esc(m.t || '') + '</textarea><div class="memobar"><span>' + fmt(m.u) + '</span><span class="grow"></span><button data-act="memoPin" data-arg="' + m.id + '" title="맨 위에 고정">' + (m.pin ? '📌 고정됨' : '📌') + '</button><button data-act="memoDel" data-arg="' + m.id + '" title="삭제">🗑 삭제</button></div></div>').join('') : '<div class="empty">메모가 없어요.</div>') + '</div>';
+}
+ACT.memoAdd = () => { const el = $('#memonew'), t = el ? el.value.trim() : ''; if (!t) return toast('메모 내용을 적어 주세요.'); el.value = ''; saveMemos(((myProf() || {}).memos || []).concat({id: nextId(), t, u: Date.now()})); render(); toast('메모를 추가했어요.'); };
+ACT.memoDel = id => askConfirm('메모 삭제', '이 메모를 지울까요?', '삭제', () => { saveMemos(((myProf() || {}).memos || []).filter(m => String(m.id) !== String(id))); render(); toast('삭제했어요.'); }, true);
+ACT.memoPin = id => { saveMemos(((myProf() || {}).memos || []).map(m => String(m.id) === String(id) ? Object.assign({}, m, {pin: !m.pin}) : m)); render(); };
+let memoTimer = 0;
+document.addEventListener('input', e => { // 고친 내용은 잠시 뒤 저절로 저장 (다시 그리지 않아서 쓰는 중에 커서가 안 튄다)
+  const id = e.target && e.target.dataset && e.target.dataset.memo; if (!id) return;
+  clearTimeout(memoTimer); const v = e.target.value;
+  memoTimer = setTimeout(() => { saveMemos(((myProf() || {}).memos || []).map(m => String(m.id) === id ? Object.assign({}, m, {t: v, u: Date.now()}) : m)); }, 700);
+});
+document.addEventListener('keydown', e => { if (e.target && e.target.id === 'memonew' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ACT.memoAdd(); } });
 ACT.prodEdit = code => {
   if (!prodAdmin()) return toast('상품 등록·수정은 관리자만 할 수 있어요.');
   const old = code ? products().find(p => p.code === code) : null;
@@ -1119,7 +1141,7 @@ function viewStock() {
   }
   return '<h1>재고</h1><div class="sub">입고·출고·수량 정정을 하면 이력이 남아요. 계약에서 장비를 고르면 ‘출고중’이 되고, 설치 완료하면 재고에서 빠집니다. 검색칸에 바코드 스캐너로 찍으면 그 장비가 바로 열려요.</div>' +
     '<div class="pills"><span class="sub" style="align-self:center;margin:0">보관지</span>' + ['', ...LOCS].map(l => '<button class="pill ' + ((S.sloc || '') === l ? 'on' : '') + '" data-act="sloc" data-arg="' + l + '">' + (l || '전체') + '</button>').join('') + '</div>' +
-    '<div class="stkacts"><button class="btn gold" data-act="newStock">＋ 입고</button><button class="btn tint" data-act="outStock">− 출고</button><button class="btn tint" data-act="adjStock">± 수량 정정</button><button class="btn" data-nav="all" data-sub="stocklog">이력</button></div>' + asset +
+    '<div class="stkacts"><button class="btn gold" data-act="newStock">＋ 입고</button><button class="btn tint" data-act="outStock">− 출고</button><button class="btn tint" data-act="adjStock">± 수량 정정</button><button class="btn" data-nav="all" data-sub="stocklog">이력</button></div>' + (prodAdmin() ? '<button class="btn full" data-act="importStock">📥 재고 일괄 등록 (엑셀)</button>' : '') + asset +
     '<div class="row" style="gap:8px"><input id="sq" data-q="sq" placeholder="🔍 상품코드·상품명·시리얼 (초성)" value="' + esc(S.sq || '') + '" autocomplete="off"><button class="btn tint" data-act="scanInto" data-arg="sq" style="flex:none" aria-label="카메라로 바코드 찍기">📷 바코드</button></div>' +
     '<div class="qres" data-for="sq">' + stockGroups() + '</div>' + preqSection();
 }
@@ -1258,7 +1280,7 @@ function stockLogList() {
   const f = S.slogF || '전체', q = S.slq || '';
   const ls = stockMoves().filter(x => (f === '전체' || x.k.endsWith(f)) && kmatch((x.r.model || '') + ' ' + (x.r.serial || '') + ' ' + (x.m || '') + ' ' + (x.by ? uname(x.by) : ''), q));
   if (!ls.length) return '<div class="empty">이력이 없어요.</div>';
-  const col = k => k === '입고' ? 'var(--green)' : k === '정정' ? 'var(--amber)' : k === '이동' ? 'var(--gray)' : 'var(--red)';
+  const col = k => k === '입고' ? 'var(--green)' : k === '정정' ? 'var(--amber)' : k === '이동' || k === '기존 설치' ? 'var(--gray)' : 'var(--red)';
   return '<div class="sub" style="font-weight:700">' + ls.length + '건</div>' + ls.slice(0, 300).map(x => '<div class="mv" data-act="editStock" data-arg="' + x.r.id + '"><span class="mvd">' + esc((x.d || '').slice(2, 16) || '예전 자료') + '</span><span class="chip" style="color:' + col(x.k) + ';background:var(--field)">' + esc(x.k) + '</span>' +
     '<span class="grow"><b>' + esc(withCode(x.r.model)) + '</b>' + (x.r.serial ? ' / ' + esc(x.r.serial) : '') + (x.m ? '<small>' + esc(x.m) + '</small>' : '') + '</span><b class="mvq" style="color:' + col(x.k) + '">' + (x.q > 0 ? '+' : '') + x.q + '</b><span class="mvb">' + esc(x.by ? uname(x.by) : '') + '</span></div>').join('');
 }
@@ -1285,6 +1307,84 @@ ACT.editStock = id => {
   }, '저장');
   if ($('#f_out')) $('#f_out').onclick = () => { closeModal(); setTimeout(() => ACT.outStock(r.id), 0); };
   $('#f_del').onclick = () => askConfirm('이 재고를 지울까요?', (r.model || '') + ' ' + (r.serial || '') + '\n잘못 넣은 것을 지울 때만 쓰세요. 실제로 나간 것은 ‘출고’, 수가 안 맞으면 ‘수량 정정’을 써야 이력이 남아요.', '지우기', () => { r.deleted = true; put('stock', r); render(); toast('삭제했어요.'); }, true);
+};
+
+// ---------- 재고 일괄 등록 (엑셀) — 처음 옮길 때: 상품코드/상품명 · 시리얼 · 수량 · 현재위치(본사|광주지사|가맹점 상호) ----------
+// 본사·광주지사 = 우리 재고(재고 수에 들어감). 가맹점 = 이미 설치된 장비 → 기록만 남기고 재고 수에는 넣지 않는다(status 설치완료 + gone '기존 설치', merchant).
+// 앞으로 가맹점에 나가는 것은 계약·출고로 처리한다.
+const S_TPL_HEAD = ['상품코드', '상품명', '시리얼', '수량', '현재위치', '사업자번호', '설치일', '메모'];
+ACT.sTemplate = () => saveBytes('나인패밀리_재고_업로드양식.xlsx', xlsxOf([
+  '■ 재고 일괄 등록 양식 — 상품코드나 상품명 중 하나는 꼭 적어요(상품 목록에 없으면 새 상품코드로 등록돼요). 시리얼이 있으면 한 줄에 한 대, 없으면 수량을 적어요.',
+  '■ 현재위치: ‘본사’ 또는 ‘광주지사’ → 우리 재고로 잡혀요 / 가맹점 상호 → 이미 설치된 장비로 기록만 하고 재고 수에는 넣지 않아요(가맹점이 앱에 등록돼 있어야 해요, 사업자번호를 적으면 더 정확해요).',
+  '■ 설치일: 가맹점에 설치된 날(선택, 2026-10-01 처럼) / ‘(예시)’로 시작하는 줄은 올릴 때 건너뛰어요.'],
+  S_TPL_HEAD, [['(예시) P0001', '토스 포스 T2', 'T2-0001', '1', '본사', '', '', ''], ['(예시)', '영수증 용지', '', '30', '광주지사', '', '', '박스 단위'], ['(예시)', '토스 포스 T2', 'T2-0009', '1', '삼영푸드', '123-45-67890', '2025-03-02', '']],
+  [12, 22, 18, 8, 16, 16, 12, 20]), XLSX_MIME);
+function sFieldOf(h) {
+  h = normH(h); if (!h) return null;
+  if (h.includes('상품코드') || h.includes('품목코드') || h === '코드') return 'code';
+  if (h.includes('상품명') || h.includes('품목명') || h.includes('품명') || h.includes('모델') || h.includes('제품')) return 'name';
+  if (h.includes('시리얼') || h.includes('serial') || h.includes('일련번호') || h.includes('s/n') || h === 'sn') return 'serial';
+  if (h.includes('수량')) return 'qty';
+  if (h.includes('위치') || h.includes('보관') || h.includes('가맹점') || h.includes('설치처') || h.includes('거래처')) return 'where';
+  if (h.includes('사업자')) return 'bizno';
+  if (h.includes('설치일') || h.includes('날짜')) return 'date';
+  if (h.includes('메모') || h.includes('비고')) return 'memo';
+  return null;
+}
+function sHeader(rows) { for (let i = 0; i < Math.min(rows.length, 15); i++) { const m = {}; rows[i].forEach((c, j) => { const f = sFieldOf(c); if (f && !(f in m)) m[f] = j; }); if (('name' in m || 'code' in m) && 'where' in m) return [i, m]; } return null; }
+// 한 줄을 해석한다 → {ok, why, kind: 'stock'|'site', prod:{code,name}|newName, serial, qty, loc, mer, date, memo}
+function sPlanRow(r, map, seen) {
+  const code = cellOf(r, map, 'code'), name = cellOf(r, map, 'name'), serial = cellOf(r, map, 'serial'), where = cellOf(r, map, 'where').replace(/\s+/g, ' ');
+  if (isSample(code) || isSample(name) || isSample(r[0])) return {skip: true};
+  if (!code && !name && !serial && !where) return {skip: true};
+  const o = {serial, qty: serial ? 1 : Math.max(0, numOf(cellOf(r, map, 'qty')) || (cellOf(r, map, 'qty') ? 0 : 1)), memo: cellOf(r, map, 'memo'), date: dateCell(cellOf(r, map, 'date'))};
+  o.prod = (code && prodFind(code)) || (name && prodFind(name)) || null; if (!o.prod) { if (!name) return Object.assign(o, {why: '상품코드 ' + code + '가 상품 목록에 없고 상품명도 비었어요'}); o.newName = name; }
+  if (!serial && o.qty < 1) return Object.assign(o, {why: '시리얼도 수량도 없어요'});
+  if (serial) { const k = serial.toLowerCase(); if (seen.has(k)) return Object.assign(o, {why: '파일 안에 같은 시리얼이 또 있어요'}); seen.add(k); if (list('stock').some(x => x.status !== '설치완료' && (x.serial || '').trim().toLowerCase() === k)) return Object.assign(o, {why: '이미 재고에 있는 시리얼이에요'}); }
+  if (!where) return Object.assign(o, {why: '현재위치가 비었어요'});
+  const loc = LOCS.find(l => l === where || l.replace('지사', '') === where.replace('지사', ''));
+  if (loc) return Object.assign(o, {ok: true, kind: 'stock', loc});
+  const bd = cellOf(r, map, 'bizno').replace(/\D/g, ''); const all = list('merchants');
+  const mer = (bd.length === 10 && all.find(m => (m.bizno || '').replace(/\D/g, '') === bd)) || all.find(m => (m.name || '').trim() === where) || null;
+  if (!mer) return Object.assign(o, {why: '가맹점 ‘' + where + '’을(를) 찾지 못했어요 (먼저 가맹점을 등록해 주세요)'});
+  return Object.assign(o, {ok: true, kind: 'site', mer});
+}
+ACT.importStock = () => {
+  if (!prodAdmin()) return toast('재고 일괄 등록은 관리자만 할 수 있어요 (상품코드를 새로 만들 수 있어서).');
+  seedProducts(); // 기존 재고 이름에 코드가 먼저 붙어 있어야 파일의 상품코드와 맞춰진다
+  modal('<h3>재고 일괄 등록 (엑셀)</h3><div class="sub">처음 재고를 옮길 때 써요. 양식을 받아 상품코드(또는 상품명)·시리얼·수량·현재위치를 채워 올려 주세요.<br>· 현재위치가 <b>본사·광주지사</b>면 우리 재고로 잡혀요.<br>· <b>가맹점 상호</b>면 이미 설치된 장비로 기록만 하고 재고 수에는 넣지 않아요.<br>· 앞으로 가맹점에 나가는 것은 계약·출고로 처리해요.</div><button class="btn tint full" data-act="sTemplate">📄 업로드 양식 받기 (.xlsx)</button><button class="btn gold full" id="f_pick">파일 고르기</button><input type="file" id="f_imp" accept=".xlsx,.csv,.txt" hidden><button class="btn full" data-act="close">닫기</button>');
+  $('#f_pick').onclick = () => $('#f_imp').click();
+  $('#f_imp').onchange = async () => {
+    let rows; try { rows = await readTable($('#f_imp').files[0]); } catch (e) { return toast(e.message && e.message !== 'zip' ? e.message : '파일을 읽지 못했어요.'); }
+    const hd = sHeader(rows); if (!hd) return toast('머리글에서 ‘상품명’(또는 상품코드)과 ‘현재위치’ 열을 찾지 못했어요. 양식을 받아 써 주세요.');
+    const [hr, map] = hd, seen = new Set(), plan = [];
+    rows.slice(hr + 1).forEach((r, i) => { const p = sPlanRow(r, map, seen); if (!p.skip) { p.line = hr + 2 + i; plan.push(p); } });
+    const ok = plan.filter(p => p.ok), bad = plan.filter(p => !p.ok), newNames = [...new Set(ok.filter(p => p.newName).map(p => p.newName))];
+    const sum = k => ok.filter(p => p.kind === k).reduce((a, p) => a + p.qty, 0);
+    const byLoc = LOCS.map(l => l + ' ' + ok.filter(p => p.kind === 'stock' && p.loc === l).reduce((a, p) => a + p.qty, 0)).join(' · ');
+    const msg = '우리 재고로 입고: ' + sum('stock') + '개 (' + byLoc + ')\n가맹점 설치 장비(재고 수 제외): ' + sum('site') + '대 · ' + new Set(ok.filter(p => p.kind === 'site').map(p => p.mer.id)).size + '곳' +
+      (newNames.length ? '\n새로 만들 상품코드: ' + newNames.length + '개 (' + newNames.slice(0, 5).join(', ') + (newNames.length > 5 ? ' …' : '') + ')' : '') +
+      (bad.length ? '\n\n⚠ 올리지 않는 줄 ' + bad.length + '개:\n' + bad.slice(0, 12).map(p => p.line + '번째 줄 — ' + p.why).join('\n') + (bad.length > 12 ? '\n…' : '') : '') +
+      '\n\n[읽은 열]\n' + Object.entries(map).map(([f, c]) => f + ' ← ' + rows[hr][c]).join('\n');
+    if (!ok.length) return askConfirm('올릴 줄이 없어요', msg, '확인', () => {});
+    askConfirm('재고 일괄 등록 미리보기', msg, ok.length + '줄 올리기', () => {
+      let items = products(); const made = {};
+      newNames.forEach(n => { const ex = items.find(p => p.name === n); if (ex) { made[n] = ex; return; } const n0 = items.reduce((m, p) => { const k = /^P(\d+)$/i.exec(p.code); return k ? Math.max(m, Number(k[1])) : m; }, 0); const p = {code: 'P' + String(n0 + 1).padStart(4, '0'), name: n}; items = items.concat(p); made[n] = p; });
+      if (newNames.length) saveProducts(items);
+      ok.forEach(p => {
+        const pr = p.prod || made[p.newName], memo = '엑셀 일괄 등록' + (p.memo ? ' · ' + p.memo : '');
+        if (p.kind === 'stock') {
+          const same = !p.serial && inStock().find(r => !r.serial && (r.model || '').trim() === pr.name && locOf(r) === p.loc);
+          if (same) { slog(same, '입고', p.qty, memo); same.qty = (same.qty || 1) + p.qty; same.code = pr.code; put('stock', same); }
+          else { const r = create('stock', {model: pr.name, code: pr.code, serial: p.serial, qty: p.qty, safe: 0, status: '재고', loc: p.loc, deleted: false, log: []}); slog(r, '입고', p.qty, memo); put('stock', r); }
+        } else {
+          const r = create('stock', {model: pr.name, code: pr.code, serial: p.serial, qty: p.qty, safe: 0, status: '설치완료', gone: '기존 설치', goneAt: p.date || nowStr().slice(0, 10), merchant: p.mer.id, mname: p.mer.name, deleted: false, log: [{d: nowStr(), by: S.uid, k: '기존 설치', q: 0, m: p.mer.name + (p.date ? ' · 설치 ' + p.date : '') + ' · ' + memo}]});
+          put('stock', r);
+        }
+      });
+      render(); toast('재고 ' + ok.length + '줄을 올렸어요.');
+    });
+  };
 };
 
 // ---------- 보관지 · 물품요청 (지사 → 본사) ----------
@@ -1848,6 +1948,53 @@ ACT.mhistGo = i => {
   });
 };
 
+// ---------- 엑셀 양식(.xlsx) 만들기 — 안내 줄 몇 개 + 머리글 + 예시 줄. 가져올 때 '(예시)'로 시작하는 줄은 건너뛴다 ----------
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = u8 => { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function zipStore(files) { // [{name, text}] → 압축 없이 묶은 zip (Uint8Array)
+  const enc = new TextEncoder(), parts = [], cen = []; let off = 0;
+  files.forEach(f => {
+    const nm = enc.encode(f.name), d = enc.encode(f.text), crc = crc32(d), h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint32(14, crc, true); h.setUint32(18, d.length, true); h.setUint32(22, d.length, true); h.setUint16(26, nm.length, true);
+    const c = new DataView(new ArrayBuffer(46)); c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint32(16, crc, true); c.setUint32(20, d.length, true); c.setUint32(24, d.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+    parts.push(new Uint8Array(h.buffer), nm, d); cen.push(new Uint8Array(c.buffer), nm); off += 30 + nm.length + d.length;
+  });
+  const csz = cen.reduce((a, b) => a + b.length, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csz, true); e.setUint32(16, off, true);
+  const all = parts.concat(cen, [new Uint8Array(e.buffer)]), out = new Uint8Array(all.reduce((a, b) => a + b.length, 0)); let p2 = 0; all.forEach(b => { out.set(b, p2); p2 += b.length; }); return out;
+}
+function xlsxOf(notes, head, rows, widths) { // 글자 칸만 쓰는 단순 엑셀 (머리글은 굵게·노란 바탕)
+  const x = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const col = i => { let n = i + 1, s2 = ''; while (n) { s2 = String.fromCharCode(65 + (n - 1) % 26) + s2; n = Math.floor((n - 1) / 26); } return s2; };
+  let rn = 0; const row = (cells, st) => { rn++; return '<row r="' + rn + '">' + cells.map((v, i) => '<c r="' + col(i) + rn + '" t="inlineStr"' + (st ? ' s="' + st + '"' : '') + '><is><t xml:space="preserve">' + x(v) + '</t></is></c>').join('') + '</row>'; };
+  const body = notes.map(n => row([n], 2)).join('') + row([]) + row(head, 1) + rows.map(r => row(r)).join('');
+  const sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols>' + head.map((h, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + ((widths || [])[i] || 16) + '" customWidth="1"/>').join('') + '</cols><sheetData>' + body + '</sheetData></worksheet>';
+  const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="맑은 고딕"/></font><font><b/><sz val="11"/><name val="맑은 고딕"/></font><font><sz val="10"/><color rgb="FF8F6B14"/><name val="맑은 고딕"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF7EFD9"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  return zipStore([
+    {name: '[Content_Types].xml', text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'},
+    {name: '_rels/.rels', text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+    {name: 'xl/workbook.xml', text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="양식" sheetId="1" r:id="rId1"/></sheets></workbook>'},
+    {name: 'xl/_rels/workbook.xml.rels', text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'},
+    {name: 'xl/worksheets/sheet1.xml', text: sheet}, {name: 'xl/styles.xml', text: styles}]);
+}
+function saveBytes(name, u8, mime) { const u = URL.createObjectURL(new Blob([u8], {type: mime})); const a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 5000); }
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const isSample = v => /^\(?예시\)?/.test(String(v || '').trim());
+function dateCell(v) { // 엑셀 날짜(숫자 45678)·2026.10.1·20261001·2026-10-01 → 2026-10-01
+  v = String(v || '').trim(); if (!v) return '';
+  if (/^\d{5}(\.\d+)?$/.test(v)) { const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(Number(v)) * 86400000); return d.toISOString().slice(0, 10); }
+  let m = v.match(/^(\d{4})\D+(\d{1,2})\D+(\d{1,2})/); if (m) return m[1] + '-' + pad(Number(m[2])) + '-' + pad(Number(m[3]));
+  m = v.match(/^(\d{4})(\d{2})(\d{2})$/); if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  return '';
+}
+// 가맹점 양식: 이카운트 거래처 목록 머리글과 같은 이름을 써서, 이카운트 엑셀을 그대로 올려도 되고 이 양식에 붙여 넣어도 된다
+const M_TPL_HEAD = ['거래처코드', '거래처명(상호)', '사업자등록번호', '대표자명', '전화', '핸드폰', '주소', '등급', '업태', '종목', 'VAN사', '계약시작일', '계약종료일', '메모'];
+ACT.mTemplate = () => saveBytes('나인패밀리_가맹점_업로드양식.xlsx', xlsxOf([
+  '■ 가맹점 일괄 업로드 양식 — 이카운트 ‘거래처등록’ 목록을 엑셀로 내려받아 그대로 올려도 되고, 아래 머리글 밑에 붙여 넣어도 돼요.',
+  '■ 거래처명(상호)은 꼭 있어야 해요. 같은 거래처코드·사업자번호·상호가 이미 있으면 새로 만들지 않고 값이 있는 칸만 바꿔요(빈 칸은 그대로).',
+  '■ 등급: S·A·B·C·해지·신규·협력 / 날짜: 2026-10-01 처럼 / ‘(예시)’로 시작하는 줄은 올릴 때 건너뛰어요(지우지 않아도 돼요).'],
+  M_TPL_HEAD, [['(예시) E0001', '(예시) 삼영푸드', '123-45-67890', '홍길동', '062-123-4567', '010-1234-5678', '광주 서구 상무대로 1', 'A', '음식점', '한식', 'KIS정보통신', '2025-01-01', '2027-12-31', '포스 2대']],
+  [12, 22, 16, 10, 14, 14, 30, 8, 10, 10, 14, 12, 12, 20]), XLSX_MIME);
 // ---------- 가맹점 일괄 가져오기 (엑셀 .xlsx · CSV — 앱의 MerchantImport 와 같은 규칙) ----------
 async function unzip(buf) { // .xlsx 는 zip — 필요한 xml 만 꺼낸다 (압축 해제는 브라우저 기본 기능)
   const v = new DataView(buf), u8 = new Uint8Array(buf); let e = buf.byteLength - 22;
@@ -1906,6 +2053,7 @@ function fieldOf(h) {
   if (h.includes('핸드폰') || h.includes('휴대') || h.includes('모바일') || h.includes('mobile') || h === 'hp') return 'mobile';
   if (h.includes('전화') || h.includes('연락처') || h === 'tel') return 'phone';
   if (h.includes('주소')) return 'addr'; if (h.includes('등급')) return 'grade'; if (h.includes('업태')) return 'biztype'; if (h.includes('종목')) return 'bizitem';
+  if (h.includes('van')) return 'van'; if (h.includes('계약시작') || h.includes('시작일')) return 'cstart'; if (h.includes('계약종료') || h.includes('종료일') || h.includes('만료')) return 'cend';
   if (h.includes('메모') || h.includes('비고')) return 'memo';
   return null;
 }
@@ -1925,21 +2073,21 @@ function findMerchant(ec, bd, nm) {
 ACT.importM = () => {
   if (!canEditMerchant()) return toast('가맹점 등록·수정 권한이 있어야 가져올 수 있어요.');
   needLock(() => {
-    modal('<h3>가맹점 일괄 가져오기</h3><div class="sub">이카운트 등에서 거래처 목록을 엑셀(.xlsx) 또는 CSV로 내려받아 골라 주세요. 첫 줄(머리글)에 ‘거래처명’(또는 상호·가맹점명)이 있어야 해요. 사업자등록번호, 거래처코드, 대표자, 전화, 핸드폰, 주소, 등급, 업태, 종목, 메모 열이 있으면 함께 가져와요.</div><button class="btn gold full" id="f_pick">파일 고르기</button><input type="file" id="f_imp" accept=".xlsx,.csv,.txt" hidden><button class="btn full" data-act="close">닫기</button>');
+    modal('<h3>가맹점 일괄 가져오기</h3><div class="sub">이카운트 ‘거래처등록’ 목록을 엑셀(.xlsx) 또는 CSV로 내려받아 골라 주세요. 머리글에 ‘거래처명’(또는 상호·가맹점명)이 있어야 해요. 사업자등록번호, 거래처코드, 대표자, 전화, 핸드폰, 주소, 등급, 업태, 종목, VAN사, 계약시작일·종료일, 메모 열이 있으면 함께 가져와요. 직접 만들 때는 양식을 받아서 채워 주세요.</div><button class="btn tint full" data-act="mTemplate">📄 업로드 양식 받기 (.xlsx)</button><button class="btn gold full" id="f_pick">파일 고르기</button><input type="file" id="f_imp" accept=".xlsx,.csv,.txt" hidden><button class="btn full" data-act="close">닫기</button>');
     $('#f_pick').onclick = () => $('#f_imp').click();
     $('#f_imp').onchange = async () => {
       let rows; try { rows = await readTable($('#f_imp').files[0]); } catch (e) { return toast(e.message && e.message !== 'zip' ? e.message : '파일을 읽지 못했어요.'); }
       const hd = findHeader(rows); if (!hd) return toast('머리글에서 ‘거래처명’(상호) 열을 찾지 못했어요.');
       const [hr, map] = hd; const data = rows.slice(hr + 1); let add = 0, upd = 0, skip = 0;
-      data.forEach(r => { const nm = cellOf(r, map, 'name'); if (!nm) { skip++; return; } findMerchant(cellOf(r, map, 'ecode'), cellOf(r, map, 'bizno').replace(/\D/g, ''), nm) ? upd++ : add++; });
-      askConfirm('가져오기 미리보기', '새로 등록 ' + add + '곳\n기존 가맹점 갱신 ' + upd + '곳\n건너뜀(상호 없음) ' + skip + '곳\n\n[읽은 열]\n' + Object.entries(map).map(([f, c]) => f + ' ← ' + rows[hr][c]).join('\n') + '\n\n※ 같은 거래처코드·사업자번호·상호가 있으면 새로 만들지 않고, 파일에 값이 있는 칸만 덮어써요(빈 칸은 그대로).\n※ 가져오기 직전 상태는 이 PC에 기준점으로 저장돼요.', '가져오기', async () => {
+      data.forEach(r => { const nm = cellOf(r, map, 'name'); if (!nm || isSample(nm) || isSample(r[0])) { skip++; return; } findMerchant(cellOf(r, map, 'ecode'), cellOf(r, map, 'bizno').replace(/\D/g, ''), nm) ? upd++ : add++; });
+      askConfirm('가져오기 미리보기', '새로 등록 ' + add + '곳\n기존 가맹점 갱신 ' + upd + '곳\n건너뜀(상호 없음·예시 줄) ' + skip + '곳\n\n[읽은 열]\n' + Object.entries(map).map(([f, c]) => f + ' ← ' + rows[hr][c]).join('\n') + '\n\n※ 같은 거래처코드·사업자번호·상호가 있으면 새로 만들지 않고, 파일에 값이 있는 칸만 덮어써요(빈 칸은 그대로).\n※ 가져오기 직전 상태는 이 PC에 기준점으로 저장돼요.', '가져오기', async () => {
         if (!await snapMerchants('가져오기전')) return toast('가져오기 전 기준점을 저장하지 못해서 멈췄어요.');
         data.forEach(r => {
-          const nm = cellOf(r, map, 'name'); if (!nm) return; const biz = cellOf(r, map, 'bizno'), ec = cellOf(r, map, 'ecode');
+          const nm = cellOf(r, map, 'name'); if (!nm || isSample(nm) || isSample(r[0])) return; const biz = cellOf(r, map, 'bizno'), ec = cellOf(r, map, 'ecode');
           let m = findMerchant(ec, biz.replace(/\D/g, ''), nm); const isNew = !m; m = isNew ? create('merchants', {deleted: false}) : Object.assign({}, m);
           const set = (k, v) => { if (v) m[k] = v; };
           set('name', nm); if (biz) m.bizno = bizFmt(biz); set('ecode', ec); set('owner', cellOf(r, map, 'owner')); set('phone', cellOf(r, map, 'phone')); set('mobile', cellOf(r, map, 'mobile'));
-          if (!m.phone && m.mobile) m.phone = m.mobile; set('addr', cellOf(r, map, 'addr'));
+          if (!m.phone && m.mobile) m.phone = m.mobile; set('addr', cellOf(r, map, 'addr')); set('van', cellOf(r, map, 'van')); set('cstart', dateCell(cellOf(r, map, 'cstart'))); set('cend', dateCell(cellOf(r, map, 'cend')));
           const g = gradeOf(cellOf(r, map, 'grade')); if (g >= 0) m.grade = g; else if (isNew) m.grade = 5;
           const memo = cellOf(r, map, 'memo'), bt = (cellOf(r, map, 'biztype') + ' ' + cellOf(r, map, 'bizitem')).trim();
           if (isNew) m.memo = ((memo ? memo + ' · ' : '') + (bt ? '업태/종목 ' + bt : '')).trim(); else if (memo) m.memo = memo;
@@ -2123,6 +2271,7 @@ function menuItems() {
   add('계약·재고', '재고 (입고·출고·정정)', '재고 장비 바코드 시리얼 단가 입고 출고 수량 정정 스캔 본사 광주지사 보관지', 'nav:all:stock');
   add('계약·재고', '재고 이력', '재고 이력 입고 출고 정정 이동 실사 조사 반품 불량', 'nav:all:stocklog');
   add('계약·재고', '상품 목록 (상품코드)', '상품 목록 상품코드 품목 코드 등록 물품요청 재고', 'nav:all:products');
+  if (prodAdmin()) add('계약·재고', '재고 일괄 등록 (엑셀 양식)', '재고 일괄 등록 엑셀 업로드 양식 옮기기 설치 가맹점', 'act:importStock');
   add('실적', '내 실적', '내 실적 월별 성장률 계약', 'nav:all:myperf');
   if (P) { add('실적', '전체 실적·직원별 순위', '전체 실적 직원별 순위 성장률', 'nav:all:perf'); add('실적', '수익 현황 (입고·출고 단가)', '수익 현황 입고 출고 단가 매출 매입', 'nav:all:profit'); }
   add('보고', '일일보고 쓰기', '일일보고 보고 오늘 한 일', 'nav:all:daily');
@@ -2238,6 +2387,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.31', '2026-10-25', ['가맹점 일괄 가져오기에 업로드 양식(.xlsx) 받기 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요', '재고 일괄 등록(엑셀, 관리자): 상품코드/상품명·시리얼·수량·현재위치 — 본사·광주지사는 우리 재고, 가맹점 상호는 이미 설치된 장비로 기록만(재고 수 제외)', 'PC 위쪽 메뉴 맨 끝에 ‘메모’: 업무 중 메모 추가·수정(자동 저장)·고정·삭제']],
   ['웹 0.0.30', '2026-10-25', ['상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 계약·재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요', '재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색']],
   ['웹 0.0.29', '2026-10-25', ['☰ → 내 계정·설정 → ‘알림 및 소리 설정’ 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기']],
   ['웹 0.0.28', '2026-10-25', ['업무 요청 ‘가맹점 요청사항’ 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)', '직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)', '휴대폰 아래 탭: ‘전체’를 ☰ 로']],
@@ -2292,7 +2442,9 @@ const WEB_MANUAL = [
   ['알림 · 저장 상태 · 뒤로가기', '■ 알림: 웹앱을 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·안내로 알려요. PC는 전체 → 계정 → 알림 받기를 허용하면 다른 창을 보고 있어도 알림이 떠요. 탭 제목에 안 본 개수가 보여요. (웹앱을 닫았을 때 오는 알림은 서버 연동 후 가능)\n■ 저장 상태: 저장하면 화면 위에 ‘저장 중’이 잠깐 보여요. 인터넷이 끊기면 ‘저장 대기’로 바뀌고, 연결되면 저절로 저장돼요. 이 띠가 있는 동안에는 닫지 마세요.\n■ 가맹점 수정 창을 연 사이 다른 직원이 같은 가맹점을 고치면, 저장할 때 바뀐 항목을 보여 주고 덮어쓸지 한 번 더 물어요.\n■ 뒤로가기: 폰 뒤로가기·브라우저 뒤로 버튼으로 팝업 → 대화방 → 메뉴 → 하위 화면 → 첫 화면 순서로 닫혀요. 첫 화면에서 한 번 더 누르면 나가요.\n■ 알림 소리·음성: 새 업무가 배정되면 ‘띵동’ 소리와 함께 “업무가 배정되었습니다”, 채팅이 오면 카톡처럼 “나인톡!”, 공지는 “새 공지가 있습니다”라고 말해 줘요. ☰ → 내 계정·설정 → ‘알림 및 소리 설정’에서 업무 소리·채팅 소리를 따로 끄고 켜고, ‘들어 보기’로 미리 들어 봐요. 채팅방 위 🔔 를 누르면 그 방만 소리를 꺼요(🔕).'],
   ['관리자: 직원과 권한', '■ 전체 → 관리자 → 직원과 권한. + 로 이름·휴대폰 번호·권한 묶음(영업직·사무직·관리자)을 넣어 등록하면 그 번호로 로그인할 수 있어요.\n■ 직원을 눌러 항목별 권한을 켜고 끄거나, ‘사용 중지’로 퇴사자의 접근을 막아요. 마지막 관리자는 중지하거나 관리 권한을 끌 수 없어요.\n■ 권한: 업무 만들기 / 다른 직원에게 업무 배정 / 전체 업무 보기 / 전체 이력 보기 / 공지 작성 / 실적 보기 / 일일보고·실적보고 종합 보기 / 가맹점 등록·수정 / 직원 관리(최고관리자).'],
   ['관리자: 백업 · 가맹점 보호·복원', '■ 자료는 여러 겹으로 지켜져요: ① 서버는 지우기가 막혀 있고 모든 변경이 기록돼요 ② 매일 새벽 서버 전체를 암호화해 90일 보관(비밀값 설정 후) ③ 관리자가 앱·웹을 열면 그 기기에 하루 한 번 14일치 자동 보관 ④ 데이터 백업 내려받기로 파일 보관(한 달에 한 번 이상 권장).\n■ 가맹점 보호·복원: 삭제한 가맹점 복원, 백업 파일(.json)로 복원, 되돌리기 기준점 만들기. 가져오기·복원·되돌리기 직전 상태는 그 PC에 자동 저장돼요(전체 → 관리자 → PC에 보관된 자동 백업).\n■ 가맹점 수정 암호: 전체 → 관리자에서 정하고 바꾸고 끄요.'],
-  ['가맹점 일괄 가져오기 (엑셀·CSV)', '■ 이카운트 등에서 거래처 목록을 엑셀(.xlsx) 또는 CSV로 받아요. 옛 .xls 는 엑셀에서 .xlsx 로 다시 저장해 주세요.\n■ 머리글에 ‘거래처명’(또는 상호·가맹점명)이 있어야 하고, 사업자등록번호·거래처코드·대표자·전화·핸드폰·주소·등급·업태·종목·메모 열이 있으면 함께 가져와요.\n■ 전체 → 가맹점 일괄 가져오기 → 파일 고르기 → 미리보기(새로 등록·갱신·건너뜀) 확인 → 가져오기.\n■ 같은 거래처코드·사업자번호·상호가 있으면 새로 만들지 않고, 파일에 값이 있는 칸만 덮어써요. 잘못되면 가맹점 보호·복원에서 되돌려요.'],
+  ['재고 일괄 등록 (엑셀)', '■ 처음 재고를 옮길 때 써요(관리자). 재고 화면의 ‘📥 재고 일괄 등록 (엑셀)’ 또는 ☰ → 계약·재고.\n■ ‘업로드 양식 받기’로 엑셀 양식을 받아 상품코드(또는 상품명)·시리얼·수량·현재위치·사업자번호·설치일·메모를 채워요. ‘(예시)’ 줄은 건너뛰어요.\n■ 현재위치가 본사·광주지사 → 우리 재고로 입고돼요(같은 상품·보관지의 시리얼 없는 물품은 수량이 더해져요).\n■ 현재위치가 가맹점 상호 → 이미 설치된 장비로 기록만 하고 재고 수·수익에는 넣지 않아요. 가맹점이 먼저 등록돼 있어야 하고, 사업자번호를 적으면 정확히 찾아요.\n■ 상품 목록에 없는 상품명은 새 상품코드(P0001…)로 등록돼요. 올리기 전에 미리보기로 개수와 못 올리는 줄(이유)을 보여 줘요.\n■ 앞으로 가맹점에 나가는 것은 계약·출고로 처리해요.'],
+  ['메모 (PC)', '■ PC 화면 위쪽 메뉴 맨 끝 ‘메모’. 업무 중 적어 둘 것을 메모해요.\n■ 새 메모를 적고 ‘추가’(Ctrl+Enter). 메모 칸을 고치면 잠시 뒤 저절로 저장돼요. 📌 로 맨 위에 고정, 🗑 로 삭제.\n■ 내 계정에 저장돼서 다른 PC에서도 보이고, 다른 직원 화면에는 안 보여요.'],
+  ['가맹점 일괄 가져오기 (엑셀·CSV)', '■ ‘📄 업로드 양식 받기’로 양식(.xlsx)을 받을 수 있어요. 이카운트 거래처 머리글과 같은 이름이라 이카운트 엑셀을 그대로 올리거나 양식에 붙여 넣어도 돼요. VAN사·계약시작일·계약종료일도 읽어요.\n■ 이카운트 등에서 거래처 목록을 엑셀(.xlsx) 또는 CSV로 받아요. 옛 .xls 는 엑셀에서 .xlsx 로 다시 저장해 주세요.\n■ 머리글에 ‘거래처명’(또는 상호·가맹점명)이 있어야 하고, 사업자등록번호·거래처코드·대표자·전화·핸드폰·주소·등급·업태·종목·메모 열이 있으면 함께 가져와요.\n■ 전체 → 가맹점 일괄 가져오기 → 파일 고르기 → 미리보기(새로 등록·갱신·건너뜀) 확인 → 가져오기.\n■ 같은 거래처코드·사업자번호·상호가 있으면 새로 만들지 않고, 파일에 값이 있는 칸만 덮어써요. 잘못되면 가맹점 보호·복원에서 되돌려요.'],
   ['단체 문자 (가맹점)', '■ 전체 → 단체 문자 보내기. 내용을 쓰고({상호} 는 가맹점 이름으로 바뀜), 등급 버튼·검색·체크로 받을 가맹점을 골라요(휴대폰 번호가 있는 곳만).\n■ ‘문자 보내기 시작’ → 한 곳씩 휴대폰 문자 앱이 열리고 내용이 채워져 있어요. 보내고 돌아오면 다음 가맹점이 준비돼요. 받는 분끼리 번호가 보이지 않고, 요금은 그 휴대폰 요금제로 나가요.\n■ PC에는 문자 앱이 없어 보낼 수 없어요(남은 번호 복사는 가능). 알리고 연동 후 PC에서도 바로 보낼 수 있게 할 예정이에요.'],
   ['안드로이드 앱과 다른 점', '■ 웹에 아직 없는 세부 기능: 채팅방 이름 변경·초대·음소거·방 안 검색, 프로젝트 항목 삭제·진행 기록, 시리얼 사진 인식.\n■ 웹에서 먼저 생긴 기능: 저장 상태 표시, 가맹점 동시 수정 경고, 웹 기기끼리 채팅 읽음 맞춤.\n■ 가맹점 삭제: 웹은 ‘가맹점 등록·수정’ 권한 + 암호, 앱은 최고관리자만.'],
   ['자주 묻는 질문', 'Q. 새 버전은 어떻게 받아요?\nA. 새 버전이 나오면 화면 위쪽에 ‘지금 업데이트’ 띠가 떠요. 누르거나, 새로고침(F5)·프로그램을 껐다 켜도 바로 적용돼요. 전체 → 회사 → 업데이트 확인으로 직접 확인할 수도 있어요.\n\nQ. 인증번호 문자가 안 와요.\nA. 번호가 등록됐는지 확인하세요. 짧은 시간에 여러 번 요청하면 잠시 막힐 수 있어요(30분쯤 뒤 다시).\n\nQ. 기기를 바꿨어요.\nA. 같은 번호로 다시 로그인하면 모든 자료가 그대로 나와요. 자료는 서버에 있어요.\n\nQ. 인터넷이 없을 때도 되나요?\nA. 받아 둔 자료로 보기와 입력이 되고, 연결되면 저절로 서버에 올라가요(화면 위 ‘저장 대기’ 띠).\n\nQ. 실수로 지웠어요.\nA. 지운 자료도 서버에 남아 있어요. 관리자에게 말씀해 주세요(가맹점은 보호·복원에서 바로 되살려요).\n\nQ. 업데이트는 어떻게 받아요?\nA. 웹앱·PC 프로그램은 다시 열면(F5) 자동으로 최신이에요. 안드로이드 앱은 새 APK 를 받아 설치해요.'],
@@ -2300,11 +2452,11 @@ const WEB_MANUAL = [
 ];
 // 사용설명서 순서: 시작하기 → 위쪽 주 메뉴 → ☰ 전체 메뉴 묶음(메뉴와 같은 순서) → 도움말
 const MAN_GROUPS = [['시작하기', ['처음 시작하기 · 로그인', 'PC 프로그램 (윈도우)', '화면 구성']],
-  ['주 메뉴', ['업무', '프로젝트', '채팅', '일정 (달력)', '가맹점', '가맹점 응대 기록']],
+  ['주 메뉴', ['업무', '프로젝트', '채팅', '일정 (달력)', '가맹점', '가맹점 응대 기록', '메모 (PC)']],
   ['☰ 내 계정·설정', ['내 프로필 · 공지사항', '알림 · 저장 상태 · 뒤로가기']],
   ['☰ 업무', ['물품요청 (본사 ← 지사)']],
   ['☰ 가맹점', ['단체 문자 (가맹점)', '가맹점 일괄 가져오기 (엑셀·CSV)']],
-  ['☰ 계약·재고', ['계약 · 입금', '재고 · 바코드']],
+  ['☰ 계약·재고', ['계약 · 입금', '재고 · 바코드', '재고 일괄 등록 (엑셀)']],
   ['☰ 실적 · 보고', ['실적 · 수익 · 지난 업무', '일일보고 · 실적 보고서']],
   ['☰ 회사', ['자료실 · 비상연락망']],
   ['☰ 관리자', ['관리자: 직원과 권한', '관리자: 백업 · 가맹점 보호·복원']],

@@ -214,8 +214,143 @@ final class MerchantImport {
         if (h.contains("등급")) return "grade";
         if (h.contains("업태")) return "biztype";
         if (h.contains("종목")) return "bizitem";
+        if (h.contains("van")) return "van";
+        if (h.contains("계약시작") || h.contains("시작일")) return "cstart";
+        if (h.contains("계약종료") || h.contains("종료일") || h.contains("만료")) return "cend";
         if (h.contains("메모") || h.contains("비고")) return "memo";
         return null;
+    }
+
+    /** '(예시)'로 시작하는 줄은 양식의 보기라서 올리지 않는다 */
+    static boolean isSample(String v) {
+        return v != null && v.trim().matches("^\\(?예시\\)?.*");
+    }
+
+    /** 엑셀 날짜(숫자 45678)·2026.10.1·20261001·2026-10-01 → 2026-10-01 (못 읽으면 "") */
+    static String dateCell(String v) {
+        v = v == null ? "" : v.trim();
+        if (v.isEmpty()) return "";
+        try {
+            if (v.matches("^\\d{5}(\\.\\d+)?$")) {
+                java.util.Calendar c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"));
+                c.clear();
+                c.set(1899, 11, 30);
+                c.add(java.util.Calendar.DAY_OF_MONTH, (int) Math.floor(Double.parseDouble(v)));
+                return String.format(java.util.Locale.ROOT, "%04d-%02d-%02d", c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.DAY_OF_MONTH));
+            }
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\d{4})\\D+(\\d{1,2})\\D+(\\d{1,2})").matcher(v);
+            if (m.find()) return String.format(java.util.Locale.ROOT, "%s-%02d-%02d", m.group(1), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(3)));
+            m = java.util.regex.Pattern.compile("^(\\d{4})(\\d{2})(\\d{2})$").matcher(v);
+            if (m.find()) return m.group(1) + "-" + m.group(2) + "-" + m.group(3);
+        } catch (Exception ignored) {
+        }
+        return "";
+    }
+
+    // ---------- 재고 일괄 등록 양식의 머리글 (웹 sFieldOf 와 같음) ----------
+    private static String stockFieldOf(String h) {
+        h = norm(h);
+        if (h.isEmpty()) return null;
+        if (h.contains("상품코드") || h.contains("품목코드") || h.equals("코드")) return "code";
+        if (h.contains("상품명") || h.contains("품목명") || h.contains("품명") || h.contains("모델") || h.contains("제품")) return "name";
+        if (h.contains("시리얼") || h.contains("serial") || h.contains("일련번호") || h.contains("s/n") || h.equals("sn")) return "serial";
+        if (h.contains("수량")) return "qty";
+        if (h.contains("위치") || h.contains("보관") || h.contains("가맹점") || h.contains("설치처") || h.contains("거래처")) return "where";
+        if (h.contains("사업자")) return "bizno";
+        if (h.contains("설치일") || h.contains("날짜")) return "date";
+        if (h.contains("메모") || h.contains("비고")) return "memo";
+        return null;
+    }
+
+    static Object[] findStockHeader(List<List<String>> rows) {
+        for (int i = 0; i < Math.min(rows.size(), 15); i++) {
+            Map<String, Integer> m = new HashMap<>();
+            List<String> r = rows.get(i);
+            for (int c = 0; c < r.size(); c++) {
+                String f = stockFieldOf(r.get(c));
+                if (f != null && !m.containsKey(f)) m.put(f, c);
+            }
+            if ((m.containsKey("name") || m.containsKey("code")) && m.containsKey("where")) return new Object[]{i, m};
+        }
+        return null;
+    }
+
+    // ---------- 업로드 양식(.xlsx) 만들기: 안내 줄 + 빈 줄 + 머리글(굵게·노란 바탕) + 예시 줄 — 웹 xlsxOf 와 같은 모양 ----------
+    static final String[] M_TPL_HEAD = {"거래처코드", "거래처명(상호)", "사업자등록번호", "대표자명", "전화", "핸드폰", "주소", "등급", "업태", "종목", "VAN사", "계약시작일", "계약종료일", "메모"};
+    static final String[] M_TPL_NOTES = {
+            "■ 가맹점 일괄 업로드 양식 — 이카운트 ‘거래처등록’ 목록을 엑셀로 내려받아 그대로 올려도 되고, 아래 머리글 밑에 붙여 넣어도 돼요.",
+            "■ 거래처명(상호)은 꼭 있어야 해요. 같은 거래처코드·사업자번호·상호가 이미 있으면 새로 만들지 않고 값이 있는 칸만 바꿔요(빈 칸은 그대로).",
+            "■ 등급: S·A·B·C·해지·신규·협력 / 날짜: 2026-10-01 처럼 / ‘(예시)’로 시작하는 줄은 올릴 때 건너뛰어요(지우지 않아도 돼요)."};
+    static final String[][] M_TPL_ROWS = {{"(예시) E0001", "(예시) 삼영푸드", "123-45-67890", "홍길동", "062-123-4567", "010-1234-5678", "광주 서구 상무대로 1", "A", "음식점", "한식", "KIS정보통신", "2025-01-01", "2027-12-31", "포스 2대"}};
+    static final int[] M_TPL_W = {12, 22, 16, 10, 14, 14, 30, 8, 10, 10, 14, 12, 12, 20};
+    static final String[] S_TPL_HEAD = {"상품코드", "상품명", "시리얼", "수량", "현재위치", "사업자번호", "설치일", "메모"};
+    static final String[] S_TPL_NOTES = {
+            "■ 재고 일괄 등록 양식 — 상품코드나 상품명 중 하나는 꼭 적어요(상품 목록에 없으면 새 상품코드로 등록돼요). 시리얼이 있으면 한 줄에 한 대, 없으면 수량을 적어요.",
+            "■ 현재위치: ‘본사’ 또는 ‘광주지사’ → 우리 재고로 잡혀요 / 가맹점 상호 → 이미 설치된 장비로 기록만 하고 재고 수에는 넣지 않아요(가맹점이 앱에 등록돼 있어야 해요, 사업자번호를 적으면 더 정확해요).",
+            "■ 설치일: 가맹점에 설치된 날(선택, 2026-10-01 처럼) / ‘(예시)’로 시작하는 줄은 올릴 때 건너뛰어요."};
+    static final String[][] S_TPL_ROWS = {{"(예시) P0001", "토스 포스 T2", "T2-0001", "1", "본사", "", "", ""}, {"(예시)", "영수증 용지", "", "30", "광주지사", "", "", "박스 단위"}, {"(예시)", "토스 포스 T2", "T2-0009", "1", "삼영푸드", "123-45-67890", "2025-03-02", ""}};
+    static final int[] S_TPL_W = {12, 22, 18, 8, 16, 16, 12, 20};
+
+    private static String x(String v) {
+        return (v == null ? "" : v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
+    private static String col(int i) {
+        int n = i + 1;
+        StringBuilder s = new StringBuilder();
+        while (n > 0) {
+            s.insert(0, (char) ('A' + (n - 1) % 26));
+            n = (n - 1) / 26;
+        }
+        return s.toString();
+    }
+
+    static byte[] xlsx(String[] notes, String[] head, String[][] rows, int[] widths) throws Exception {
+        StringBuilder b = new StringBuilder();
+        int rn = 0;
+        List<String[]> all = new ArrayList<>();
+        List<Integer> st = new ArrayList<>();
+        for (String n : notes) {
+            all.add(new String[]{n});
+            st.add(2);
+        }
+        all.add(new String[0]);
+        st.add(0);
+        all.add(head);
+        st.add(1);
+        for (String[] r : rows) {
+            all.add(r);
+            st.add(0);
+        }
+        for (int k = 0; k < all.size(); k++) {
+            rn++;
+            b.append("<row r=\"").append(rn).append("\">");
+            String[] cells = all.get(k);
+            for (int i = 0; i < cells.length; i++)
+                b.append("<c r=\"").append(col(i)).append(rn).append("\" t=\"inlineStr\"").append(st.get(k) > 0 ? " s=\"" + st.get(k) + "\"" : "").append("><is><t xml:space=\"preserve\">").append(x(cells[i])).append("</t></is></c>");
+            b.append("</row>");
+        }
+        StringBuilder cols = new StringBuilder();
+        for (int i = 0; i < head.length; i++) cols.append("<col min=\"").append(i + 1).append("\" max=\"").append(i + 1).append("\" width=\"").append(i < widths.length ? widths[i] : 16).append("\" customWidth=\"1\"/>");
+        String H = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
+        String sheet = H + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><cols>" + cols + "</cols><sheetData>" + b + "</sheetData></worksheet>";
+        String styles = H + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><fonts count=\"3\"><font><sz val=\"11\"/><name val=\"맑은 고딕\"/></font><font><b/><sz val=\"11\"/><name val=\"맑은 고딕\"/></font><font><sz val=\"10\"/><color rgb=\"FF8F6B14\"/><name val=\"맑은 고딕\"/></font></fonts><fills count=\"3\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill><fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFF7EFD9\"/></patternFill></fill></fills><borders count=\"1\"><border/></borders><cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs><cellXfs count=\"3\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/><xf numFmtId=\"0\" fontId=\"1\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\"/><xf numFmtId=\"0\" fontId=\"2\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/></cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>";
+        String[][] files = {
+                {"[Content_Types].xml", H + "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/><Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/></Types>"},
+                {"_rels/.rels", H + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>"},
+                {"xl/workbook.xml", H + "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"양식\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>"},
+                {"xl/_rels/workbook.xml.rels", H + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>"},
+                {"xl/worksheets/sheet1.xml", sheet},
+                {"xl/styles.xml", styles}};
+        ByteArrayOutputStream bo = new ByteArrayOutputStream();
+        java.util.zip.ZipOutputStream z = new java.util.zip.ZipOutputStream(bo);
+        for (String[] f : files) {
+            z.putNextEntry(new ZipEntry(f[0]));
+            z.write(f[1].getBytes("UTF-8"));
+            z.closeEntry();
+        }
+        z.close();
+        return bo.toByteArray();
     }
 
     /** 표에서 머리글 줄을 찾는다. 돌려주는 값: [머리글 줄 번호, 항목별 열 번호 맵]. 못 찾으면 null. */
