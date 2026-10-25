@@ -69,6 +69,7 @@ footer{padding-block:48px 56px;color:var(--sub);font-size:13px}
   .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
   .grid3{grid-template-columns:minmax(0,1fr)}
 }
+@media print{.feat,.box,.tbl,.grid3,.soon,.facts,figure,img{break-inside:avoid}.sechead{break-after:avoid}h2,h3{break-after:avoid}section{break-inside:auto}}
 @media (prefers-reduced-motion:no-preference){.hero img{transition:transform .4s}.hero img:hover{transform:translateY(-3px)}}
 </style>
 
@@ -241,7 +242,7 @@ footer{padding-block:48px 56px;color:var(--sub);font-size:13px}
         <tr><td>공지 작성</td><td>공지사항 올리기</td></tr>
         <tr><td>실적 보기</td><td>전체 실적·순위·수익 현황·단가, 모든 계약</td></tr>
         <tr><td>일일보고·실적보고 종합 보기</td><td>직원 전체 일일보고와 실적 보고서</td></tr>
-        <tr><td>가맹점 등록·수정</td><td>가맹점 등록·수정·삭제 (관리자가 정한 암호 필요)</td></tr>
+        <tr><td>가맹점 등록·수정</td><td>가맹점 등록·수정 (관리자가 정한 암호 필요)</td></tr>
         <tr><td>직원 정보 보기</td><td>직원 명부(부서·직책·생년월일·연락처·주소)</td></tr>
         <tr><td>직원 관리 (관리자)</td><td>직원 추가·정보·권한·사용 중지·완전 삭제, 직책 목록, 삭제 비밀번호, 백업, 가맹점 보호·복원</td></tr>
       </tbody>
@@ -255,8 +256,8 @@ footer{padding-block:48px 56px;color:var(--sub);font-size:13px}
     </div>
     <div class="grid3" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
       <div class="box"><h3>삭제 방지</h3><p class="muted">서버 규칙이 삭제를 막고 '삭제 표시'만 남깁니다. 지운 가맹점은 휴지통에서 되살립니다.</p></div>
-      <div class="box"><h3>변경 기록</h3><p class="muted">모든 저장은 누가 언제 무엇을 바꿨는지 기록됩니다. 가맹점은 예전 내용으로 되돌릴 수 있습니다.</p></div>
-      <div class="box"><h3>자동 백업</h3><p class="muted">관리자 기기에 하루 한 번 14일치를 보관하고, 관리자가 언제든 백업 파일을 내려받습니다. 서버 암호화 백업도 매일 돕니다.</p></div>
+      <div class="box"><h3>변경 기록</h3><p class="muted">업무·가맹점·재고 같은 주요 자료는 저장할 때마다 누가 언제 무엇을 바꿨는지 기록됩니다(채팅·프로필 제외). 가맹점은 예전 내용으로 되돌릴 수 있습니다.</p></div>
+      <div class="box"><h3>자동 백업</h3><p class="muted">관리자 기기에 하루 한 번 14일치를 보관하고, 관리자가 언제든 백업 파일을 내려받습니다. 서버 전체 암호화 백업은 백업 비밀값을 등록하면 매일 돕니다.</p></div>
       <div class="box"><h3>삭제 비밀번호</h3><p class="muted">직원 완전 삭제, 가맹점·재고·응대 기록·자료실 삭제 때 관리자가 정한 비밀번호를 한 번 더 묻습니다.</p></div>
     </div>
   </section>
