@@ -554,13 +554,13 @@ final class Store {
 
     boolean nameExists(String name) {
         JSONArray a = users();
-        for (int i = 0; i < a.length(); i++) if (a.optJSONObject(i).optString("name").equals(name)) return true;
+        for (int i = 0; i < a.length(); i++) if (!a.optJSONObject(i).optBoolean("deleted") && a.optJSONObject(i).optString("name").equals(name)) return true;
         return false;
     }
 
     boolean phoneExists(String e164) {
         JSONArray a = users();
-        for (int i = 0; i < a.length(); i++) if (a.optJSONObject(i).optString("phone").equals(e164)) return true;
+        for (int i = 0; i < a.length(); i++) if (!a.optJSONObject(i).optBoolean("deleted") && a.optJSONObject(i).optString("phone").equals(e164)) return true;
         return false;
     }
 

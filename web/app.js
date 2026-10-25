@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.33';
+const VERSION = '웹 0.0.34';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -364,6 +364,7 @@ function viewBody(k) {
     case 'library': return viewLibrary();
     case 'contacts': return viewContacts();
     case 'staff': return viewStaff();
+    case 'staffinfo': return viewStaffInfo();
     case 'sound': return viewSound();
     case 'sms': return viewSms();
     case 'manual': return viewManual();
@@ -885,7 +886,7 @@ ACT.editLog = a => {
     if (t !== logReq(g) || r !== logRes(g)) { g.editedBy = S.uid; g.editedAt = nowStr(); }
     g.date = d; g.kind = $('#f_k').value; g.req = t; g.res = r; g.text = t + (r ? (t ? '\n' : '') + '→ 처리: ' + r : ''); put('mlogs', g); render(); if (mid && byId('merchants', mid)) ACT.merchant(mid); toast('고쳤어요.'); return true;
   }, '저장');
-  const del = $('#f_del'); if (del) del.onclick = () => askConfirm('이 기록을 지울까요?', '', '지우기', () => { g.deleted = true; put('mlogs', g); render(); if (mid && byId('merchants', mid)) ACT.merchant(mid); }, true);
+  const del = $('#f_del'); if (del) del.onclick = () => needDelPw('응대 기록 삭제', () => askConfirm('이 기록을 지울까요?', '', '지우기', () => { g.deleted = true; put('mlogs', g); render(); if (mid && byId('merchants', mid)) ACT.merchant(mid); }, true));
 };
 ACT.newLog = mid => formModal('응대 기록', '<input id="f_d" type="date" value="' + todayStr() + '"><select id="f_k">' + KINDS.map(k => '<option>' + k + '</option>').join('') + '</select><div class="lb">요청사항</div><textarea id="f_m" placeholder="고객이 요청한 내용"></textarea><div class="lb g">처리결과</div><textarea id="f_r" placeholder="어떻게 처리했는지"></textarea>', () => {
   const d = $('#f_d').value, t = $('#f_m').value.trim(), r = $('#f_r').value.trim(); if (!d || (!t && !r)) return warn('날짜와 요청사항(또는 처리결과)을 적어 주세요.');
@@ -972,9 +973,10 @@ function newMerchantThen(q, done, back) {
 }
 function toggleWord(s, w) { s = s || ''; if (s.includes(w)) return s.replace(w + ', ', '').replace(', ' + w, '').replace(w, '').trim(); return s.trim() ? w + ', ' + s.trim() : w; }
 ACT.delMerchant = id => needLock(() => {
-  const m = byId('merchants', id); if (!m) return;
+  const m = byId('merchants', id); if (!m) return; needDelPw('‘' + m.name + '’ 가맹점 삭제', () => {
   const c = list('mlogs').filter(g => g.merchant === m.id).length;
   askConfirm('‘' + m.name + '’ 가맹점을 삭제할까요?', '목록에서만 지워지고, 응대 기록 ' + c + '건과 서버의 기록은 그대로 남아요. (앱의 가맹점 보호·복원에서 되살릴 수 있어요)', '삭제', () => { m.deleted = true; put('merchants', m); render(); toast('삭제했어요.'); }, true);
+  });
 });
 const MF = {grade: '등급', name: '상호', bizno: '사업자번호', phone: '전화번호', mobile: '휴대폰번호', email: '이메일', addr: '주소', van: 'VAN사', ctype: '계약구분', camt: '금액', terms: '계약조건', cstart: '계약시작일', cend: '계약종료일', memo: '메모', deleted: '삭제'};
 ACT.editMerchant = id => needLock(() => {
@@ -1075,7 +1077,7 @@ function saveProducts(items) { const o = prodDoc() || create('config', {key: 'pr
 function prodResolve(v) {
   const hit = prodFind(v); if (hit) return hit;
   const name = String(v || '').replace(/^\[[^\]]*\]\s*/, '').trim(); if (!name) return null;
-  if (!prodAdmin()) { warn('상품 목록에 없는 상품이에요: ' + name + '\n본사 관리자에게 상품 등록(☰ → 계약·재고 → 상품 목록)을 요청해 주세요.'); return null; }
+  if (!prodAdmin()) { warn('상품 목록에 없는 상품이에요: ' + name + '\n본사 관리자에게 상품 등록(☰ → 재고 → 상품 목록)을 요청해 주세요.'); return null; }
   const p = {code: nextProdCode(), name}; saveProducts(products().concat(p)); toast('새 상품을 등록했어요: ' + prodLabel(p)); return p;
 }
 const prodOptions = withStock => { // withStock: 물품요청 창 — 고를 때 보관지별 지금 재고 수를 같이 보여 준다
@@ -1321,7 +1323,7 @@ ACT.editStock = id => {
     render(); toast('저장했어요.'); return true;
   }, '저장');
   if ($('#f_out')) $('#f_out').onclick = () => { closeModal(); setTimeout(() => ACT.outStock(r.id), 0); };
-  $('#f_del').onclick = () => askConfirm('이 재고를 지울까요?', (r.model || '') + ' ' + (r.serial || '') + '\n잘못 넣은 것을 지울 때만 쓰세요. 실제로 나간 것은 ‘출고’, 수가 안 맞으면 ‘수량 정정’을 써야 이력이 남아요.', '지우기', () => { r.deleted = true; put('stock', r); render(); toast('삭제했어요.'); }, true);
+  $('#f_del').onclick = () => needDelPw('재고 삭제', () => askConfirm('이 재고를 지울까요?', (r.model || '') + ' ' + (r.serial || '') + '\n잘못 넣은 것을 지울 때만 쓰세요. 실제로 나간 것은 ‘출고’, 수가 안 맞으면 ‘수량 정정’을 써야 이력이 남아요.', '지우기', () => { r.deleted = true; put('stock', r); render(); toast('삭제했어요.'); }, true));
 };
 
 // ---------- 재고 일괄 등록 (엑셀) — 처음 옮길 때: 상품코드/상품명 · 시리얼 · 수량 · 현재위치(본사|광주지사|가맹점 상호) ----------
@@ -1640,6 +1642,7 @@ function perfStats(ym, mine) { // 직원별 [대수, 판매, CMS, 렌탈, 판매
   return st;
 }
 const activeStaff = () => list('users').filter(u => u.active !== false);
+const reportStaff = () => activeStaff().filter(u => !u.noReport && !u.noPerf).sort(byPos); // 실적 '직책순' 보기
 const noPerf = uid => { const u = byId('users', uid); return !!(u && u.noPerf); };
 const rankedStaff = st => activeStaff().filter(u => !u.noPerf).sort((a, b) => { const x = st[a.id] || [0, 0, 0, 0, 0], y = st[b.id] || [0, 0, 0, 0, 0]; return (y[0] - x[0]) || (y[4] - x[4]); });
 function growth(c, p) { if (!p) return c > 0 ? '신규' : '-'; const g = Math.round((c - p) * 100 / p); return (g > 0 ? '▲ +' : g < 0 ? '▼ ' : '') + g + '%'; }
@@ -1662,14 +1665,16 @@ function trendHTML(ym, mine) { // 지난달 → 이번 달, 최근 6개월
   n6.forEach(v => m6 = Math.max(m6, v));
   return h + '<h2>최근 6개월 신규 계약</h2>' + n6.map((v, i) => '<div class="prow"><b>' + lb[i] + '</b><div class="grow">' + pbar(v * 100 / m6) + '</div><span>' + v + '대</span></div>').join('');
 }
+ACT.perfSort = v => { S.perfSort = v; render(); };
 function viewPerf(mine) {
   const ym = perfYM(), st = perfStats(ym, mine); let total = 0, sales = 0; Object.values(st).forEach(a => { total += a[0]; sales += a[4]; });
   let h = '<h1>' + (mine ? '내 실적' : '전체 실적·직원별 순위') + '</h1><div class="sub">' + (mine ? '나만 볼 수 있는 내 실적이에요.' : '직원별 순위는 신규 계약 대수 순, 같으면 판매금액 순이에요.') + '</div>' + monthNavHTML() +
     '<div class="hero"><div>' + (mine ? '이번 달 내 신규 계약' : '이번 달 신규 계약') + '</div><div class="n">' + total + '대</div><div style="font-size:13px">판매금액 합계 ' + wonFmt(sales) + '</div></div>' + trendHTML(ym, mine);
   if (!mine) {
     let mx = 1; Object.values(st).forEach(a => mx = Math.max(mx, a[0]));
-    h += '<h2>직원별 순위</h2>' + rankedStaff(st).map((u, i) => { const a = st[u.id]; const n = a ? a[0] : 0;
-      return '<div class="prow"><b style="width:22px;color:' + (i < 3 && n ? 'var(--deep)' : 'var(--gray)') + '">' + (i + 1) + '</b><b>' + esc(u.name) + '</b><div class="grow">' + pbar(n * 100 / mx) + '</div><span>' + n + '</span></div>' +
+    const byP = S.perfSort === 'pos', rows = byP ? reportStaff() : rankedStaff(st);
+    h += '<div class="row" style="align-items:center"><h2 class="grow">' + (byP ? '직원별 실적 (직책순)' : '직원별 순위') + '</h2><div class="pills" style="margin:0"><button class="pill' + (byP ? '' : ' on') + '" data-act="perfSort" data-arg="">순위순</button><button class="pill' + (byP ? ' on' : '') + '" data-act="perfSort" data-arg="pos">직책순</button></div></div>' + rows.map((u, i) => { const a = st[u.id]; const n = a ? a[0] : 0;
+      return '<div class="prow"><b style="width:22px;color:' + (!byP && i < 3 && n ? 'var(--deep)' : 'var(--gray)') + '">' + (byP ? '·' : i + 1) + '</b><b>' + esc(u.name) + (byP && u.pos ? ' <small style="color:var(--gray);font-weight:400">' + esc(u.pos) + '</small>' : '') + '</b><div class="grow">' + pbar(n * 100 / mx) + '</div><span>' + n + '</span></div>' +
         (a ? '<div class="sub" style="margin:-2px 0 6px 30px">판매 ' + a[1] + ' · CMS ' + a[2] + ' · 렌탈 ' + a[3] + (a[4] ? ' · 판매금액 ' + wonFmt(a[4]) : '') + '</div>' : ''); }).join('');
   }
   const month = list('contracts').filter(c => (c.date || '').startsWith(ym) && (!mine || c.who === S.uid)).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
@@ -1737,7 +1742,7 @@ ACT.dailySave = () => {
 function viewReportView() {
   if (!canReport()) return '<h1>일일보고 종합</h1><div class="empty">일일보고·실적보고 종합 보기 권한이 있어야 볼 수 있어요.</div>';
   if (!S.dailyDate) S.dailyDate = todayStr();
-  const staff = activeStaff(); const done = staff.filter(u => findReport('daily', u.id, S.dailyDate)).length;
+  const staff = activeStaff().filter(u => !u.noReport).sort(byPos); const done = staff.filter(u => findReport('daily', u.id, S.dailyDate)).length;
   return '<h1>일일보고 종합</h1><div class="sub">직원별 일일보고를 한 화면에 모아 봐요.</div>' + dateNavHTML() + '<div class="t1" style="color:var(--deep);margin-top:12px">제출 ' + done + ' / ' + staff.length + '명</div>' +
     staff.map(u => { const r = findReport('daily', u.id, S.dailyDate);
       return '<div class="card flat"><div class="row"><div class="grow t1">' + esc(u.name) + '</div><span class="chip"' + (r ? '' : ' style="background:#fdecea;color:var(--red)"') + '>' + (r ? '제출' : '미제출') + '</span></div>' + (r ? (r.auto ? '<div class="sub mtext">' + esc(r.auto) + '</div>' : '') + '<div class="mtext">' + esc(r.text) + '</div>' : '') + '</div>'; }).join('');
@@ -1784,7 +1789,7 @@ ACT.libPost = id => {
     ((p.files || []).length ? '<div class="lb">첨부 파일 (눌러서 받기)</div>' + p.files.map(f => '<button class="mi" data-act="openFile" data-arg="' + esc(f.blob + '|' + (f.chunks || 0) + '|' + f.fname) + '"><span>📎 ' + esc(f.fname) + ' <small style="color:var(--gray)">(' + kb(f.size || 0) + ')</small></span></button>').join('') : '') +
     '<div class="btns" style="margin-top:12px">' + (own ? '<button class="btn" data-act="libEdit" data-arg="' + p.id + '">수정</button><button class="btn red" data-act="libDel" data-arg="' + p.id + '">삭제</button>' : '') + '<button class="btn" data-act="close">닫기</button></div>');
 };
-ACT.libDel = id => { const p = byId('library', id); askConfirm('‘' + p.title + '’ 삭제할까요?', '자료실 목록에서 사라져요. 서버에는 기록이 보관됩니다.', '삭제', () => { p.deleted = true; put('library', p); render(); toast('삭제했어요.'); }, true); };
+ACT.libDel = id => { const p = byId('library', id); needDelPw('자료실 삭제', () => askConfirm('‘' + p.title + '’ 삭제할까요?', '자료실 목록에서 사라져요. 서버에는 기록이 보관됩니다.', '삭제', () => { p.deleted = true; put('library', p); render(); toast('삭제했어요.'); }, true)); };
 async function uploadBlob(data, mime, name) { // 서버 보관함(blobs)에 600KB 조각으로 올린다 — 앱과 같은 형식
   const id = String(nextId()), CH = 600 * 1024, n = Math.max(1, Math.ceil(data.length / CH));
   await Promise.all([...Array(n).keys()].map(i => fs.collection('blobs').doc(id + '_' + i).set({d: b64of(data.subarray(i * CH, (i + 1) * CH)), mime, name, i, n, u: Date.now(), by: S.uid})));
@@ -1857,7 +1862,7 @@ ACT.picPick = () => {
 
 // ---------- 직원과 권한 (최고관리자) — users 문서 + 로그인용 phones 문서를 같이 맞춘다 (앱 Store.push 와 같음) ----------
 const PERMS = [['task_create', '업무 만들기'], ['task_assign', '다른 직원에게 업무 배정'], ['task_view_all', '전체 업무 보기'], ['history_all', '전체 이력 보기'], ['notice_write', '공지 작성'],
-  ['perf_view', '실적 보기 (본부장·대표님)'], ['report_view', '일일보고·실적보고 종합 보기 (대표님)'], ['merchant_edit', '가맹점 등록·수정 (암호 필요)'], ['staff_manage', '직원 관리 (관리자 전용)']];
+  ['perf_view', '실적 보기 (본부장·대표님)'], ['report_view', '일일보고·실적보고 종합 보기 (대표님)'], ['merchant_edit', '가맹점 등록·수정 (암호 필요)'], ['staff_view', '직원 정보 보기 (부서·직책·생년월일·연락처·주소)'], ['staff_manage', '직원 관리 (관리자 전용)']];
 const PRESETS = {'영업직': ['task_create', 'task_assign', 'task_view_all', 'history_all'], '사무직': ['task_create', 'task_assign', 'task_view_all', 'history_all', 'merchant_edit'], '관리자': PERMS.map(x => x[0])};
 const hasP = (u, k) => (u.perms || []).includes(k);
 const adminCount = () => list('users').filter(u => u.active !== false && hasP(u, 'staff_manage')).length;
@@ -1866,13 +1871,94 @@ function syncPhone(u) { // 로그인 허용 번호와 서버 규칙용 권한 �
   fs.collection('phones').doc(u.phone).set({uid: u.id, admin: hasP(u, 'staff_manage'), perf: hasP(u, 'perf_view'), report: hasP(u, 'report_view'), active: u.active !== false, name: u.name})
     .catch(e => toast('로그인 번호를 저장하지 못했어요: ' + (e.code || e.message)));
 }
+// ---------- 직책 목록 (정렬 순서) — config key 'positions' {items}. 위에 있을수록 먼저 (부장급: 본부장·지사장) ----------
+const POS_DEFAULT = ['대표', '이사', '본부장', '지사장', '부장', '차장', '과장', '대리', '사원'];
+const posDoc = () => list('config').find(c => c.key === 'positions');
+const positions = () => { const d = posDoc(); return d && Array.isArray(d.items) && d.items.length ? d.items : POS_DEFAULT; };
+const posRank = u => { const i = positions().indexOf((u && u.pos) || ''); return i < 0 ? 999 : i; };
+const byPos = (a, b) => posRank(a) - posRank(b) || (a.name || '').localeCompare(b.name || '');
+const canStaffInfo = () => can('staff_view') || can('staff_manage');
+ACT.posEdit = () => {
+  if (!can('staff_manage')) return toast('관리자만 바꿀 수 있어요.');
+  formModal('직책 목록 (정렬 순서)', '<div class="sub" style="margin-top:0">한 줄에 하나씩 적어요. <b>위에 있을수록 앞에</b> 보여요(직원 목록·일일보고 명단·실적 직책순). 줄을 지우면 목록에서 빠지고, 그 직책인 직원은 맨 뒤로 가요.</div><textarea id="f_pos" style="min-height:220px">' + esc(positions().join('\n')) + '</textarea>', () => {
+    const items = [...new Set($('#f_pos').value.split(/[\n,]+/).map(x => x.trim()).filter(Boolean))]; if (!items.length) return warn('직책을 한 개 이상 적어 주세요.');
+    const o = posDoc() || create('config', {key: 'positions'}); o.items = items; o.changedBy = S.uid; o.changedAt = nowStr(); put('config', o); render(); toast('직책 ' + items.length + '개를 저장했어요.'); return true;
+  }, '저장');
+};
+// ---------- 삭제 비밀번호 (중요한 삭제: 직원·가맹점·재고·응대 기록·자료실) — config key 'delete_lock' {salt, hash}, 관리자가 정한다 ----------
+const dlockDoc = () => list('config').find(c => c.key === 'delete_lock' && c.hash);
+function needDelPw(what, then, must) { // must: 비밀번호가 아직 없으면 막는다(직원 완전 삭제)
+  const L = dlockDoc();
+  if (!L) { if (must) return toast(can('staff_manage') ? '먼저 ☰ → 관리자 → 삭제 비밀번호를 정해 주세요.' : '삭제 비밀번호가 아직 없어요. 관리자에게 요청해 주세요.'); return then(); }
+  formModal('삭제 비밀번호', '<div class="sub" style="margin-top:0">' + esc(what) + ' — 중요한 삭제라서 관리자가 정한 삭제 비밀번호가 필요해요.</div><input id="f_dpw" type="password" autocomplete="off" placeholder="삭제 비밀번호">', () => {
+    sha(L.salt + $('#f_dpw').value).then(h => { if (h === L.hash) { closeModal(); then(); } else toast('비밀번호가 맞지 않아요.'); }); return false;
+  }, '확인');
+}
+ACT.dlockSet = () => {
+  if (!can('staff_manage')) return toast('관리자만 설정할 수 있어요.');
+  const L = dlockDoc();
+  formModal('삭제 비밀번호', '<div class="sub" style="margin-top:0">직원 완전 삭제, 가맹점·재고·응대 기록·자료실 삭제 때 물어봐요. ' + (L ? '바꾸려면 현재 비밀번호도 입력해 주세요.' : '아직 없어요 — 정하기 전에는 직원 완전 삭제를 할 수 없어요.') + '</div>' +
+    (L ? '<input id="f_old" type="password" autocomplete="off" placeholder="현재 비밀번호">' : '') + '<input id="f_new" type="password" autocomplete="off" placeholder="새 비밀번호 (4자 이상)"><input id="f_new2" type="password" autocomplete="off" placeholder="새 비밀번호 한 번 더">', () => {
+    const nw = $('#f_new').value; if (nw.length < 4) return warn('비밀번호는 4자 이상으로 해 주세요.'); if (nw !== $('#f_new2').value) return warn('새 비밀번호가 서로 달라요.');
+    const done = () => { const salt = Math.random().toString(36).slice(2) + Date.now().toString(36); sha(salt + nw).then(h => { const o = list('config').find(c => c.key === 'delete_lock') || create('config', {key: 'delete_lock'}); o.salt = salt; o.hash = h; o.changedBy = S.uid; o.changedAt = nowStr(); put('config', o); closeModal(); render(); toast('삭제 비밀번호를 저장했어요.'); }); };
+    if (L) sha(L.salt + $('#f_old').value).then(h => { if (h === L.hash) done(); else toast('현재 비밀번호가 맞지 않아요.'); }); else done();
+    return false;
+  }, '저장');
+};
+// ---------- 직원과 권한 (관리자) — 정보 창(부서·직책·사진·생년월일·연락처·주소)과 권한 창이 따로 ----------
+const staffList = () => [...S.data.users.values()].filter(u => !u.deleted);
+const staffPhoto = (u, size) => u && u.photo ? '<img class="avimg" style="width:' + size + 'px;height:' + size + 'px" src="data:image/jpeg;base64,' + u.photo + '" alt="">' : avatarHTML(u.id, size);
+const staffSub = u => [u.dept, u.pos].filter(Boolean).join(' · ');
 function viewStaff() {
   if (!can('staff_manage')) return '<h1>직원과 권한</h1><div class="empty">최고관리자만 볼 수 있어요.</div>';
   if (!S.titlesDone) { S.titlesDone = true; setTimeout(() => { let n = 0; list('users').forEach(u => { const c = stripTitle(u.name); if (c && c !== u.name && !list('users').some(x => x.name === c)) { u.name = c; put('users', u); n++; } }); if (n) { toast('직원 이름에서 직함을 뺐어요 (이름만 표시).'); render(); } }, 0); }
-  const us = [...S.data.users.values()].sort((a, b) => (a.active === false) - (b.active === false) || (a.name || '').localeCompare(b.name || ''));
-  return '<h1>직원과 권한</h1><div class="sub">직원을 눌러 권한을 켜고 끄거나 사용을 멈춰요. 등록된 번호로만 로그인할 수 있어요. 오른쪽 아래 + 로 직원을 추가합니다.</div>' +
-    us.map(u => { const ps = PERMS.filter(x => hasP(u, x[0])).map(x => x[1]); return '<div class="card" data-act="staffEdit" data-arg="' + u.id + '"><div class="row">' + avatarHTML(u.id, 40) + '<div class="grow"><div class="t1" style="' + (u.active === false ? 'color:var(--gray)' : '') + '">' + esc(u.name) + (u.active === false ? ' (사용 중지)' : '') + '</div><div class="t2">' + esc(u.phone || '') + '</div></div></div><div class="sub">' + esc(ps.length ? ps.join(', ') : '기본 권한(내 업무만)') + '</div></div>'; }).join('');
+  const us = staffList().sort((a, b) => (a.active === false) - (b.active === false) || byPos(a, b));
+  return '<h1>직원과 권한</h1><div class="sub">직원을 누르면 <b>직원 정보</b>가 열리고, 거기서 정보 수정·<b>권한 설정</b>을 따로 해요. 직책 순서로 보여요. 오른쪽 아래 + 로 직원을 추가합니다.</div>' +
+    '<div class="row" style="gap:8px"><button class="btn tint" data-act="posEdit">직책 목록 (정렬 순서)</button><button class="btn" data-act="dlockSet">삭제 비밀번호 ' + (dlockDoc() ? '바꾸기' : '정하기') + '</button></div>' +
+    us.map(u => { const ps = PERMS.filter(x => hasP(u, x[0])).map(x => x[1].replace(/ \(.*\)$/, '')); return '<div class="card" data-act="staffInfo" data-arg="' + u.id + '"><div class="row">' + staffPhoto(u, 44) + '<div class="grow"><div class="t1" style="' + (u.active === false ? 'color:var(--gray)' : '') + '">' + esc(u.name) + (staffSub(u) ? ' <span class="sub" style="margin:0">' + esc(staffSub(u)) + '</span>' : '') + (u.active === false ? ' (사용 중지)' : '') + '</div><div class="t2">' + esc(u.phone || '') + (u.noPerf ? ' · 실적 제외' : '') + (u.noReport ? ' · 보고 명단 제외' : '') + '</div></div></div><div class="sub">권한: ' + esc(ps.length ? ps.join(', ') : '기본 권한(내 업무만)') + '</div></div>'; }).join('');
 }
+function viewStaffInfo() { // 직원 정보 보기 권한자용 명부 (권한 설정은 안 보임)
+  if (!canStaffInfo()) return '<h1>직원 정보</h1><div class="empty">직원 정보 보기 권한이 있어야 볼 수 있어요.</div>';
+  const us = staffList().filter(u => u.active !== false).sort(byPos);
+  return '<h1>직원 정보 (명부)</h1><div class="sub">직책 순서로 보여요. 누르면 자세히 봐요.</div>' + us.map(u => '<div class="card" data-act="staffInfo" data-arg="' + u.id + '"><div class="row">' + staffPhoto(u, 44) + '<div class="grow"><div class="t1">' + esc(u.name) + (staffSub(u) ? ' <span class="sub" style="margin:0">' + esc(staffSub(u)) + '</span>' : '') + '</div><div class="t2">' + esc(u.tel || u.phone || '') + '</div></div></div></div>').join('');
+}
+const telFmt = p => { const d = String(p || '').replace(/^\+82/, '0').replace(/\D/g, ''); return d.length === 11 ? d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7) : d.length === 10 ? d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6) : (p || ''); };
+ACT.staffInfo = id => { // 정보 창: 보기 전용 + (관리자) 정보 수정 · 권한 설정 · 완전 삭제
+  const u = byId('users', id); if (!u || u.deleted) return; if (!canStaffInfo()) return ACT.profile(id);
+  const ln = (k, v) => v ? '<div class="line"><b>' + k + '</b><div>' + esc(v) + '</div></div>' : '';
+  const A = can('staff_manage'), tel = u.tel || telFmt(u.phone);
+  modal('<div class="row" style="gap:14px">' + staffPhoto(u, 72) + '<div class="grow"><h3 style="margin:0">' + esc(u.name) + '</h3><div class="sub" style="margin:2px 0 0">' + esc(staffSub(u) || '부서·직책 미입력') + (u.active === false ? ' · 사용 중지' : '') + '</div></div></div>' +
+    ln('부서', u.dept) + ln('직책', u.pos) + ln('생년월일', u.birth) + (tel ? '<div class="line"><b>연락처</b><a href="tel:' + esc(tel.replace(/\D/g, '')) + '">' + esc(tel) + '</a></div>' : '') + ln('주소', u.addr) + ln('로그인 번호', A ? telFmt(u.phone) : '') +
+    '<div class="btns" style="margin-top:12px;flex-wrap:wrap">' + (A ? '<button class="btn gold" data-act="staffInfoEdit" data-arg="' + u.id + '">정보 수정</button><button class="btn tint" data-act="staffEdit" data-arg="' + u.id + '">권한 설정</button><button class="btn red" data-act="staffDel" data-arg="' + u.id + '">완전 삭제</button>' : '') + '<button class="btn" data-act="close">닫기</button></div>');
+};
+ACT.staffInfoEdit = id => {
+  const u = byId('users', id); if (!u || !can('staff_manage')) return; let pic = u.photo || '';
+  const depts = [...new Set(staffList().map(x => (x.dept || '').trim()).filter(Boolean))];
+  formModal(u.name + ' 정보', '<div class="row" style="gap:12px;align-items:center"><span id="f_pv">' + staffPhoto(u, 64) + '</span><button type="button" class="btn tint" id="f_pic">사진 고르기</button><button type="button" class="btn" id="f_picx">사진 빼기</button></div>' +
+    '<label class="fl" for="f_n">이름 (직함 없이)</label><input id="f_n" value="' + esc(u.name) + '">' +
+    '<div class="row" style="gap:8px"><div class="grow"><label class="fl" for="f_dp">부서</label><input id="f_dp" list="deptlist" value="' + esc(u.dept || '') + '" placeholder="예: 영업팀"><datalist id="deptlist">' + depts.map(d => '<option value="' + esc(d) + '">').join('') + '</datalist></div>' +
+    '<div class="grow"><label class="fl" for="f_po">직책</label><select id="f_po"><option value="">(없음)</option>' + positions().concat(u.pos && !positions().includes(u.pos) ? [u.pos] : []).map(p => '<option' + (p === u.pos ? ' selected' : '') + '>' + esc(p) + '</option>').join('') + '</select></div></div>' +
+    '<label class="fl" for="f_bd">생년월일</label><input id="f_bd" type="date" value="' + esc(u.birth || '') + '">' +
+    '<label class="fl" for="f_tl">연락처 (비우면 로그인 번호)</label><input id="f_tl" type="tel" value="' + esc(u.tel || '') + '" placeholder="' + esc(telFmt(u.phone)) + '">' +
+    '<label class="fl" for="f_ad">주소</label><input id="f_ad" value="' + esc(u.addr || '') + '">' +
+    '<input type="file" id="f_pf" accept="image/*" hidden><div class="sub">로그인 번호(휴대폰)는 바꾸려면 직원을 새로 등록해 주세요. 사진은 관리자가 넣는 직원 명부용이에요(직원 본인 프로필 사진은 따로).</div>', () => {
+    const n = stripTitle($('#f_n').value); if (!n) return warn('이름을 적어 주세요.');
+    if (n !== u.name && staffList().some(x => x.id !== u.id && x.name === n)) return warn('같은 이름의 직원이 있습니다.');
+    u.name = n; u.dept = $('#f_dp').value.trim(); u.pos = $('#f_po').value; u.birth = $('#f_bd').value; u.tel = $('#f_tl').value.trim(); u.addr = $('#f_ad').value.trim(); u.photo = pic;
+    put('users', u); syncPhone(u); if (u.id === S.uid) refreshMe(); render(); setTimeout(() => ACT.staffInfo(u.id), 0); toast('저장했어요.'); return true;
+  }, '저장');
+  $('#f_pic').onclick = () => $('#f_pf').click();
+  $('#f_picx').onclick = () => { pic = ''; $('#f_pv').innerHTML = avatarHTML(u.id, 64); };
+  $('#f_pf').onchange = async () => { try { const d = await shrinkImage($('#f_pf').files[0], 256, 40 * 1024, true); pic = b64of(d); $('#f_pv').innerHTML = '<img class="avimg" style="width:64px;height:64px" src="data:image/jpeg;base64,' + pic + '" alt="">'; } catch (e) { toast('사진을 읽지 못했어요.'); } };
+};
+ACT.staffDel = id => { // 완전 삭제: 목록·명단·선택지에서 모두 빠지고 로그인도 막힌다. 서버 규칙상 기록(업무·채팅의 이름)은 남는다
+  const u = byId('users', id); if (!u || !can('staff_manage')) return;
+  if (u.id === S.uid) return toast('내 계정은 지울 수 없어요.');
+  if (hasP(u, 'staff_manage') && adminCount() <= 1) return toast('마지막 관리자는 지울 수 없어요.');
+  needDelPw(u.name + '님 완전 삭제', () => askConfirm(u.name + '님을 완전 삭제할까요?', '직원 목록·명단·담당자 고르기에서 모두 사라지고 이 번호로 로그인할 수 없어요. 되돌릴 수 없어요.\n(지난 업무·채팅에 남은 이름 기록은 그대로 보여요)', '완전 삭제', () => {
+    u.deleted = true; u.active = false; u.deletedAt = nowStr(); u.deletedBy = S.uid; put('users', u); syncPhone(u); closeModal(); render(); toast(u.name + '님을 삭제했어요.');
+  }, true), true);
+};
 ACT.reqQuickEdit = () => formModal('빠른 선택 버튼 관리', '<div class="sub" style="margin-top:0">업무 요청 창의 ‘가맹점 요청사항’ 빠른 선택 버튼이에요. 한 줄에 하나씩 적으면 그 순서대로 버튼이 생겨요. (모든 직원에게 똑같이 보여요)</div><textarea id="f_q" style="min-height:120px" placeholder="예: 용지신청">' + esc(reqQuick().join('\n')) + '</textarea>', () => {
   const items = [...new Set($('#f_q').value.split(/[\n,]+/).map(x => x.trim()).filter(Boolean))];
   const o = reqQuickDoc() || create('config', {key: 'req_quick'}); o.items = items; o.changedBy = S.uid; o.changedAt = nowStr(); put('config', o); render(); toast('빠른 선택 버튼 ' + items.length + '개를 저장했어요.'); return true;
@@ -1882,17 +1968,18 @@ ACT.newStaff = () => formModal('직원 추가', '<label class="fl" for="f_n">직
   const n = stripTitle($('#f_n').value), ph = e164($('#f_p').value);
   if (!n || ph.length < 12) return warn('이름과 휴대폰 번호를 입력해 주세요.');
   if (list('users').some(u => u.name === n)) return warn('같은 이름의 직원이 있습니다.');
-  if ([...S.data.users.values()].some(u => u.phone === ph)) return warn('이미 등록된 번호입니다.');
+  if (staffList().some(u => u.phone === ph)) return warn('이미 등록된 번호입니다.');
   const u = {id: nextId(), name: n, phone: ph, active: true, perms: PRESETS[$('#f_ps').value].slice()}; put('users', u); syncPhone(u); render(); toast(n + '님을 등록했어요. 이 번호로 로그인할 수 있어요.'); return true;
 }, '추가');
 ACT.staffEdit = id => {
   const u = byId('users', id); if (!u) return; const active = u.active !== false;
-  formModal(u.name + ' 권한', PERMS.map(([k, lb]) => '<label class="chk"><input type="checkbox" class="pm" value="' + k + '"' + (hasP(u, k) ? ' checked' : '') + '><span>' + lb + '</span></label>').join('') +
+  formModal(u.name + ' 권한 설정', PERMS.map(([k, lb]) => '<label class="chk"><input type="checkbox" class="pm" value="' + k + '"' + (hasP(u, k) ? ' checked' : '') + '><span>' + lb + '</span></label>').join('') +
     '<label class="chk" style="margin-top:8px"><input type="checkbox" id="f_np"' + (u.noPerf ? ' checked' : '') + '><span>영업 실적·순위에서 빼기 (대표님 등)</span></label>' +
+    '<label class="chk"><input type="checkbox" id="f_nr"' + (u.noReport ? '' : ' checked') + '><span>일일보고·실적보고 명단에 넣기</span></label>' +
     '<button class="btn ' + (active ? 'red' : 'tint') + ' full" id="f_act">' + (active ? '사용 중지 (퇴사 등)' : '다시 사용') + '</button>', () => {
     const np = [...document.querySelectorAll('.pm:checked')].map(c => c.value);
     if (hasP(u, 'staff_manage') && !np.includes('staff_manage') && adminCount() <= 1) return warn('마지막 관리자의 직원 관리 권한은 끌 수 없습니다.');
-    u.perms = np; u.noPerf = $('#f_np').checked; put('users', u); syncPhone(u); if (u.id === S.uid) refreshMe(); render(); toast('저장했어요.'); return true;
+    u.perms = np; u.noPerf = $('#f_np').checked; u.noReport = !$('#f_nr').checked; put('users', u); syncPhone(u); if (u.id === S.uid) refreshMe(); render(); toast('저장했어요.'); return true;
   }, '저장');
   $('#f_act').onclick = () => {
     if (active && hasP(u, 'staff_manage') && adminCount() <= 1) return toast('마지막 관리자는 중지할 수 없습니다.');
@@ -2266,9 +2353,9 @@ ACT.newNotice = () => formModal('공지 작성', '<label class="fl" for="f_t1">�
 
 // ---------- 전체 ----------
 // 항목과 순서는 안드로이드 앱의 '전체' 탭과 같다. go 가 없는 항목은 아직 앱에서만 되는 기능이다.
-const MENU_SECS = ['내 계정·설정', '업무', '가맹점', '계약·재고', '실적', '보고', '회사', '관리자'];
+const MENU_SECS = ['내 계정·설정', '업무', '가맹점', '계약', '재고', '실적', '보고', '회사', '관리자'];
 function menuItems() {
-  // 묶음(앱과 같은 순서): 업무 · 가맹점 · 계약·재고 · 실적 · 보고 · 회사 · 내 계정·설정 · 관리자 — 권한이 없는 메뉴는 아예 안 보인다
+  // 묶음(앱과 같은 순서): 내 계정·설정 · 업무 · 가맹점 · 계약 · 재고 · 실적 · 보고 · 회사 · 관리자 — 권한이 없는 메뉴는 아예 안 보인다
   const P = can('perf_view') || can('staff_manage'), R = canReport() || can('report_view'), A = can('staff_manage');
   const nu = unreadNotices(), lk = lockDoc(); const it = [];
   const add = (sec, label, words, go, badge) => it.push({sec, label, words, go, badge});
@@ -2282,13 +2369,14 @@ function menuItems() {
   add('가맹점', '단체 문자 보내기', '단체 문자 sms 발송 가맹점 문자 안내', 'nav:all:sms');
   add('가맹점', '가맹점 일괄 가져오기 (엑셀·이카운트)', '가맹점 일괄 가져오기 업로드 엑셀 csv 이카운트', 'act:importM');
   const ex = expiringContracts().length;
-  add('계약·재고', '신규 계약 올리기', '신규 계약 올리기 CMS 판매 렌탈', 'act:newContract');
-  add('계약·재고', '계약 관리 (설치 완료·만료 알림)', '계약 설치 완료 만료 알림 장비', 'nav:all:contracts', ex ? '만료 ' + ex : '');
-  add('계약·재고', '입금 확인', '입금 확인 입금 내역 미납금 판매대금 정보변경수수료', 'nav:all:deposit');
-  add('계약·재고', '재고 (입고·출고·정정)', '재고 장비 바코드 시리얼 단가 입고 출고 수량 정정 스캔 본사 광주지사 보관지', 'nav:all:stock');
-  add('계약·재고', '재고 이력', '재고 이력 입고 출고 정정 이동 실사 조사 반품 불량', 'nav:all:stocklog');
-  add('계약·재고', '상품 목록 (상품코드)', '상품 목록 상품코드 품목 코드 등록 물품요청 재고', 'nav:all:products');
-  if (prodAdmin()) add('계약·재고', '재고 일괄 등록 (엑셀 양식)', '재고 일괄 등록 엑셀 업로드 양식 옮기기 설치 가맹점', 'act:importStock');
+  add('계약', '신규 계약 올리기', '신규 계약 올리기 CMS 판매 렌탈', 'act:newContract');
+  add('계약', '계약 관리 (설치 완료·만료 알림)', '계약 설치 완료 만료 알림 장비', 'nav:all:contracts', ex ? '만료 ' + ex : '');
+  add('계약', '입금 확인', '입금 확인 입금 내역 미납금 판매대금 정보변경수수료', 'nav:all:deposit');
+  add('재고', '재고 (입고·출고·정정)', '재고 장비 바코드 시리얼 단가 입고 출고 수량 정정 스캔 본사 광주지사 보관지', 'nav:all:stock');
+  add('재고', '재고 이력', '재고 이력 입고 출고 정정 이동 실사 조사 반품 불량', 'nav:all:stocklog');
+  add('재고', '상품 목록 (상품코드)', '상품 목록 상품코드 품목 코드 등록 물품요청 재고', 'nav:all:products');
+  if (prodAdmin()) add('재고', '재고 일괄 등록 (엑셀 양식)', '재고 일괄 등록 엑셀 업로드 양식 옮기기 설치 가맹점', 'act:importStock');
+  add('재고', '물품요청 (본사 ← 지사)', '물품요청 구매 발주 주문 본사 지사 용지 장비 요청', 'nav:all:preqs', preqWaiting().length ? '입고 확인 ' + preqWaiting().length : '');
   add('실적', '내 실적', '내 실적 월별 성장률 계약', 'nav:all:myperf');
   if (P) { add('실적', '전체 실적·직원별 순위', '전체 실적 직원별 순위 성장률', 'nav:all:perf'); add('실적', '수익 현황 (입고·출고 단가)', '수익 현황 입고 출고 단가 매출 매입', 'nav:all:profit'); }
   add('보고', '일일보고 쓰기', '일일보고 보고 오늘 한 일', 'nav:all:daily');
@@ -2296,6 +2384,7 @@ function menuItems() {
   if (R) { add('보고', '일일보고 종합 보기', '일일보고 종합 대표님 직원별', 'nav:all:reportview'); if (!P) add('보고', '실적 보고서 보기', '실적 보고서 보기 대표님', 'nav:all:perfreport'); }
   add('회사', '공지사항', '공지사항 공지 알림', 'nav:all:notice', nu ? String(nu) : '');
   add('회사', '자료실', '자료실 게시판 양식 서식 계약서 파일 문서', 'nav:all:library'); add('회사', '비상연락망 (눌러서 전화)', '비상연락망 연락처 전화 번호', 'nav:all:contacts');
+  if (canStaffInfo()) add('회사', '직원 정보 (명부)', '직원 정보 명부 부서 직책 생년월일 연락처 주소 사진', 'nav:all:staffinfo');
   add('내 계정·설정', '내 프로필 (사진·상태 메시지)', '프로필 사진 상태 메시지 내 정보', 'act:myProfile');
   const np = 'Notification' in window ? Notification.permission : 'none';
   add('내 계정·설정', '알림 및 소리 설정', '알림 소리 음성 진동 끄기 켜기 업무 배정 채팅 나인톡 카톡 푸시 들어 보기', 'nav:all:sound', (soundOn() ? '' : '업무 끔 ') + (chatSndOn() ? '' : '채팅 끔'));
@@ -2305,10 +2394,12 @@ function menuItems() {
   add('내 계정·설정', '로그아웃', '로그아웃 나가기', 'act:logout');
   if (A) {
     add('관리자', '직원과 권한', '직원 권한 등록 사용 중지 관리자', 'nav:all:staff');
+    add('관리자', '직책 목록 (정렬 순서)', '직책 목록 대표 이사 본부장 지사장 부장 차장 과장 대리 사원 정렬', 'act:posEdit');
     add('관리자', '업무 요청 빠른 선택 버튼', '빠른 선택 버튼 용지신청 요청사항 추가 관리', 'act:reqQuickEdit');
     add('관리자', '데이터 백업 내려받기', '데이터 백업 내려받기 저장 내보내기 json', 'act:backupDownload'); add('관리자', 'PC에 보관된 자동 백업', '자동 백업 보관 PC 복원', 'act:pcBackups'); add('관리자', '가맹점 보호·복원', '가맹점 보호 복원 되돌리기 삭제 복구 휴지통', 'act:safety');
     add('관리자', '가맹점 수정 암호', '가맹점 수정 암호 잠금 비밀번호 설정 변경', 'act:mlockSet', lk ? '설정됨' : '아직 없음');
     if (lk) add('관리자', '가맹점 수정 암호 끄기', '가맹점 수정 암호 끄기 잠금 해제', 'act:mlockOff');
+    add('관리자', '삭제 비밀번호 (중요한 삭제)', '삭제 비밀번호 암호 직원 삭제 가맹점 재고 응대 기록 자료실', 'act:dlockSet', dlockDoc() ? '설정됨' : '아직 없음');
   }
   return it;
 }
@@ -2404,10 +2495,11 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.34', '2026-10-25', ['전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도), 순서 정리', '직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정과 권한 설정 창이 따로', '권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기', '직책 목록(관리자가 추가·수정·삭제, 위에 있을수록 앞): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순 선택', '직원 완전 삭제(삭제 비밀번호 필요), 가맹점·재고·응대 기록·자료실 삭제도 삭제 비밀번호를 물어요 (☰ → 관리자 → 삭제 비밀번호)']],
   ['웹 0.0.33', '2026-10-25', ['가맹점 등급 표기를 직원들이 부르는 대로: 0코드·1코드·2코드·3코드, 그다음 해지가맹점·신규가맹점·협력사 (목록·단체 문자·등록 화면·업로드 양식)']],
   ['웹 0.0.32', '2026-10-25', ['물품요청: 칸을 누르면 재고 품목(상품코드·보관지별 재고 수)에서 고르고, 목록에 없는 물품은 이름만 적어도 요청돼요(‘새 물품’ 표시). 본사가 주문·발송을 표시할 때 상품 목록에 올라가고 상품코드가 붙어요']],
   ['웹 0.0.31', '2026-10-25', ['가맹점 일괄 가져오기에 업로드 양식(.xlsx) 받기 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요', '재고 일괄 등록(엑셀, 관리자): 상품코드/상품명·시리얼·수량·현재위치 — 본사·광주지사는 우리 재고, 가맹점 상호는 이미 설치된 장비로 기록만(재고 수 제외)', 'PC 위쪽 메뉴 맨 끝에 ‘메모’: 업무 중 메모 추가·수정(자동 저장)·고정·삭제']],
-  ['웹 0.0.30', '2026-10-25', ['상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 계약·재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요', '재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색']],
+  ['웹 0.0.30', '2026-10-25', ['상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요', '재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색']],
   ['웹 0.0.29', '2026-10-25', ['☰ → 내 계정·설정 → ‘알림 및 소리 설정’ 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기']],
   ['웹 0.0.28', '2026-10-25', ['업무 요청 ‘가맹점 요청사항’ 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)', '직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)', '휴대폰 아래 탭: ‘전체’를 ☰ 로']],
   ['웹 0.0.27', '2026-10-25', ['‘업무 지시’를 ‘업무 요청’으로 이름 바꿈 (요청하기·요청한 사람)']],
@@ -2459,7 +2551,7 @@ const WEB_MANUAL = [
   ['자료실 · 비상연락망', '■ 자료실: 분류 버튼과 검색으로 찾고, 눌러서 첨부 파일을 받아요. + 로 제목·설명·분류와 파일(5개, 3MB까지, 사진은 자동으로 줄여서)을 올려요. 올린 사람과 관리자만 고치고 지워요. 개인정보 파일은 올리지 마세요.\n■ 비상연락망: 구분별로 모아 보이고, 번호를 누르면 전화가 걸려요. + 로 추가, ‘수정’으로 고치거나 지워요.'],
   ['내 프로필 · 공지사항', '■ 내 프로필: 전체 탭 맨 위 내 카드(또는 전체 → 계정 → 내 프로필)에서 사진과 상태 메시지(예: 외근 중)를 바꿔요. 다른 직원 프로필에서는 1:1 대화·전화하기.\n■ 공지사항: 읽지 않은 공지는 숫자로 표시돼요. ‘공지 작성’ 권한이 있으면 + 로 올리고 ‘맨 위에 고정’할 수 있어요. 작성 권한자·관리자는 공지 창에서 읽은 사람 목록을 봐요.'],
   ['알림 · 저장 상태 · 뒤로가기', '■ 알림: 웹앱을 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·안내로 알려요. PC는 전체 → 계정 → 알림 받기를 허용하면 다른 창을 보고 있어도 알림이 떠요. 탭 제목에 안 본 개수가 보여요. (웹앱을 닫았을 때 오는 알림은 서버 연동 후 가능)\n■ 저장 상태: 저장하면 화면 위에 ‘저장 중’이 잠깐 보여요. 인터넷이 끊기면 ‘저장 대기’로 바뀌고, 연결되면 저절로 저장돼요. 이 띠가 있는 동안에는 닫지 마세요.\n■ 가맹점 수정 창을 연 사이 다른 직원이 같은 가맹점을 고치면, 저장할 때 바뀐 항목을 보여 주고 덮어쓸지 한 번 더 물어요.\n■ 뒤로가기: 폰 뒤로가기·브라우저 뒤로 버튼으로 팝업 → 대화방 → 메뉴 → 하위 화면 → 첫 화면 순서로 닫혀요. 첫 화면에서 한 번 더 누르면 나가요.\n■ 알림 소리·음성: 새 업무가 배정되면 ‘띵동’ 소리와 함께 “업무가 배정되었습니다”, 채팅이 오면 카톡처럼 “나인톡!”, 공지는 “새 공지가 있습니다”라고 말해 줘요. ☰ → 내 계정·설정 → ‘알림 및 소리 설정’에서 업무 소리·채팅 소리를 따로 끄고 켜고, ‘들어 보기’로 미리 들어 봐요. 채팅방 위 🔔 를 누르면 그 방만 소리를 꺼요(🔕).'],
-  ['관리자: 직원과 권한', '■ 전체 → 관리자 → 직원과 권한. + 로 이름·휴대폰 번호·권한 묶음(영업직·사무직·관리자)을 넣어 등록하면 그 번호로 로그인할 수 있어요.\n■ 직원을 눌러 항목별 권한을 켜고 끄거나, ‘사용 중지’로 퇴사자의 접근을 막아요. 마지막 관리자는 중지하거나 관리 권한을 끌 수 없어요.\n■ 권한: 업무 만들기 / 다른 직원에게 업무 배정 / 전체 업무 보기 / 전체 이력 보기 / 공지 작성 / 실적 보기 / 일일보고·실적보고 종합 보기 / 가맹점 등록·수정 / 직원 관리(최고관리자).'],
+  ['관리자: 직원과 권한', '■ 직원을 누르면 ‘직원 정보’ 창이 열려요(사진·부서·직책·생년월일·연락처·주소). 여기서 ‘정보 수정’, ‘권한 설정’, ‘완전 삭제’를 따로 해요.\n■ 권한 설정 창: 항목별 권한(직원 정보 보기 포함), 영업 실적·순위에서 빼기, 일일보고·실적보고 명단에 넣기, 사용 중지.\n■ 직책 목록(☰ → 관리자 → 직책 목록): 한 줄에 하나, 위에 있을수록 앞에 보여요. 기본: 대표·이사·본부장·지사장·부장·차장·과장·대리·사원.\n■ 삭제 비밀번호(☰ → 관리자): 직원 완전 삭제, 가맹점·재고·응대 기록·자료실 삭제 때 물어봐요. 정하기 전에는 직원 완전 삭제를 할 수 없어요. 완전 삭제한 직원은 목록·명단·담당자 고르기에서 사라지고 로그인할 수 없어요(지난 기록의 이름은 남아요).\n■ 전체 → 관리자 → 직원과 권한. + 로 이름·휴대폰 번호·권한 묶음(영업직·사무직·관리자)을 넣어 등록하면 그 번호로 로그인할 수 있어요.\n■ 직원을 눌러 항목별 권한을 켜고 끄거나, ‘사용 중지’로 퇴사자의 접근을 막아요. 마지막 관리자는 중지하거나 관리 권한을 끌 수 없어요.\n■ 권한: 업무 만들기 / 다른 직원에게 업무 배정 / 전체 업무 보기 / 전체 이력 보기 / 공지 작성 / 실적 보기 / 일일보고·실적보고 종합 보기 / 가맹점 등록·수정 / 직원 관리(최고관리자).'],
   ['관리자: 백업 · 가맹점 보호·복원', '■ 자료는 여러 겹으로 지켜져요: ① 서버는 지우기가 막혀 있고 모든 변경이 기록돼요 ② 매일 새벽 서버 전체를 암호화해 90일 보관(비밀값 설정 후) ③ 관리자가 앱·웹을 열면 그 기기에 하루 한 번 14일치 자동 보관 ④ 데이터 백업 내려받기로 파일 보관(한 달에 한 번 이상 권장).\n■ 가맹점 보호·복원: 삭제한 가맹점 복원, 백업 파일(.json)로 복원, 되돌리기 기준점 만들기. 가져오기·복원·되돌리기 직전 상태는 그 PC에 자동 저장돼요(전체 → 관리자 → PC에 보관된 자동 백업).\n■ 가맹점 수정 암호: 전체 → 관리자에서 정하고 바꾸고 끄요.'],
   ['재고 일괄 등록 (엑셀)', '■ 처음 재고를 옮길 때 써요(관리자). 재고 화면의 ‘📥 재고 일괄 등록 (엑셀)’ 또는 ☰ → 계약·재고.\n■ ‘업로드 양식 받기’로 엑셀 양식을 받아 상품코드(또는 상품명)·시리얼·수량·현재위치·사업자번호·설치일·메모를 채워요. ‘(예시)’ 줄은 건너뛰어요.\n■ 현재위치가 본사·광주지사 → 우리 재고로 입고돼요(같은 상품·보관지의 시리얼 없는 물품은 수량이 더해져요).\n■ 현재위치가 가맹점 상호 → 이미 설치된 장비로 기록만 하고 재고 수·수익에는 넣지 않아요. 가맹점이 먼저 등록돼 있어야 하고, 사업자번호를 적으면 정확히 찾아요.\n■ 상품 목록에 없는 상품명은 새 상품코드(P0001…)로 등록돼요. 올리기 전에 미리보기로 개수와 못 올리는 줄(이유)을 보여 줘요.\n■ 앞으로 가맹점에 나가는 것은 계약·출고로 처리해요.'],
   ['메모 (PC)', '■ PC 화면 위쪽 메뉴 맨 끝 ‘메모’. 업무 중 적어 둘 것을 메모해요.\n■ 새 메모를 적고 ‘추가’(Ctrl+Enter). 메모 칸을 고치면 잠시 뒤 저절로 저장돼요. 📌 로 맨 위에 고정, 🗑 로 삭제.\n■ 내 계정에 저장돼서 다른 PC에서도 보이고, 다른 직원 화면에는 안 보여요.'],
@@ -2475,7 +2567,8 @@ const MAN_GROUPS = [['시작하기', ['처음 시작하기 · 로그인', 'PC �
   ['☰ 내 계정·설정', ['내 프로필 · 공지사항', '알림 · 저장 상태 · 뒤로가기']],
   ['☰ 업무', ['물품요청 (본사 ← 지사)']],
   ['☰ 가맹점', ['단체 문자 (가맹점)', '가맹점 일괄 가져오기 (엑셀·CSV)']],
-  ['☰ 계약·재고', ['계약 · 입금', '재고 · 바코드', '재고 일괄 등록 (엑셀)']],
+  ['☰ 계약', ['계약 · 입금']],
+  ['☰ 재고', ['재고 · 바코드', '재고 일괄 등록 (엑셀)']],
   ['☰ 실적 · 보고', ['실적 · 수익 · 지난 업무', '일일보고 · 실적 보고서']],
   ['☰ 회사', ['자료실 · 비상연락망']],
   ['☰ 관리자', ['관리자: 직원과 권한', '관리자: 백업 · 가맹점 보호·복원']],

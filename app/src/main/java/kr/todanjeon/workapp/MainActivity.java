@@ -644,6 +644,7 @@ public class MainActivity extends Activity {
         else if ("notice".equals(k)) renderNotices();
         else if ("history".equals(k)) renderHistory();
         else if ("staff".equals(k)) renderStaff();
+        else if ("staffinfo".equals(k)) renderStaffInfo();
         else if ("sound".equals(k)) renderSound();
         else if ("merchants".equals(k)) renderMerchants();
         else if ("stock".equals(k)) renderStock();
@@ -1490,17 +1491,387 @@ public class MainActivity extends Activity {
     // ---------------- 직원/권한 ----------------
     private void renderStaff() {
         if (store.stripTitles() > 0) Ui.toast(this, "직원 이름에서 직함을 뺐어요 (이름만 표시).");
-        for (final JSONObject u : store.list(store.users())) {
+        content.addView(Ui.text(this, "직원을 누르면 직원 정보가 열리고, 거기서 정보 수정·권한 설정을 따로 해요. 직책 순서로 보여요.", 13, Ui.GRAY, false));
+        LinearLayout tb = new LinearLayout(this);
+        Button pb = Ui.button(this, "직책 목록", Ui.TINT, Ui.DEEP);
+        pb.setOnClickListener(v -> showPosEdit());
+        Button db = Ui.button(this, dlockDoc() != null ? "삭제 비밀번호 바꾸기" : "삭제 비밀번호 정하기", Ui.FIELD, Ui.INK);
+        db.setOnClickListener(v -> showDelLockSet());
+        LinearLayout.LayoutParams h1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f), h2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        h2.leftMargin = Ui.dp(this, 6);
+        tb.addView(pb, h1);
+        tb.addView(db, h2);
+        content.addView(tb, Ui.lp(this, 8));
+        List<JSONObject> us = store.list(store.users());
+        sortByPos(us);
+        Collections.sort(us, (a, b) -> (a.optBoolean("active", true) ? 0 : 1) - (b.optBoolean("active", true) ? 0 : 1));
+        for (final JSONObject u : us) {
             LinearLayout c = Ui.card(this);
             boolean active = u.optBoolean("active", true);
-            c.addView(Ui.text(this, u.optString("name") + (active ? "" : "  (사용 중지)"), 16, active ? Ui.INK : Ui.GRAY, true));
+            LinearLayout hd = new LinearLayout(this);
+            hd.setGravity(Gravity.CENTER_VERTICAL);
+            hd.addView(staffAvatar(u, 40));
+            TextView nm = Ui.text(this, u.optString("name") + (staffSub(u).isEmpty() ? "" : "  " + staffSub(u)) + (active ? "" : "  (사용 중지)"), 16, active ? Ui.INK : Ui.GRAY, true);
+            nm.setPadding(Ui.dp(this, 10), 0, 0, 0);
+            hd.addView(nm);
+            c.addView(hd);
+            if (u.optBoolean("noPerf") || u.optBoolean("noReport")) c.addView(Ui.text(this, (u.optBoolean("noPerf") ? "실적 제외 " : "") + (u.optBoolean("noReport") ? "보고 명단 제외" : ""), 12, Ui.AMBER, false), Ui.lp(this, 2));
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < Perm.KEYS.length; i++) if (Store.has(u, Perm.KEYS[i])) sb.append(sb.length() > 0 ? ", " : "").append(Perm.LABELS[i]);
             c.addView(Ui.text(this, sb.length() == 0 ? "기본 권한(내 업무만)" : sb.toString(), 12, Ui.GRAY, false), Ui.lp(this, 2));
-            c.setOnClickListener(v -> showEditStaff(u));
+            c.setOnClickListener(v -> showStaffInfo(u));
             content.addView(c, Ui.lp(this, 10));
         }
     }
+    // ---------- 직책 목록 (정렬 순서) — 웹과 같음: config key 'positions' {items}, 위에 있을수록 먼저 ----------
+    private static final String[] POS_DEFAULT = {"대표", "이사", "본부장", "지사장", "부장", "차장", "과장", "대리", "사원"};
+
+    private JSONObject posDoc() {
+        for (JSONObject c : store.list(store.arr("config"))) if ("positions".equals(c.optString("key"))) return c;
+        return null;
+    }
+
+    private List<String> positions() {
+        List<String> out = new ArrayList<>();
+        JSONObject d = posDoc();
+        JSONArray a = d == null ? null : d.optJSONArray("items");
+        for (int i = 0; a != null && i < a.length(); i++) if (!a.optString(i).trim().isEmpty()) out.add(a.optString(i).trim());
+        if (out.isEmpty()) out.addAll(java.util.Arrays.asList(POS_DEFAULT));
+        return out;
+    }
+
+    private int posRank(JSONObject u) {
+        int i = positions().indexOf(u.optString("pos"));
+        return i < 0 ? 999 : i;
+    }
+
+    private void sortByPos(List<JSONObject> l) {
+        final List<String> ps = positions();
+        Collections.sort(l, (a, b) -> {
+            int x = ps.indexOf(a.optString("pos")), y = ps.indexOf(b.optString("pos"));
+            x = x < 0 ? 999 : x;
+            y = y < 0 ? 999 : y;
+            return x != y ? x - y : a.optString("name").compareTo(b.optString("name"));
+        });
+    }
+
+    private boolean canStaffInfo() {
+        return can(Perm.STAFF_VIEW) || can(Perm.STAFF_MANAGE);
+    }
+
+    private void showPosEdit() {
+        if (!can(Perm.STAFF_MANAGE)) {
+            Ui.toast(this, "관리자만 바꿀 수 있어요.");
+            return;
+        }
+        final EditText ed = Ui.field(this, "한 줄에 하나씩", false);
+        ed.setSingleLine(false);
+        ed.setMinLines(8);
+        ed.setGravity(Gravity.TOP);
+        ed.setText(android.text.TextUtils.join("\n", positions()));
+        LinearLayout box = form();
+        box.addView(Ui.text(this, "한 줄에 하나씩 적어요. 위에 있을수록 앞에 보여요(직원 목록·일일보고 명단·실적 직책순). 줄을 지우면 목록에서 빠지고, 그 직책인 직원은 맨 뒤로 가요.", 13, Ui.GRAY, false));
+        box.addView(ed, Ui.lp(this, 10));
+        ScrollView sv = new ScrollView(this);
+        sv.addView(box);
+        new Dlg(this).setTitle("직책 목록 (정렬 순서)").setView(sv).setNegativeButton("취소", null).setPositiveButton("저장", (d, w) -> {
+            JSONArray items = new JSONArray();
+            java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+            for (String x : ed.getText().toString().split("[\\n,]+")) if (!x.trim().isEmpty()) seen.add(x.trim());
+            if (seen.isEmpty()) {
+                Ui.toast(this, "직책을 한 개 이상 적어 주세요.");
+                return;
+            }
+            for (String x : seen) items.put(x);
+            JSONObject o = posDoc();
+            if (o == null) o = store.create("config");
+            try {
+                o.put("key", "positions").put("items", items).put("changedBy", myId()).put("changedAt", store.now());
+            } catch (Exception ignored) {
+            }
+            store.save();
+            Ui.toast(this, "직책 " + items.length() + "개를 저장했어요.");
+            render();
+        }).show();
+    }
+
+    // ---------- 삭제 비밀번호 (중요한 삭제: 직원·가맹점·재고·응대 기록·자료실) — config key 'delete_lock' {salt, hash} ----------
+    private JSONObject dlockDoc() {
+        for (JSONObject c : store.list(store.arr("config"))) if ("delete_lock".equals(c.optString("key")) && !c.optString("hash").isEmpty()) return c;
+        return null;
+    }
+
+    /** must: 비밀번호가 아직 없으면 막는다(직원 완전 삭제) */
+    private void needDelPw(String what, boolean must, final Runnable then) {
+        final JSONObject L = dlockDoc();
+        if (L == null) {
+            if (must) Ui.toast(this, can(Perm.STAFF_MANAGE) ? "먼저 전체 → 관리자 → 삭제 비밀번호를 정해 주세요." : "삭제 비밀번호가 아직 없어요. 관리자에게 요청해 주세요.");
+            else then.run();
+            return;
+        }
+        LinearLayout f = form();
+        f.addView(Ui.text(this, what + " — 중요한 삭제라서 관리자가 정한 삭제 비밀번호가 필요해요.", 13, Ui.GRAY, false));
+        final EditText pw = Ui.field(this, "삭제 비밀번호", false);
+        pw.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        f.addView(pw, Ui.lp(this, 8));
+        final AlertDialog dlg = new Dlg(this).setTitle("삭제 비밀번호").setView(f).setNegativeButton("취소", null).setPositiveButton("확인", null).create();
+        dlg.show();
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (sha256(L.optString("salt") + pw.getText().toString()).equals(L.optString("hash"))) {
+                dlg.dismiss();
+                then.run();
+            } else Ui.toast(this, "비밀번호가 맞지 않아요.");
+        });
+    }
+
+    private void showDelLockSet() {
+        if (!can(Perm.STAFF_MANAGE)) {
+            Ui.toast(this, "관리자만 설정할 수 있어요.");
+            return;
+        }
+        final JSONObject L = dlockDoc();
+        LinearLayout f = form();
+        f.addView(Ui.text(this, "직원 완전 삭제, 가맹점·재고·응대 기록·자료실 삭제 때 물어봐요. " + (L != null ? "바꾸려면 현재 비밀번호도 입력해 주세요." : "아직 없어요 — 정하기 전에는 직원 완전 삭제를 할 수 없어요."), 13, Ui.GRAY, false));
+        final EditText old = Ui.field(this, "현재 비밀번호", false), nw = Ui.field(this, "새 비밀번호 (4자 이상)", false), nw2 = Ui.field(this, "새 비밀번호 한 번 더", false);
+        for (EditText e : new EditText[]{old, nw, nw2}) e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        if (L != null) f.addView(old, Ui.lp(this, 8));
+        f.addView(nw, Ui.lp(this, 8));
+        f.addView(nw2, Ui.lp(this, 8));
+        final AlertDialog dlg = new Dlg(this).setTitle("삭제 비밀번호").setView(f).setNegativeButton("취소", null).setPositiveButton("저장", null).create();
+        dlg.show();
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String n = nw.getText().toString();
+            if (n.length() < 4) {
+                Ui.warn(this, "비밀번호는 4자 이상으로 해 주세요.");
+                return;
+            }
+            if (!n.equals(nw2.getText().toString())) {
+                Ui.warn(this, "새 비밀번호가 서로 달라요.");
+                return;
+            }
+            if (L != null && !sha256(L.optString("salt") + old.getText().toString()).equals(L.optString("hash"))) {
+                Ui.warn(this, "현재 비밀번호가 맞지 않아요.");
+                return;
+            }
+            JSONObject o = null;
+            for (JSONObject c : store.list(store.arr("config"))) if ("delete_lock".equals(c.optString("key"))) o = c;
+            if (o == null) o = store.create("config");
+            String salt = Long.toString(System.nanoTime(), 36) + Long.toString(new java.util.Random().nextLong(), 36);
+            try {
+                o.put("key", "delete_lock").put("salt", salt).put("hash", sha256(salt + n)).put("changedBy", myId()).put("changedAt", store.now());
+            } catch (Exception ignored) {
+            }
+            store.save();
+            dlg.dismiss();
+            Ui.toast(this, "삭제 비밀번호를 저장했어요.");
+            render();
+        });
+    }
+
+    // ---------- 직원 정보 창(보기) · 정보 수정 · 권한 설정 · 완전 삭제 — 웹과 같음 ----------
+    private String staffSub(JSONObject u) {
+        String d = u.optString("dept"), p = u.optString("pos");
+        return d.isEmpty() ? p : p.isEmpty() ? d : d + " · " + p;
+    }
+
+    private static String telFmt(String p) {
+        String d = (p == null ? "" : p).replace("+82", "0").replaceAll("[^0-9]", "");
+        if (d.length() == 11) return d.substring(0, 3) + "-" + d.substring(3, 7) + "-" + d.substring(7);
+        if (d.length() == 10) return d.substring(0, 3) + "-" + d.substring(3, 6) + "-" + d.substring(6);
+        return p == null ? "" : p;
+    }
+
+    /** 관리자가 넣은 직원 사진(users.photo)이 있으면 그것, 없으면 프로필 사진·글자 */
+    private View staffAvatar(JSONObject u, int sizeDp) {
+        String pic = u.optString("photo");
+        if (!pic.isEmpty()) {
+            String key = "sp" + u.optInt("id") + "@" + pic.length();
+            android.graphics.Bitmap b = bmpCache.get(key);
+            if (b == null) {
+                try {
+                    byte[] d = Media.unb64(pic);
+                    b = android.graphics.BitmapFactory.decodeByteArray(d, 0, d.length);
+                    if (b != null) bmpCache.put(key, b);
+                } catch (Exception ignored) {
+                }
+            }
+            if (b != null) {
+                ImageView iv = new ImageView(this);
+                iv.setImageBitmap(b);
+                iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                iv.setClipToOutline(true);
+                iv.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                    @Override
+                    public void getOutline(View v, android.graphics.Outline o) {
+                        o.setOval(0, 0, v.getWidth(), v.getHeight());
+                    }
+                });
+                iv.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(this, sizeDp), Ui.dp(this, sizeDp)));
+                return iv;
+            }
+        }
+        return avatarView(u.optInt("id"), sizeDp);
+    }
+
+    private void renderStaffInfo() {
+        content.addView(title("직원 정보 (명부)"));
+        if (!canStaffInfo()) {
+            content.addView(Ui.text(this, "직원 정보 보기 권한이 있어야 볼 수 있어요.", 14, Ui.GRAY, false));
+            return;
+        }
+        content.addView(Ui.text(this, "직책 순서로 보여요. 누르면 자세히 봐요.", 13, Ui.GRAY, false));
+        List<JSONObject> us = activeStaff();
+        sortByPos(us);
+        for (final JSONObject u : us) {
+            LinearLayout c = Ui.cardH(this);
+            c.addView(staffAvatar(u, 44));
+            LinearLayout tx = new LinearLayout(this);
+            tx.setOrientation(LinearLayout.VERTICAL);
+            tx.setPadding(Ui.dp(this, 12), 0, 0, 0);
+            tx.addView(Ui.text(this, u.optString("name") + (staffSub(u).isEmpty() ? "" : "  " + staffSub(u)), 16, Ui.INK, true));
+            tx.addView(Ui.text(this, u.optString("tel").isEmpty() ? telFmt(u.optString("phone")) : u.optString("tel"), 12, Ui.GRAY, false));
+            c.addView(tx, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            c.setOnClickListener(v -> showStaffInfo(u));
+            content.addView(c, Ui.lp(this, 8));
+        }
+    }
+
+    private void showStaffInfo(final JSONObject u) {
+        if (!canStaffInfo()) {
+            showProfile(u.optInt("id"));
+            return;
+        }
+        final boolean A = can(Perm.STAFF_MANAGE);
+        LinearLayout f = form();
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(staffAvatar(u, 64));
+        LinearLayout ht = new LinearLayout(this);
+        ht.setOrientation(LinearLayout.VERTICAL);
+        ht.setPadding(Ui.dp(this, 14), 0, 0, 0);
+        ht.addView(Ui.text(this, u.optString("name"), 20, Ui.INK, true));
+        ht.addView(Ui.text(this, (staffSub(u).isEmpty() ? "부서·직책 미입력" : staffSub(u)) + (u.optBoolean("active", true) ? "" : " · 사용 중지"), 13, Ui.GRAY, false));
+        head.addView(ht);
+        f.addView(head);
+        addLine(f, "부서", u.optString("dept"));
+        addLine(f, "직책", u.optString("pos"));
+        addLine(f, "생년월일", u.optString("birth"));
+        final String tel = u.optString("tel").isEmpty() ? telFmt(u.optString("phone")) : u.optString("tel");
+        if (!tel.isEmpty()) {
+            TextView tv = Ui.text(this, "연락처  " + tel + "  (눌러서 전화)", 15, Ui.DEEP, true);
+            tv.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
+            tv.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + tel.replaceAll("[^0-9]", "")))));
+            f.addView(tv);
+        }
+        addLine(f, "주소", u.optString("addr"));
+        if (A) addLine(f, "로그인 번호", telFmt(u.optString("phone")));
+        final AlertDialog[] dh = new AlertDialog[1];
+        if (A) {
+            LinearLayout bs = new LinearLayout(this);
+            bs.setOrientation(LinearLayout.VERTICAL);
+            String[] lb = {"정보 수정", "사진 바꾸기", "권한 설정", "완전 삭제"};
+            for (int i = 0; i < lb.length; i++) {
+                final int k = i;
+                Button b = Ui.button(this, lb[i], i == 0 ? Ui.GOLD : i == 3 ? Color.rgb(253, 236, 234) : Ui.TINT, i == 0 ? Ui.DARK : i == 3 ? Ui.RED : Ui.DEEP);
+                b.setOnClickListener(v -> {
+                    if (dh[0] != null) dh[0].dismiss();
+                    if (k == 0) showStaffInfoEdit(u);
+                    else if (k == 1) {
+                        staffPicFor = u.optInt("id");
+                        Intent it = new Intent(Intent.ACTION_GET_CONTENT).setType("image/*");
+                        startActivityForResult(Intent.createChooser(it, "직원 사진 고르기"), REQ_STAFFPIC);
+                    } else if (k == 2) showEditStaff(u);
+                    else deleteStaff(u);
+                });
+                bs.addView(b, Ui.lp(this, 6));
+            }
+            f.addView(bs, Ui.lp(this, 10));
+        }
+        ScrollView sv = new ScrollView(this);
+        sv.addView(f);
+        dh[0] = new Dlg(this).setTitle("직원 정보").setView(sv).setNegativeButton("닫기", null).show();
+    }
+
+    private static final int REQ_STAFFPIC = 110;
+    private int staffPicFor = 0;
+
+    private void showStaffInfoEdit(final JSONObject u) {
+        LinearLayout f = form();
+        final EditText name = Ui.field(this, "이름 (직함 없이)", false);
+        name.setText(u.optString("name"));
+        final EditText dept = Ui.field(this, "부서 (예: 영업팀)", false);
+        dept.setText(u.optString("dept"));
+        final List<String> ps = new ArrayList<>(positions());
+        if (!u.optString("pos").isEmpty() && !ps.contains(u.optString("pos"))) ps.add(u.optString("pos"));
+        ps.add(0, "(직책 없음)");
+        final Spinner pos = spinner(ps.toArray(new String[0]));
+        pos.setSelection(Math.max(0, ps.indexOf(u.optString("pos"))));
+        final EditText birth = Ui.field(this, "생년월일", false);
+        datePickField(birth, "📅 생년월일 (눌러서 고르기)");
+        birth.setText(u.optString("birth"));
+        final EditText tel = Ui.field(this, "연락처 (비우면 로그인 번호) " + telFmt(u.optString("phone")), false);
+        tel.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
+        tel.setText(u.optString("tel"));
+        final EditText addr = Ui.field(this, "주소", false);
+        addr.setText(u.optString("addr"));
+        f.addView(name);
+        f.addView(dept);
+        labeled(f, "직책", pos);
+        f.addView(birth, Ui.lp(this, 8));
+        f.addView(tel);
+        f.addView(addr);
+        f.addView(Ui.text(this, "로그인 번호(휴대폰)를 바꾸려면 직원을 새로 등록해 주세요. 사진은 정보 창의 '사진 바꾸기'로 넣어요.", 12, Ui.GRAY, false), Ui.lp(this, 8));
+        ScrollView sv = new ScrollView(this);
+        sv.addView(f);
+        final AlertDialog dlg = new Dlg(this).setTitle(u.optString("name") + " 정보").setView(sv).setNegativeButton("취소", null).setPositiveButton("저장", null).create();
+        dlg.show();
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String n = Store.stripTitle(name.getText().toString());
+            if (n.isEmpty()) {
+                Ui.warn(this, "이름을 적어 주세요.");
+                return;
+            }
+            if (!n.equals(u.optString("name")) && store.nameExists(n)) {
+                Ui.warn(this, "같은 이름의 직원이 있습니다.");
+                return;
+            }
+            try {
+                u.put("name", n).put("dept", dept.getText().toString().trim()).put("pos", pos.getSelectedItemPosition() == 0 ? "" : ps.get(pos.getSelectedItemPosition()))
+                        .put("birth", birth.getText().toString().trim()).put("tel", tel.getText().toString().trim()).put("addr", addr.getText().toString().trim());
+            } catch (Exception ignored) {
+            }
+            store.save();
+            if (u.optInt("id") == myId()) me = u;
+            dlg.dismiss();
+            Ui.toast(this, "저장했어요.");
+            render();
+            showStaffInfo(u);
+        });
+    }
+
+    /** 완전 삭제: 목록·명단·담당자 고르기에서 모두 빠지고 로그인도 막힌다(서버 규칙상 지난 기록의 이름은 남음) */
+    private void deleteStaff(final JSONObject u) {
+        if (u.optInt("id") == myId()) {
+            Ui.toast(this, "내 계정은 지울 수 없어요.");
+            return;
+        }
+        if (Store.has(u, Perm.STAFF_MANAGE) && store.adminCount() <= 1) {
+            Ui.toast(this, "마지막 관리자는 지울 수 없어요.");
+            return;
+        }
+        needDelPw(u.optString("name") + "님 완전 삭제", true, () -> new Dlg(this).setTitle(u.optString("name") + "님을 완전 삭제할까요?")
+                .setMessage("직원 목록·명단·담당자 고르기에서 모두 사라지고 이 번호로 로그인할 수 없어요. 되돌릴 수 없어요.\n(지난 업무·채팅에 남은 이름 기록은 그대로 보여요)")
+                .setNegativeButton("취소", null).setPositiveButton("완전 삭제", (d, w) -> {
+                    try {
+                        u.put("deleted", true).put("active", false).put("deletedAt", store.now()).put("deletedBy", myId());
+                    } catch (Exception ignored) {
+                    }
+                    store.save();
+                    Ui.toast(this, u.optString("name") + "님을 삭제했어요.");
+                    render();
+                }).show());
+    }
+
 
     private void showAddStaff() {
         LinearLayout f = new LinearLayout(this);
@@ -1548,10 +1919,14 @@ public class MainActivity extends Activity {
         np0.setText("영업 실적·순위에서 빼기 (대표님 등)");
         np0.setChecked(u.optBoolean("noPerf"));
         f.addView(np0, Ui.lp(this, 8));
+        final CheckBox nr0 = new CheckBox(this);
+        nr0.setText("일일보고·실적보고 명단에 넣기");
+        nr0.setChecked(!u.optBoolean("noReport"));
+        f.addView(nr0);
         final boolean active = u.optBoolean("active", true);
         ScrollView sv = new ScrollView(this);
         sv.addView(f);
-        new Dlg(this).setTitle(u.optString("name") + " 권한").setView(sv)
+        new Dlg(this).setTitle(u.optString("name") + " 권한 설정").setView(sv)
                 .setNegativeButton("닫기", null)
                 .setNeutralButton(active ? "사용 중지" : "다시 사용", (d, w) -> {
                     boolean isAdmin = Store.has(u, Perm.STAFF_MANAGE);
@@ -1570,7 +1945,7 @@ public class MainActivity extends Activity {
                     JSONArray np = new JSONArray();
                     for (int i = 0; i < Perm.KEYS.length; i++) if (boxes[i].isChecked()) np.put(Perm.KEYS[i]);
                     boolean wasAdmin = Store.has(u, Perm.STAFF_MANAGE);
-                    boolean willAdmin = boxes[Perm.KEYS.length - 1].isChecked();
+                    boolean willAdmin = boxes[java.util.Arrays.asList(Perm.KEYS).indexOf(Perm.STAFF_MANAGE)].isChecked();
                     if (wasAdmin && !willAdmin && store.adminCount() <= 1) {
                         Ui.warn(this, "마지막 관리자의 직원 관리 권한은 끌 수 없습니다.");
                         return;
@@ -1578,6 +1953,7 @@ public class MainActivity extends Activity {
                     try {
                         u.put("perms", np);
                         u.put("noPerf", np0.isChecked());
+                        u.put("noReport", !nr0.isChecked());
                     } catch (Exception ignored) {
                     }
                     store.save();
@@ -1963,16 +2339,19 @@ public class MainActivity extends Activity {
             goSub("merchants");
             startMerchantImport();
         }));
-        e.add(new Entry("계약·재고", "신규 계약 올리기", "신규 계약 올리기 CMS 판매 렌탈", () -> showAddContract()));
-        Entry c = new Entry("계약·재고", "계약 관리 (설치 완료·만료 알림)", "계약 설치 완료 만료 알림 장비 추가", () -> goSub("contracts"));
+        e.add(new Entry("계약", "신규 계약 올리기", "신규 계약 올리기 CMS 판매 렌탈", () -> showAddContract()));
+        Entry c = new Entry("계약", "계약 관리 (설치 완료·만료 알림)", "계약 설치 완료 만료 알림 장비 추가", () -> goSub("contracts"));
         int ex = expiringContracts().size();
         c.badge = ex > 0 ? "만료 " + ex : "";
         e.add(c);
-        e.add(new Entry("계약·재고", "입금 확인", "입금 확인 입금 내역 미납금 판매대금 정보변경수수료 입금확인", () -> goSub("deposit")));
-        e.add(new Entry("계약·재고", "재고 (입고·출고·정정)", "재고 장비 바코드 시리얼 단가 입고 출고 정정 스캔 본사 광주지사 보관지", () -> goSub("stock")));
-        e.add(new Entry("계약·재고", "재고 이력", "재고 이력 입고 출고 정정 이동 실사 조사 반품 불량", () -> goSub("stocklog")));
-        if (prodAdmin()) e.add(new Entry("계약·재고", "재고 일괄 등록 (엑셀 양식)", "재고 일괄 등록 엑셀 업로드 양식 옮기기 설치 가맹점", () -> showStockImport()));
-        e.add(new Entry("계약·재고", "상품 목록 (상품코드)", "상품 목록 상품코드 품목 코드 등록 물품요청 재고", () -> goSub("products")));
+        e.add(new Entry("계약", "입금 확인", "입금 확인 입금 내역 미납금 판매대금 정보변경수수료 입금확인", () -> goSub("deposit")));
+        e.add(new Entry("재고", "재고 (입고·출고·정정)", "재고 장비 바코드 시리얼 단가 입고 출고 정정 스캔 본사 광주지사 보관지", () -> goSub("stock")));
+        e.add(new Entry("재고", "재고 이력", "재고 이력 입고 출고 정정 이동 실사 조사 반품 불량", () -> goSub("stocklog")));
+        e.add(new Entry("재고", "상품 목록 (상품코드)", "상품 목록 상품코드 품목 코드 등록 물품요청 재고", () -> goSub("products")));
+        if (prodAdmin()) e.add(new Entry("재고", "재고 일괄 등록 (엑셀 양식)", "재고 일괄 등록 엑셀 업로드 양식 옮기기 설치 가맹점", () -> showStockImport()));
+        Entry pr2 = new Entry("재고", "물품요청 (본사 ← 지사)", "물품요청 구매 발주 주문 본사 지사 용지 장비 요청", () -> goSub("preqs"));
+        pr2.badge = preqWaiting() > 0 ? "입고 확인 " + preqWaiting() : "";
+        e.add(pr2);
         e.add(new Entry("실적", "내 실적", "내 실적 월별 성장률 계약", () -> goSub("myperf")));
         if (canPerf()) {
             e.add(new Entry("실적", "전체 실적·직원별 순위", "전체 실적 직원별 순위 성장률 월별 그래프", () -> goSub("perf")));
@@ -1990,6 +2369,7 @@ public class MainActivity extends Activity {
         e.add(n);
         e.add(new Entry("회사", "자료실", "자료실 게시판 양식 서식 계약서 파일 문서 자료 올리기 내려받기", () -> goSub("library")));
         e.add(new Entry("회사", "비상연락망 (눌러서 전화)", "비상연락망 연락처 전화 번호 비상 본사 카드사 밴사", () -> goSub("contacts")));
+        if (canStaffInfo()) e.add(new Entry("회사", "직원 정보 (명부)", "직원 정보 명부 부서 직책 생년월일 연락처 주소 사진", () -> goSub("staffinfo")));
         e.add(new Entry("내 계정·설정", "내 프로필 (사진·상태 메시지)", "프로필 사진 상태 메시지 내 정보", () -> showProfile(myId())));
         android.content.SharedPreferences wsp = getSharedPreferences("workapp", MODE_PRIVATE);
         Entry snd = new Entry("내 계정·설정", "알림 및 소리 설정", "알림 소리 음성 끄기 켜기 업무 배정 채팅 나인톡 카톡 화면 꺼짐 배터리 들어 보기", () -> goSub("sound"));
@@ -2003,10 +2383,14 @@ public class MainActivity extends Activity {
                 .setPositiveButton("로그아웃", (d, w) -> doLogout()).show()));
         if (can(Perm.STAFF_MANAGE)) {
             e.add(new Entry("관리자", "직원과 권한", "직원 권한 등록 사용 중지 관리자", () -> goSub("staff")));
+            e.add(new Entry("관리자", "직책 목록 (정렬 순서)", "직책 목록 대표 이사 본부장 지사장 부장 차장 과장 대리 사원 정렬", () -> showPosEdit()));
             e.add(new Entry("관리자", "업무 요청 빠른 선택 버튼", "빠른 선택 버튼 용지신청 요청사항 추가 관리", () -> showReqQuickEdit()));
             e.add(new Entry("관리자", "데이터 백업 내려받기", "데이터 백업 내려받기 저장 내보내기 json", () -> exportBackup()));
             e.add(new Entry("관리자", "가맹점 보호·복원", "가맹점 보호 복원 백업 되돌리기 삭제 복구 휴지통", () -> showSafetyMenu()));
             e.add(new Entry("관리자", "가맹점 수정 암호", "가맹점 수정 암호 잠금 비밀번호 설정 변경 끄기", () -> showMerchantLockSet()));
+            Entry dl = new Entry("관리자", "삭제 비밀번호 (중요한 삭제)", "삭제 비밀번호 암호 직원 삭제 가맹점 재고 응대 기록 자료실", () -> showDelLockSet());
+            dl.badge = dlockDoc() != null ? "설정됨" : "아직 없음";
+            e.add(dl);
         }
         return e;
     }
@@ -2038,7 +2422,7 @@ public class MainActivity extends Activity {
             list.removeAllViews();
             String s = allQuery.trim();
             if (s.isEmpty()) {
-                for (String sec : new String[]{"내 계정·설정", "업무", "가맹점", "계약·재고", "실적", "보고", "회사", "관리자"}) { // 같은 이름은 한 묶음으로 (웹과 같은 순서)
+                for (String sec : new String[]{"내 계정·설정", "업무", "가맹점", "계약", "재고", "실적", "보고", "회사", "관리자"}) { // 같은 이름은 한 묶음으로 (웹과 같은 순서)
                     boolean head = false;
                     for (Entry en : entries) {
                         if (!sec.equals(en.section)) continue;
@@ -3008,7 +3392,7 @@ public class MainActivity extends Activity {
                 Ui.toast(this, "기록했어요.");
                 after.run();
             });
-            if (!isNew && (g.optInt("who") == myId() || can(Perm.STAFF_MANAGE))) b.setNeutralButton("삭제", (x, w) -> new Dlg(this).setTitle("이 기록을 지울까요?")
+            if (!isNew && (g.optInt("who") == myId() || can(Perm.STAFF_MANAGE))) b.setNeutralButton("삭제", (x, w) -> needDelPw("응대 기록 삭제", false, () -> new Dlg(this).setTitle("이 기록을 지울까요?")
                     .setNegativeButton("취소", null).setPositiveButton("지우기", (x2, w2) -> {
                         try {
                             g.put("deleted", true);
@@ -3016,7 +3400,7 @@ public class MainActivity extends Activity {
                         }
                         store.save();
                         after.run();
-                    }).show());
+                    }).show()));
         }
         b.show();
     }
@@ -3030,6 +3414,11 @@ public class MainActivity extends Activity {
         int cn = 0, en = 0;
         for (JSONObject c : store.list(store.contracts())) if (c.optInt("merchant") == m.optInt("id")) cn++;
         for (JSONObject e : store.list(store.arr("events"))) if (e.optInt("merchant") == m.optInt("id")) en++;
+        final int fcn = cn, fen = en;
+        needDelPw("'" + m.optString("name") + "' 가맹점 삭제", false, () -> confirmDeleteMerchant2(m, after, fcn, fen));
+    }
+
+    private void confirmDeleteMerchant2(final JSONObject m, final java.util.function.Consumer<JSONObject> after, int cn, int en) {
         new Dlg(this).setTitle("'" + m.optString("name") + "' 삭제할까요?")
                 .setMessage("가맹점 목록에서 지워집니다.\n연결된 계약 " + cn + "건·일정 " + en + "건의 기록은 그대로 남고, 서버에도 기록이 보관돼요.")
                 .setNegativeButton("취소", null).setPositiveButton("삭제", (d, w) -> {
@@ -4438,7 +4827,7 @@ public class MainActivity extends Activity {
         rsv.addView(f);
         rd[0] = new Dlg(this).setTitle("재고 수정").setView(rsv)
                 .setNegativeButton("닫기", null)
-                .setNeutralButton("삭제", (d, w) -> new Dlg(this).setTitle("삭제할까요?")
+                .setNeutralButton("삭제", (d, w) -> needDelPw("재고 삭제", false, () -> new Dlg(this).setTitle("삭제할까요?")
                         .setMessage(r.optString("model") + " " + r.optString("serial") + "\n잘못 넣은 것을 지울 때만 쓰세요. 실제로 나간 것은 '출고', 수가 안 맞으면 '정정'을 써야 이력이 남아요.")
                         .setNegativeButton("취소", null).setPositiveButton("삭제", (d2, w2) -> {
                             try {
@@ -4447,7 +4836,7 @@ public class MainActivity extends Activity {
                             }
                             store.save();
                             render();
-                        }).show())
+                        }).show()))
                 .setPositiveButton("저장", (d, w) -> {
                     try {
                         String nl = LOCS[locSp.getSelectedItemPosition()];
@@ -5726,7 +6115,7 @@ public class MainActivity extends Activity {
             {"입금 확인 · 비상연락망 · 알림 · 백업", "\n\n■ 입금 확인 (전체 → 입금 확인)\n- 오른쪽 아래 + → 종류(판매대금/미납금/정보변경수수료/기타), 금액, 가맹점 선택, 메모를 넣고 '올리기'.\n- 올리면 '입금확인' 채팅방에 자동으로 글이 올라가요(방이 없으면 만들어요). 다른 직원 폰에는 알림이 갑니다.\n- 내역을 눌러 '확인 처리'를 하면 확인한 사람 이름이 남고 채팅방에도 알려요.\n\n■ 비상연락망 (전체 → 비상연락망)\n- + 로 이름·구분(본사, 카드사, 밴사, 직원 등)·번호를 등록해요. 연락처를 누르면 전화 화면이 열립니다. 길게 누르면 수정·삭제.\n\n■ 서류 업무 자동 알림\n- 업무 요청에서 종류가 '서류 접수' 또는 '카드사 서류'이면 '서류접수' 채팅방에 담당자·거래처·기한이 자동으로 올라갑니다.\n\n■ 폰 알림\n- 내게 새 업무가 요청되거나, 새 채팅·공지·입금 요청이 오면 폰 알림이 떠요. 처음 한 번 알림 허용을 눌러 주세요. 앱이 완전히 종료된 뒤에는 알림이 오지 않을 수 있습니다(완전한 푸시는 서버 요금제 전환 후 지원).\n\n■ 데이터 백업 (관리자)\n- 전체 → 데이터 백업 내려받기: 업무·가맹점·계약·재고·채팅 글 등 전체 자료를 파일로 만들어 드라이브 등에 보관할 수 있어요. 정기적으로(예: 매주) 받아 두세요."},
             {"자료실", "양식·계약서·안내문 같은 파일을 올려 두고 직원 모두가 내려받아 쓰는 게시판이에요.\n\n■ 찾아가기\n- 전체 탭 → 회사 → 자료실\n\n■ 자료 올리기\n- 오른쪽 아래 + 를 누르고 제목(필수)·설명·분류를 적어요.\n- '📎 파일 추가'로 파일을 고르면 바로 올라가고, 한 글에 5개까지 붙일 수 있어요. 사진은 자동으로 줄여서 올라가고, 문서·엑셀·PDF 같은 파일은 3MB까지입니다.\n- 파일이 다 올라간 뒤(올리는 중 표시가 사라지면) '올리기'를 누르세요.\n- 분류: 양식·서식 / 계약·약정 / 가맹점 안내 / 교육·매뉴얼 / 사진·홍보물 / 기타\n\n■ 찾기·내려받기\n- 위쪽 분류 버튼으로 걸러 보고, 검색창에 제목·설명·파일 이름(초성도 가능)을 적어 찾아요.\n- 글을 누르면 설명과 첨부 파일이 나와요. 파일을 누르면 내려받아 열리고, 열린 앱에서 저장·공유할 수 있어요.\n\n■ 고치기·지우기\n- 올린 사람과 최고관리자만 수정·삭제할 수 있어요. 삭제해도 서버에는 기록이 남습니다.\n- 새 자료가 올라오면 다른 직원 폰에 알림이 떠요(앱이 켜져 있을 때).\n\n※ 개인정보가 든 파일(신분증 사본 등)은 올리지 마세요. 모든 직원이 볼 수 있습니다."},
             {"가맹점 보호·복원 (최고관리자)", "가맹점 정보가 사라지지 않도록 여러 겹으로 지켜요.\n\n■ 지켜 주는 장치\n1) 서버에서는 어떤 자료도 지울 수 없게 막아 두었어요.\n2) 가맹점 삭제는 목록에서 '숨김' 처리일 뿐이라 언제든 복원할 수 있어요.\n3) 가맹점을 열면 '🕘 변경 이력 · 되돌리기'가 있어요. 누가 언제 무엇을 바꿨는지 보고, 눌러서 그 시점으로 되돌립니다.\n4) 엑셀 가져오기 직전, 복원 직전, 이력 되돌리기 직전에 현재 상태를 자동 저장해요('되돌리기 기준점'). 저장에 실패하면 작업을 시작하지 않습니다.\n5) 최고관리자 폰은 앱을 열면 하루 한 번 전체 자료를 14일치까지 자동 백업해요.\n6) 전체 → '데이터 백업 내려받기'로 만든 파일은 드라이브·카톡 등 폰 밖에 따로 보관하세요.\n\n■ 복원하는 방법\n- 가맹점 화면 위쪽 '🛡 가맹점 보호·복원' (또는 전체 → 관리자 → 가맹점 보호·복원)\n- '삭제한 가맹점 복원': 숨긴 가맹점 목록에서 눌러 복원\n- '백업·되돌리기 목록에서 복원': 자동백업이나 되돌리기 기준점을 고르면 지금과 비교해 미리 보여 주고, 확인하면 복원해요. 가져오기를 취소하고 싶으면 '가져오기전' 기준점을 고르세요(그 뒤 새로 생긴 가맹점은 숨김 처리됩니다).\n- '백업 파일을 직접 골라 복원': 내려받아 둔 백업(.json)을 골라요.\n- 복원할 때도 직전 상태가 자동 저장되니, 잘못 복원해도 다시 돌릴 수 있어요.\n\n※ 폰 안 백업은 이 폰을 바꾸거나 앱을 지우면 함께 사라져요. 중요한 시점(큰 가져오기 전)에는 '데이터 백업 내려받기'로 파일을 따로 받아 두세요. 카드(Blaze) 등록 후에는 서버 자동 백업도 켜겠습니다."},
-            {"공지사항 · 직원과 권한", "■ 공지사항 (전체 → 공지사항)\n- 공지 쓰기 권한이 있으면 + 버튼으로 작성합니다. '맨 위에 고정'을 켜면 항상 위에 보여요.\n- 읽지 않은 공지는 ● 표시와 전체 탭 숫자로 알려줍니다. 누르면 읽음 처리돼요.\n\n■ 직원과 권한 (관리자 전용)\n- + 버튼 → 이름, 휴대폰 번호, 권한 묶음을 선택해 직원을 등록합니다. 등록된 번호로만 로그인할 수 있어요.\n- 직원을 누르면 항목별 권한을 켜고 끌 수 있고, '사용 중지'로 퇴사자의 접근을 막습니다.\n- 마지막 관리자는 중지하거나 권한을 끌 수 없습니다.\n\n※ '실적 보기'(수익 현황과 재고 단가 포함)와 '일일보고·실적보고 종합 보기'는 서버에서 강제로 막혀 안전합니다. 나머지 권한은 화면에서 숨기는 방식이에요."},
+            {"공지사항 · 직원과 권한", "■ 직원과 권한(관리자): 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소)이 열리고, 정보 수정·사진 바꾸기·권한 설정·완전 삭제를 따로 해요. 권한 설정 창에 직원 정보 보기 권한, 실적 제외, 일일보고·실적보고 명단에 넣기가 있어요.\n■ 직책 목록(전체 → 관리자): 위에 있을수록 앞에 보여요. 삭제 비밀번호(전체 → 관리자): 직원 완전 삭제와 가맹점·재고·응대 기록·자료실 삭제 때 물어봐요.\n■ 공지사항 (전체 → 공지사항)\n- 공지 쓰기 권한이 있으면 + 버튼으로 작성합니다. '맨 위에 고정'을 켜면 항상 위에 보여요.\n- 읽지 않은 공지는 ● 표시와 전체 탭 숫자로 알려줍니다. 누르면 읽음 처리돼요.\n\n■ 직원과 권한 (관리자 전용)\n- + 버튼 → 이름, 휴대폰 번호, 권한 묶음을 선택해 직원을 등록합니다. 등록된 번호로만 로그인할 수 있어요.\n- 직원을 누르면 항목별 권한을 켜고 끌 수 있고, '사용 중지'로 퇴사자의 접근을 막습니다.\n- 마지막 관리자는 중지하거나 권한을 끌 수 없습니다.\n\n※ '실적 보기'(수익 현황과 재고 단가 포함)와 '일일보고·실적보고 종합 보기'는 서버에서 강제로 막혀 안전합니다. 나머지 권한은 화면에서 숨기는 방식이에요."},
             {"일일보고 · 실적 보고서", "■ 일일보고 쓰기 (전체 → 일일보고 쓰기)\n- 날짜를 확인하고, 오늘 한 일·특이사항·내일 계획을 적어 '제출하기'를 누릅니다.\n- 그날 완료한 업무와 올린 계약은 자동으로 같이 집계돼요.\n- 같은 날 다시 쓰면 수정본으로 덮어씁니다. 아래에서 내가 낸 보고를 다시 열어 볼 수 있어요.\n\n■ 일일보고 종합 (대표님)\n- 전체 → 일일보고 종합 보기: 날짜별로 직원별 보고가 한 화면에 모이고, 미제출자는 빨간색으로 표시됩니다.\n- 이 메뉴는 '일일보고·실적보고 종합 보기' 권한이 켜진 사람만 봅니다. 관리자도 예외가 아니에요. 처음에는 관리자에게 켜져 있고, 대표님을 등록하면 대표님께 켜 드린 뒤 관리자 쪽을 끄면 됩니다.\n\n■ 실적 보고서 (본부장 → 대표님)\n- 전체 → 실적 보고서 올리기: 이번 달 실적이 자동 집계되어 채워져 있고, 고쳐서 '대표님께 보고하기'를 누릅니다.\n- 대표님은 같은 메뉴에서 올라온 보고서를 봅니다.\n\n※ 보고서 양식은 정해지면 그 모양에 맞춰 바꿀 수 있어요."},
             {"단체 문자 (가맹점)", "(전체 → 단체 문자 보내기, 또는 전체 탭 검색창에 '문자')\n\n■ 이렇게 동작해요\n- 내용을 쓰고, 보낼 가맹점을 고른 뒤 '문자 보내기 시작'을 누르면 가맹점 한 곳씩 이 폰의 문자 앱이 열립니다. 내용이 미리 채워져 있으니 확인하고 '전송'만 누르면 돼요.\n- 한 곳씩 따로 보내서 받는 분들끼리 번호가 보이지 않습니다. 문자 요금은 이 폰의 요금제로 나갑니다.\n- 내용에 {상호} 라고 쓰면 가맹점 이름으로 바뀝니다. 예: {상호} 사장님, 안녕하세요. 나인페이먼츠입니다.\n\n■ 받는 가맹점 고르기\n- 칸을 눌러 하나씩 고르거나, 위의 '0코드 선택' 같은 버튼으로 등급 전체를 한 번에 고릅니다. '보이는 전체 선택'은 검색 결과 전체를 고르고, '선택 해제'는 모두 풉니다.\n- 유선 번호(02·062 등)는 문자를 받을 수 없어서 선택할 수 없어요.\n\n■ 보내는 순서\n1. '문자 앱 열기' → 문자 앱에서 전송.\n2. 이 앱으로 돌아오면 다음 가맹점이 준비돼 있습니다. 필요 없으면 '건너뛰기', 그만두려면 '중단'.\n3. 끝나면 문자 앱의 보낸 기록에서 보내졌는지 확인하세요. 앱은 전송을 눌렀는지 알 수 없어요.\n\n※ 수십 곳 이상을 한꺼번에 보내는 기능(문자 업체 연동)은 서버 요금제 전환 후에 만들 예정입니다."},
             {"프로필 · 버전", "■ 프로필\n- 전체 탭 맨 위 내 카드(또는 오른쪽 위 동그라미)를 누르면 프로필이 열립니다.\n- '사진 변경'으로 앨범에서 사진을 고르면 자동으로 동그랗게 잘려 저장되고, 채팅과 화면 위쪽에 나와요.\n- '상태 메시지'에 외근 중, 오후 복귀 같은 한 줄을 적어 두면 다른 직원이 프로필에서 볼 수 있어요.\n- 채팅에서 다른 직원 사진을 누르면 그 직원의 프로필과 전화하기 버튼이 나옵니다.\n\n■ 버전 보기\n- 전체 탭 맨 아래, 로그인 화면, 전체 → 버전·업데이트 내역에 현재 버전이 표시됩니다. (예: v0.0.1 (빌드 33))\n- 업데이트 내역에는 버전마다 무엇이 바뀌었는지 적혀 있어요.\n\n■ 버전 번호 규칙\n- 0.0.1에서 시작해 업데이트할 때마다 끝 숫자가 하나씩 올라갑니다 (0.0.2, 0.0.3 …).\n- 괄호 안 빌드 번호는 배포할 때마다 1씩 올라가요.\n- 실제 문자 인증으로 전 직원이 쓰기 시작하면 1.0.0이 됩니다.\n- 새 버전이 나올 때마다 이 사용설명서도 함께 새로 고쳐집니다."},
@@ -5742,7 +6131,8 @@ public class MainActivity extends Activity {
             {"전체 › 내 계정·설정", "프로필 · 버전", "알림 소리·음성"},
             {"전체 › 업무", "물품요청 (본사 ← 지사)"},
             {"전체 › 가맹점", "가맹점", "단체 문자 (가맹점)", "가맹점 일괄 가져오기 (엑셀·CSV)"},
-            {"전체 › 계약·재고", "신규 계약 올리기", "계약 관리 · 설치 완료 · 만료 알림", "입금 확인 · 비상연락망 · 알림 · 백업", "재고", "재고 일괄 등록 (엑셀)"},
+            {"전체 › 계약", "신규 계약 올리기", "계약 관리 · 설치 완료 · 만료 알림", "입금 확인 · 비상연락망 · 알림 · 백업"},
+            {"전체 › 재고", "재고", "재고 일괄 등록 (엑셀)"},
             {"전체 › 실적 · 보고", "실적 (권한자 전용)", "일일보고 · 실적 보고서"},
             {"전체 › 회사", "자료실", "공지사항 · 직원과 권한"},
             {"전체 › 관리자", "가맹점 보호·복원 (최고관리자)"},
@@ -5898,6 +6288,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.23", "2026-10-25", "• 전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도)\n• 직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정·사진 바꾸기·권한 설정·완전 삭제가 따로\n• 권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기\n• 직책 목록(관리자가 추가·수정·삭제): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순\n• 직원 완전 삭제와 가맹점·재고·응대 기록·자료실 삭제에 삭제 비밀번호 (전체 → 관리자 → 삭제 비밀번호)"},
             {"0.0.22", "2026-10-25", "• 가맹점 등급 표기를 직원들이 부르는 대로: 0코드·1코드·2코드·3코드, 그다음 해지가맹점·신규가맹점·협력사 (목록·단체 문자·등록 화면·업로드 양식)"},
             {"0.0.21", "2026-10-25", "• 물품요청: … 를 누르면 재고 품목(상품코드·보관지별 재고 수)에서 고르고, 목록에 없는 물품은 이름만 적어도 요청돼요('새 물품' 표시). 본사가 주문·발송을 표시할 때 상품 목록에 올라가고 상품코드가 붙어요"},
             {"0.0.20", "2026-10-25", "• 가맹점 일괄 가져오기에 업로드 양식(.xlsx) 받기 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요\n• 재고 일괄 등록(엑셀, 관리자): 상품코드/상품명·시리얼·수량·현재위치 — 본사·광주지사는 우리 재고, 가맹점 상호는 이미 설치된 장비로 기록만(재고 수 제외)\n• (PC 웹에는 위쪽 메뉴 끝에 메모가 생겼어요)"},
@@ -6474,6 +6865,24 @@ public class MainActivity extends Activity {
                     else sendBlob("file", b, mime, nm);
                 });
             }).start();
+        } else if (req == REQ_STAFFPIC) {
+            final Uri u = data.getData();
+            JSONObject su = store.user(staffPicFor);
+            if (u == null || su == null) return;
+            android.graphics.Bitmap b = Media.decode(cr, u, 512);
+            byte[] jp = b == null ? null : Media.jpeg(Media.square(b, 256), 40 * 1024);
+            if (jp == null) {
+                Ui.toast(this, "사진을 읽지 못했어요.");
+                return;
+            }
+            try {
+                su.put("photo", Media.b64(jp));
+            } catch (Exception ignored) {
+            }
+            store.save();
+            Ui.toast(this, "직원 사진을 넣었어요.");
+            render();
+            showStaffInfo(su);
         } else if (req == REQ_PROFILE) {
             final Uri u = data.getData();
             if (u == null) return;
@@ -7488,7 +7897,7 @@ public class MainActivity extends Activity {
         AlertDialog.Builder b = new Dlg(this).setView(sv).setNegativeButton("닫기", null);
         if (p.optInt("who") == myId() || can(Perm.STAFF_MANAGE)) {
             b.setPositiveButton("수정", (d, w) -> showEditLibrary(p));
-            b.setNeutralButton("삭제", (d, w) -> new Dlg(this).setTitle("'" + p.optString("title") + "' 삭제할까요?")
+            b.setNeutralButton("삭제", (d, w) -> needDelPw("자료실 삭제", false, () -> new Dlg(this).setTitle("'" + p.optString("title") + "' 삭제할까요?")
                     .setMessage("자료실 목록에서 사라져요. 서버에는 기록이 보관됩니다.").setNegativeButton("취소", null)
                     .setPositiveButton("삭제", (d2, w2) -> {
                         try {
@@ -7498,7 +7907,7 @@ public class MainActivity extends Activity {
                         store.save();
                         Ui.toast(this, "삭제했어요.");
                         render();
-                    }).show());
+                    }).show()));
         }
         b.show();
     }
@@ -8816,6 +9225,8 @@ public class MainActivity extends Activity {
         return u != null && u.optBoolean("noPerf");
     }
 
+    private String perfSort = "";
+
     private List<JSONObject> rankedStaff(final java.util.Map<Integer, long[]> st) {
         List<JSONObject> staff = new ArrayList<>();
         for (JSONObject u : activeStaff()) if (!u.optBoolean("noPerf")) staff.add(u);
@@ -8884,8 +9295,28 @@ public class MainActivity extends Activity {
         content.addView(hero, Ui.lp(this, 14));
         renderTrend(key, mine);
         if (!mine) {
-            content.addView(Ui.text(this, "직원별 순위", 18, Ui.INK, true), Ui.lp(this, 24));
+            final boolean byP = "pos".equals(perfSort);
+            LinearLayout sh = new LinearLayout(this);
+            sh.setGravity(Gravity.CENTER_VERTICAL);
+            sh.addView(Ui.text(this, byP ? "직원별 실적 (직책순)" : "직원별 순위", 18, Ui.INK, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            for (final String[] o : new String[][]{{"", "순위순"}, {"pos", "직책순"}}) {
+                boolean on = o[0].equals(perfSort);
+                TextView ch = Ui.chip(this, o[1], on ? Ui.GOLD : Ui.FIELD, on ? Ui.DARK : Ui.INK);
+                ch.setOnClickListener(v -> {
+                    perfSort = o[0];
+                    render();
+                });
+                LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                cl.leftMargin = Ui.dp(this, 6);
+                sh.addView(ch, cl);
+            }
+            content.addView(sh, Ui.lp(this, 24));
             List<JSONObject> staff = rankedStaff(st);
+            if (byP) {
+                staff = new ArrayList<>();
+                for (JSONObject u : activeStaff()) if (!u.optBoolean("noPerf") && !u.optBoolean("noReport")) staff.add(u);
+                sortByPos(staff);
+            }
             long max = 1;
             for (long[] a : st.values()) if (a[0] > max) max = a[0];
             int rank = 0;
@@ -8895,7 +9326,7 @@ public class MainActivity extends Activity {
                 long n = a == null ? 0 : a[0];
                 LinearLayout row = new LinearLayout(this);
                 row.setGravity(Gravity.CENTER_VERTICAL);
-                TextView rk = Ui.text(this, String.valueOf(rank), 15, rank <= 3 && n > 0 ? Ui.DEEP : Ui.GRAY, true);
+                TextView rk = Ui.text(this, byP ? "·" : String.valueOf(rank), 15, !byP && rank <= 3 && n > 0 ? Ui.DEEP : Ui.GRAY, true);
                 rk.setGravity(Gravity.CENTER);
                 row.addView(rk, new LinearLayout.LayoutParams(Ui.dp(this, 28), ViewGroup.LayoutParams.WRAP_CONTENT));
                 row.addView(Ui.text(this, u.optString("name"), 14, Ui.INK, rank <= 3 && n > 0), new LinearLayout.LayoutParams(Ui.dp(this, 64), ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -9054,7 +9485,9 @@ public class MainActivity extends Activity {
         content.addView(title("일일보고 종합"));
         content.addView(Ui.text(this, "직원별 일일보고를 한 화면에 모아 봐요.", 13, Ui.GRAY, false));
         dateNav(() -> render());
-        List<JSONObject> staff = activeStaff();
+        List<JSONObject> staff = new ArrayList<>();
+        for (JSONObject u : activeStaff()) if (!u.optBoolean("noReport")) staff.add(u);
+        sortByPos(staff);
         int done = 0;
         for (JSONObject u : staff) if (findReport("daily", u.optInt("id"), dailyDate) != null) done++;
         content.addView(Ui.text(this, "제출 " + done + " / " + staff.size() + "명", 16, Ui.DEEP, true), Ui.lp(this, 12));
