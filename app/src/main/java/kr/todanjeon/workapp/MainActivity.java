@@ -3510,10 +3510,10 @@ public class MainActivity extends Activity {
             pk.setOnClickListener(v -> {
                 final List<String> ms = new ArrayList<>(), shown = new ArrayList<>();
                 java.util.Map<String, int[]> cnt = new java.util.HashMap<>();
-                for (JSONObject r : inStock()) {
-                    String k = r.optString("model").trim();
+                for (JSONObject sr : inStock()) {
+                    String k = sr.optString("model").trim();
                     if (!cnt.containsKey(k)) cnt.put(k, new int[LOCS.length]);
-                    for (int li = 0; li < LOCS.length; li++) if (LOCS[li].equals(locOf(r))) cnt.get(k)[li] += r.optInt("qty", 1);
+                    for (int li = 0; li < LOCS.length; li++) if (LOCS[li].equals(locOf(sr))) cnt.get(k)[li] += sr.optInt("qty", 1);
                 }
                 for (JSONObject p : products()) {
                     ms.add(prodLabel(p));
