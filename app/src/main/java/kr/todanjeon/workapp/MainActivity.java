@@ -644,6 +644,7 @@ public class MainActivity extends Activity {
         else if ("notice".equals(k)) renderNotices();
         else if ("history".equals(k)) renderHistory();
         else if ("staff".equals(k)) renderStaff();
+        else if ("sound".equals(k)) renderSound();
         else if ("merchants".equals(k)) renderMerchants();
         else if ("stock".equals(k)) renderStock();
         else if ("stocklog".equals(k)) renderStockLog();
@@ -1987,48 +1988,10 @@ public class MainActivity extends Activity {
         e.add(new Entry("회사", "자료실", "자료실 게시판 양식 서식 계약서 파일 문서 자료 올리기 내려받기", () -> goSub("library")));
         e.add(new Entry("회사", "비상연락망 (눌러서 전화)", "비상연락망 연락처 전화 번호 비상 본사 카드사 밴사", () -> goSub("contacts")));
         e.add(new Entry("내 계정·설정", "내 프로필 (사진·상태 메시지)", "프로필 사진 상태 메시지 내 정보", () -> showProfile(myId())));
-        final boolean vOn = getSharedPreferences("workapp", MODE_PRIVATE).getBoolean("voice", true);
-        Entry vo = new Entry("내 계정·설정", "업무 알림 소리 (\"업무가 배정되었습니다\")", "알림 소리 음성 끄기 켜기 업무 배정 물품요청 공지", () -> {
-            getSharedPreferences("workapp", MODE_PRIVATE).edit().putBoolean("voice", !vOn).apply();
-            Ui.toast(this, vOn ? "업무 알림 소리를 껐어요." : "업무 알림 소리를 켰어요.");
-            render();
-        });
-        vo.badge = vOn ? "켜짐" : "꺼짐";
-        e.add(vo);
-        e.add(new Entry("내 계정·설정", "업무 알림 소리 들어 보기", "알림 소리 시험 듣기 테스트 업무", () -> {
-            if (!vOn) { Ui.toast(this, "업무 알림 소리가 꺼져 있어요. 먼저 켜 주세요."); return; }
-            Alerts.lastSay = 0;
-            speak("업무가 배정되었습니다");
-        }));
-        final boolean cOn = getSharedPreferences("workapp", MODE_PRIVATE).getBoolean("voiceChat", true);
-        Entry vc = new Entry("내 계정·설정", "채팅 알림 소리 (\"나인톡!\")", "채팅 알림 소리 음성 나인톡 끄기 켜기 카톡", () -> {
-            getSharedPreferences("workapp", MODE_PRIVATE).edit().putBoolean("voiceChat", !cOn).apply();
-            Ui.toast(this, cOn ? "채팅 알림 소리를 껐어요." : "채팅 알림 소리(나인톡)를 켰어요.");
-            render();
-        });
-        vc.badge = cOn ? "켜짐" : "꺼짐";
-        e.add(vc);
-        e.add(new Entry("내 계정·설정", "채팅 알림 소리 들어 보기", "채팅 나인톡 소리 시험 듣기 테스트", () -> {
-            if (!cOn) { Ui.toast(this, "채팅 알림 소리가 꺼져 있어요. 먼저 켜 주세요."); return; }
-            Alerts.lastSay = 0;
-            speak("나인톡");
-        }));
-        final boolean bgOn = getSharedPreferences("workapp", MODE_PRIVATE).getBoolean("bgNotify", true);
-        Entry bg = new Entry("내 계정·설정", "화면 꺼져도 알림 받기", "화면 꺼짐 백그라운드 알림 배터리 최적화 잠금 화면", () -> {
-            if (bgOn && batteryFree()) {
-                getSharedPreferences("workapp", MODE_PRIVATE).edit().putBoolean("bgNotify", false).apply();
-                NotifyService.stop(this);
-                Ui.toast(this, "화면이 꺼져 있을 때 알림을 받지 않아요. (앱을 열면 받아요)");
-            } else {
-                getSharedPreferences("workapp", MODE_PRIVATE).edit().putBoolean("bgNotify", true).apply();
-                NotifyService.start(this);
-                if (!batteryFree()) askBattery(true);
-                else Ui.toast(this, "화면이 꺼져 있어도 알림을 받아요.");
-            }
-            render();
-        });
-        bg.badge = !bgOn ? "꺼짐" : batteryFree() ? "켜짐" : "설정 필요";
-        e.add(bg);
+        android.content.SharedPreferences wsp = getSharedPreferences("workapp", MODE_PRIVATE);
+        Entry snd = new Entry("내 계정·설정", "알림 및 소리 설정", "알림 소리 음성 끄기 켜기 업무 배정 채팅 나인톡 카톡 화면 꺼짐 배터리 들어 보기", () -> goSub("sound"));
+        snd.badge = wsp.getBoolean("bgNotify", true) && !batteryFree() ? "설정 필요" : (wsp.getBoolean("voice", true) ? "" : "업무 끔 ") + (wsp.getBoolean("voiceChat", true) ? "" : "채팅 끔");
+        e.add(snd);
         e.add(new Entry("내 계정·설정", "앱 업데이트 확인 (새 버전 받기)", "업데이트 확인 새 버전 apk 받기 최신", () -> checkAppUpdate(true)));
         e.add(new Entry("내 계정·설정", "사용설명서", "사용설명서 매뉴얼 도움말 사용법", () -> goSub("manual")));
         e.add(new Entry("내 계정·설정", "버전·업데이트 내역", "버전 업데이트 내역 변경 이력", () -> goSub("about")));
@@ -5453,7 +5416,7 @@ public class MainActivity extends Activity {
             {"프로필 · 버전", "■ 프로필\n- 전체 탭 맨 위 내 카드(또는 오른쪽 위 동그라미)를 누르면 프로필이 열립니다.\n- '사진 변경'으로 앨범에서 사진을 고르면 자동으로 동그랗게 잘려 저장되고, 채팅과 화면 위쪽에 나와요.\n- '상태 메시지'에 외근 중, 오후 복귀 같은 한 줄을 적어 두면 다른 직원이 프로필에서 볼 수 있어요.\n- 채팅에서 다른 직원 사진을 누르면 그 직원의 프로필과 전화하기 버튼이 나옵니다.\n\n■ 버전 보기\n- 전체 탭 맨 아래, 로그인 화면, 전체 → 버전·업데이트 내역에 현재 버전이 표시됩니다. (예: v0.0.1 (빌드 33))\n- 업데이트 내역에는 버전마다 무엇이 바뀌었는지 적혀 있어요.\n\n■ 버전 번호 규칙\n- 0.0.1에서 시작해 업데이트할 때마다 끝 숫자가 하나씩 올라갑니다 (0.0.2, 0.0.3 …).\n- 괄호 안 빌드 번호는 배포할 때마다 1씩 올라가요.\n- 실제 문자 인증으로 전 직원이 쓰기 시작하면 1.0.0이 됩니다.\n- 새 버전이 나올 때마다 이 사용설명서도 함께 새로 고쳐집니다."},
             {"자주 묻는 질문", "Q. 인증번호 문자가 안 와요.\nA. 번호가 등록되었는지, 폰 신호가 되는지 확인하세요. 하루에 받을 수 있는 횟수가 제한되어 있어 여러 번 시도하면 잠시 막힐 수 있어요.\n\nQ. 폰을 바꿨어요.\nA. 새 폰에 앱을 설치하고 같은 번호로 다시 인증하면 모든 자료가 그대로 나옵니다. 자료는 서버에 저장돼 있어요.\n\nQ. 인터넷이 없을 때도 써도 되나요?\nA. 열어서 보기와 입력은 가능하고, 인터넷이 다시 연결되면 자동으로 서버에 올라갑니다.\n\nQ. 실수로 지웠어요.\nA. 지운 자료도 서버에는 기록이 남아 있으니 관리자에게 말씀해 주세요."},
             {"물품요청 (본사 ← 지사)", "■ 요청\n- 전체 → 업무 → 물품요청, 또는 재고 화면 아래 '＋ 본사에 물품요청'.\n- 받을 곳(광주지사·본사), 품목과 수량(줄 추가 가능, '…'로 있던 모델 고르기), 본사 담당자, 희망 도착일, 메모를 적어 보내요.\n\n■ 본사 담당자\n- 업무 목록에 '미확인'으로 뜨고 알림(음성: 물품요청이 들어왔습니다)이 와요.\n- 요청을 열어 '주문함' → '발송 (발주처리)'(택배사·송장번호 메모)를 누르고, 안 되면 '반려'(사유).\n\n■ 요청한 사람\n- 발송되면 알림(음성: 물품이 발송되었습니다)과 업무 숫자가 떠요.\n- 물건을 받고 '입고 확인'에서 받은 수량·시리얼(바코드 스캔 가능)을 적으면 받은 곳 재고에 바로 들어가고, 재고 이력에 '물품요청 입고'로 남아요.\n\n■ 진행 단계: 요청 › 주문함 › 발송함 › 입고완료 (또는 반려). 모든 단계는 처리 이력에 남아요."},
-            {"알림 소리·음성", "■ 새 업무가 배정되면 '띵동' 소리와 함께 \"업무가 배정되었습니다\", 물품요청은 \"물품요청이 들어왔습니다\"·\"물품이 발송되었습니다\", 공지는 \"새 공지가 있습니다\"라고 말해 줘요.\n■ 채팅이 오면 카톡처럼 짧게 \"나인톡!\" 하고 울려요.\n■ 전체 → 내 계정·설정에서 '업무 알림 소리'와 '채팅 알림 소리(나인톡)'를 따로 끄고 켜고, '들어 보기'로 미리 들어 봐요.\n■ 채팅방 하나만 조용히 하려면 대화방 메뉴 → 음소거.\n■ 소리가 안 나면 폰 미디어 볼륨을 올려 주세요.\n■ 화면이 꺼져 있거나 앱을 닫아도 알림이 와요(상단에 '알림 받는 중'이 작게 보여요). 처음 한 번 배터리 절약에서 빼기를 허용해 주세요. 전체 → 내 계정·설정 → '화면 꺼져도 알림 받기'에서 켜고 꺼요."}
+            {"알림 소리·음성", "■ 새 업무가 배정되면 '띵동' 소리와 함께 \"업무가 배정되었습니다\", 물품요청은 \"물품요청이 들어왔습니다\"·\"물품이 발송되었습니다\", 공지는 \"새 공지가 있습니다\"라고 말해 줘요.\n■ 채팅이 오면 카톡처럼 짧게 \"나인톡!\" 하고 울려요.\n■ 전체 → 내 계정·설정 → '알림 및 소리 설정'에서 '업무 알림 소리'와 '채팅 알림 소리(나인톡)'를 따로 끄고 켜고, '들어 보기'로 미리 들어 봐요.\n■ 채팅방 하나만 조용히 하려면 대화방 메뉴 → 음소거.\n■ 소리가 안 나면 폰 미디어 볼륨을 올려 주세요.\n■ 화면이 꺼져 있거나 앱을 닫아도 알림이 와요(상단에 '알림 받는 중'이 작게 보여요). 처음 한 번 배터리 절약에서 빼기를 허용해 주세요. 전체 → 내 계정·설정 → '알림 및 소리 설정'에서 켜고 꺼요."}
     };
 
     /** 사용설명서 순서: 시작하기 → 아래 탭(주 메뉴) → 전체 메뉴 묶음(메뉴와 같은 순서) → 도움말 */
@@ -5619,6 +5582,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.18", "2026-10-25", "• 전체 → 내 계정·설정 → '알림 및 소리 설정' 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기, 화면 꺼져도 알림 받기도 여기서"},
             {"0.0.17", "2026-10-25", "• 아래 탭의 안 본 개수를 빨간 동그라미 숫자로 (업무·채팅·☰), 전체 메뉴·채팅 목록도 같은 모양\n• 아래 탭 '전체'를 ☰ 로\n• 업무 요청 '가맹점 요청사항' 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)\n• 직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)"},
             {"0.0.16", "2026-10-25", "• 화면이 꺼져 있거나 앱을 닫아도 새 업무·채팅 알림이 와요: 상단에 '알림 받는 중' 표시가 작게 남고, 알림이 오면 화면이 켜지며 음성이 나와요. 처음 한 번 '배터리 절약에서 빼기'를 허용해 주세요 (전체 → 내 계정·설정 → 화면 꺼져도 알림 받기)\n• 폰을 다시 켜도 알림 받기가 저절로 다시 시작돼요\n• '업무 지시'를 '업무 요청'으로 이름 바꿈"},
             {"0.0.15", "2026-10-25", "• 로그인: 시작 화면이 뜨는 동안 사람 확인(로봇 확인)을 미리 준비해, 인증번호 받기를 누른 뒤 기다리는 시간을 줄임 (웹과 같은 방식)"},
@@ -6669,6 +6633,73 @@ public class MainActivity extends Activity {
             NotifyService.start(this);
             uiHandler.postDelayed(() -> askBattery(false), 3000);
         }
+    }
+
+    /** 알림 및 소리 설정: 업무 소리 · 채팅 소리를 각각 켜고 끄고 들어 보고, 화면 꺼짐 알림을 켠다. */
+    private void renderSound() {
+        final android.content.SharedPreferences sp = getSharedPreferences("workapp", MODE_PRIVATE);
+        content.addView(title("알림 및 소리 설정"));
+        content.addView(Ui.text(this, "이 폰에서만 적용돼요. 소리가 안 나면 폰 미디어 볼륨을 올려 주세요.", 13, Ui.GRAY, false), Ui.lp(this, 0));
+        soundCard("📋 업무 알림 소리", "'띵동' + \"업무가 배정되었습니다\" (물품요청·발송·공지도 같은 설정)", "voice", "업무가 배정되었습니다");
+        soundCard("💬 채팅 알림 소리", "카톡처럼 짧게 \"나인톡!\" · 채팅방 하나만 끄려면 대화방 메뉴 → 음소거", "voiceChat", "나인톡");
+        final boolean bgOn = sp.getBoolean("bgNotify", true);
+        LinearLayout c = Ui.card(this);
+        LinearLayout r = new LinearLayout(this);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout tx = new LinearLayout(this);
+        tx.setOrientation(LinearLayout.VERTICAL);
+        tx.addView(Ui.text(this, "🌙 화면 꺼져도 알림 받기", 16, Ui.INK, true));
+        tx.addView(Ui.text(this, bgOn && !batteryFree() ? "배터리 절약에서 빼기를 허용해야 화면이 꺼져도 바로 와요 — 눌러서 허용" : "화면이 꺼져 있거나 앱을 닫아도 새 업무·채팅 알림이 와요 (상단에 '알림 받는 중' 표시)", 12, Ui.GRAY, false), Ui.lp(this, 2));
+        r.addView(tx, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        r.addView(Ui.chip(this, !bgOn ? "꺼짐" : batteryFree() ? "켜짐" : "설정 필요", bgOn && batteryFree() ? Ui.GOLD : Ui.FIELD, bgOn && batteryFree() ? Ui.DARK : Ui.INK));
+        c.addView(r);
+        c.setOnClickListener(v -> {
+            if (bgOn && batteryFree()) {
+                sp.edit().putBoolean("bgNotify", false).apply();
+                NotifyService.stop(this);
+                Ui.toast(this, "화면이 꺼져 있을 때 알림을 받지 않아요. (앱을 열면 받아요)");
+            } else {
+                sp.edit().putBoolean("bgNotify", true).apply();
+                NotifyService.start(this);
+                if (!batteryFree()) askBattery(true);
+                else Ui.toast(this, "화면이 꺼져 있어도 알림을 받아요.");
+            }
+            render();
+        });
+        content.addView(c, Ui.lp(this, 10));
+    }
+
+    private void soundCard(String name, String desc, final String key, final String say) {
+        final android.content.SharedPreferences sp = getSharedPreferences("workapp", MODE_PRIVATE);
+        final boolean on = sp.getBoolean(key, true);
+        LinearLayout c = Ui.card(this);
+        LinearLayout r = new LinearLayout(this);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout tx = new LinearLayout(this);
+        tx.setOrientation(LinearLayout.VERTICAL);
+        tx.addView(Ui.text(this, name, 16, Ui.INK, true));
+        tx.addView(Ui.text(this, desc, 12, Ui.GRAY, false), Ui.lp(this, 2));
+        r.addView(tx, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView tg = Ui.chip(this, on ? "켜짐" : "꺼짐", on ? Ui.GOLD : Ui.FIELD, on ? Ui.DARK : Ui.INK);
+        tg.setPadding(Ui.dp(this, 16), Ui.dp(this, 9), Ui.dp(this, 16), Ui.dp(this, 9));
+        tg.setOnClickListener(v -> {
+            sp.edit().putBoolean(key, !on).apply();
+            Ui.toast(this, name.substring(name.indexOf(' ') + 1) + (on ? "를 껐어요." : "를 켰어요."));
+            render();
+        });
+        r.addView(tg);
+        c.addView(r);
+        Button play = Ui.button(this, "▶ 들어 보기", Ui.TINT, Ui.DEEP);
+        play.setOnClickListener(v -> {
+            if (!sp.getBoolean(key, true)) {
+                Ui.toast(this, "꺼져 있어요. 먼저 켜 주세요.");
+                return;
+            }
+            Alerts.lastSay = 0;
+            speak(say);
+        });
+        c.addView(play, Ui.lp(this, 10));
+        content.addView(c, Ui.lp(this, 10));
     }
 
     private boolean batteryFree() {
