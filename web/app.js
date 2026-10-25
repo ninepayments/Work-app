@@ -2,12 +2,12 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.26';
+const VERSION = '웹 0.0.27';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
 const KINDS = ['방문A/S', '원격A/S', '전화응대', '용지신청', '기타'];
-const REQ_QUICK = ['용지신청']; // 업무 지시 '가맹점 요청사항' 빠른 선택
+const REQ_QUICK = ['용지신청']; // 업무 요청 '가맹점 요청사항' 빠른 선택
 const logKind = k => (k === 'AS' || k === '방문' || k === '방문 A/S') ? '방문A/S' : k === '원격 A/S' ? '원격A/S' : k === '전화 응대' ? '전화응대' : k;
 const logReq = g => (g.req !== undefined || g.res !== undefined) ? (g.req || '') : (g.text || '');
 const logRes = g => g.res || '';
@@ -432,7 +432,7 @@ ACT.task = id => {
   const ln = (k, v) => v ? '<div class="line"><b>' + k + '</b><div>' + esc(v) + '</div></div>' : '';
   const ph = (t.phone || '').replace(/[^0-9+*#]/g, '');
   modal('<h3>' + esc(t.title) + '</h3><div class="sub" style="font-weight:700">' + esc(t.type) + ' · ' + (ST[t.status] || t.status) + '</div>' +
-    ln('거래처', t.client) + (ph ? '<div class="line"><b>전화</b><a href="tel:' + ph + '">' + esc(t.phone) + '</a></div>' : '') + ln('주소', t.addr) + ln('기한', t.due) + ln('담당', uname(t.assignee)) + ln('지시한 사람', uname(t.creator)) + ln('열어본 시각', t.seenAt) + ln('가맹점 요청사항', t.req) + ln('메모', t.memo) + ln(t.req || t.merchant ? '처리결과' : '완료 메시지', t.doneMsg) + (t.mlog && byId('mlogs', t.mlog) ? '<div class="sub" style="color:var(--green)">✔ 가맹점 응대 기록에도 남았어요.</div>' : '') +
+    ln('거래처', t.client) + (ph ? '<div class="line"><b>전화</b><a href="tel:' + ph + '">' + esc(t.phone) + '</a></div>' : '') + ln('주소', t.addr) + ln('기한', t.due) + ln('담당', uname(t.assignee)) + ln('요청한 사람', uname(t.creator)) + ln('열어본 시각', t.seenAt) + ln('가맹점 요청사항', t.req) + ln('메모', t.memo) + ln(t.req || t.merchant ? '처리결과' : '완료 메시지', t.doneMsg) + (t.mlog && byId('mlogs', t.mlog) ? '<div class="sub" style="color:var(--green)">✔ 가맹점 응대 기록에도 남았어요.</div>' : '') +
     '<h2>처리 이력</h2>' + (t.history || []).map(h => '<div class="hist">' + esc(h.t + '  ' + uname(h.who) + '\n' + h.text) + '</div>').join('') +
     (own && t.status !== '완료' ? '<div class="btns" style="margin-top:12px">' + (t.status !== '진행중' && t.status !== '확인함' ? '<button class="btn tint" data-act="tstatus" data-arg="' + id + '|진행중">진행 시작</button>' : '') + '<button class="btn" data-act="thold" data-arg="' + id + '">보류·연기</button><button class="btn gold" data-act="tdone" data-arg="' + id + '">완료</button></div>' : '') +
     (own && t.status === '완료' ? '<button class="btn full" data-act="tstatus" data-arg="' + id + '|진행중">진행중으로 되돌리기</button>' : '') +
@@ -476,18 +476,18 @@ ACT.tdone = id => {
 };
 ACT.newTask = draft => {
   const staff = list('users').filter(u => u.active !== false && (can('task_assign') || u.id === S.uid));
-  formModal('업무 지시', '<label class="fl" for="f_t1">업무 제목 (필수)</label><input id="f_t1" placeholder="예: A마트 포스 설치"><label class="fl" for="f_ty">종류</label><select id="f_ty">' + TYPES.map(x => '<option>' + x + '</option>').join('') + '</select>' + MP_FILL +
+  formModal('업무 요청', '<label class="fl" for="f_t1">업무 제목 (필수)</label><input id="f_t1" placeholder="예: A마트 포스 설치"><label class="fl" for="f_ty">종류</label><select id="f_ty">' + TYPES.map(x => '<option>' + x + '</option>').join('') + '</select>' + MP_FILL +
     '<label class="fl" for="f_c">거래처 (상호)</label><input id="f_c" placeholder="가맹점을 고르면 자동으로 채워져요"><label class="fl" for="f_p">매장 전화</label><input id="f_p" type="tel" placeholder="예: 062-123-4567"><label class="fl" for="f_a">매장 주소</label><input id="f_a" placeholder="예: 광주 동구 …">' +
     '<label class="fl" for="f_rq">가맹점 요청사항 (빠른 선택 + 직접 입력 — 완료하면 처리결과와 함께 응대 기록에 남아요)</label><div class="pills" style="margin-top:4px">' + REQ_QUICK.map(w => '<button type="button" class="pill rqq" data-w="' + w + '">＋ ' + w + '</button>').join('') + '</div><textarea id="f_rq" placeholder="예: 카드 결제가 안 된다고 함, 영수증 출력 안 됨"></textarea>' +
     '<label class="fl" for="f_d">기한 날짜 (선택 — 고르면 일정 달력에도 표시돼요)</label><input id="f_d" type="date"><label class="fl" for="f_tm">기한 시간 (선택)</label><input id="f_tm" type="time"><label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모"></textarea><label class="fl" for="f_w">담당 직원</label><select id="f_w">' + staff.map(u => '<option value="' + u.id + '"' + (u.id === S.uid ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('') + '</select>', () => {
     const ti = $('#f_t1').value.trim(); if (!ti) return warn('업무 제목을 입력해 주세요.');
     const d = $('#f_d').value, tm = $('#f_tm').value; const as = Number($('#f_w').value);
     const t = create('tasks', {title: ti, type: $('#f_ty').value, client: $('#f_c').value.trim(), phone: $('#f_p').value.trim(), addr: $('#f_a').value.trim(), due: d ? d + (tm ? ' ' + tm : '') : '', memo: $('#f_m').value.trim(), req: $('#f_rq').value.trim(), merchant: pickedMer && pickedMer.name === $('#f_c').value.trim() ? pickedMer.id : 0, assignee: as, creator: S.uid, status: '지시됨', history: []});
-    tlog(t, '업무 지시 → ' + uname(as)); put('tasks', t);
-    if (t.type.includes('서류')) postToRoom('서류접수', '📄 서류 업무 · ' + ti + (t.client ? ' · ' + t.client : '') + '\n담당 ' + uname(as) + ' · 지시 ' + uname(S.uid) + (t.due ? ' · 기한 ' + t.due : '')); // 앱과 같은 자동 알림
+    tlog(t, '업무 요청 → ' + uname(as)); put('tasks', t);
+    if (t.type.includes('서류')) postToRoom('서류접수', '📄 서류 업무 · ' + ti + (t.client ? ' · ' + t.client : '') + '\n담당 ' + uname(as) + ' · 요청 ' + uname(S.uid) + (t.due ? ' · 기한 ' + t.due : '')); // 앱과 같은 자동 알림
     if (d) { const p = d.split('-'); S.calY = +p[0]; S.calM = +p[1]; S.calSel = d; }
-    render(); toast(uname(as) + '님에게 업무를 지시했습니다.'); return true;
-  }, '지시하기');
+    render(); toast(uname(as) + '님에게 업무를 요청했습니다.'); return true;
+  }, '요청하기');
   let pickedMer = null;
   const syncQ = () => { const v = $('#f_rq').value; document.querySelectorAll('#modal .rqq').forEach(b => b.classList.toggle('on', v.includes(b.dataset.w))); };
   document.querySelectorAll('#modal .rqq').forEach(b => b.onclick = () => { const el = $('#f_rq'); el.value = toggleWord(el.value, b.dataset.w); syncQ(); });
@@ -941,7 +941,7 @@ ACT.newMerchant = () => needLock(() => { let dupOk = false; formModal('가맹점
   if (dup && !dupOk) { dupOk = true; return warn('같은 사업자번호의 가맹점 ‘' + dup.name + '’이(가) 이미 있어요. 그래도 등록하려면 저장을 한 번 더 누르세요.'); }
   const o = readMerchant(create('merchants', {grade: 5})); put('merchants', o); render(); toast('저장했어요.'); return true;
 }, '저장'); wireMerchantForm(); });
-// 다른 창(업무 지시)에서 가맹점을 새로 등록하고 돌아간다 — 권한·암호 규칙은 그대로
+// 다른 창(업무 요청)에서 가맹점을 새로 등록하고 돌아간다 — 권한·암호 규칙은 그대로
 function newMerchantThen(q, done, back) {
   if (!canEditMerchant()) { toast('가맹점 등록·수정 권한이 없어요. 관리자에게 요청해 주세요.'); return back(); }
   const pre = {}; if ((q || '').replace(/\D/g, '').length >= 10) pre.bizno = q; else pre.name = q || '';
@@ -1311,7 +1311,7 @@ ACT.preqIn = id => {
 const MP_FILL = '<div class="lb">가맹점 조회 (선택 · 고르면 거래처·전화·주소가 자동으로 채워져요)</div><div id="mpSel" class="sub" style="display:none"></div><input id="mpq" placeholder="🔍 상호·초성·사업자번호" autocomplete="off"><div id="mpl" class="picks"></div>';
 const MP_HTML = '<div class="lb">가맹점</div><div id="mpSel" class="sub">아직 고르지 않았어요. 아래에서 찾아 눌러 주세요.</div><input id="mpq" placeholder="🔍 상호·초성·사업자번호" autocomplete="off"><div id="mpl" class="picks"></div>';
 function wireMerchantPicker(onPick) {
-  S.mpNew = null; // '새 가맹점 등록' 버튼은 업무 지시 창에서만 (그 창이 다시 켠다)
+  S.mpNew = null; // '새 가맹점 등록' 버튼은 업무 요청 창에서만 (그 창이 다시 켠다)
   const q = $('#mpq'), l = $('#mpl');
   const fill = () => { // 검색칸은 그대로 두고 목록만 바꾼다 → 한글을 치는 중에도 바로 걸러진다
     const v = q.value.trim(); if (!v) { l.innerHTML = ''; return; }
@@ -2026,9 +2026,9 @@ function menuItems() {
   const P = can('perf_view') || can('staff_manage'), R = canReport() || can('report_view'), A = can('staff_manage');
   const nu = unreadNotices(), lk = lockDoc(); const it = [];
   const add = (sec, label, words, go, badge) => it.push({sec, label, words, go, badge});
-  add('바로가기', '업무', '업무 지시 할일 설치 AS 서류', 'nav:task:'); add('바로가기', '프로젝트', '프로젝트 진행률', 'nav:project:');
+  add('바로가기', '업무', '업무 요청 할일 설치 AS 서류', 'nav:task:'); add('바로가기', '프로젝트', '프로젝트 진행률', 'nav:project:');
   add('바로가기', '채팅', '채팅 대화 메시지 방', 'nav:chat:'); add('바로가기', '일정 (달력)', '일정 달력 캘린더 방문 약속', 'nav:calendar:');
-  add('업무', '업무 지시하기', '업무 지시 새 업무 올리기', 'act:newTask');
+  add('업무', '업무 요청하기', '업무 요청 새 업무 올리기', 'act:newTask');
   add('업무', '지난 업무 기록', '지난 업무 기록 이력 완료 검색', 'nav:all:history');
   add('업무', '물품요청 (본사 ← 지사)', '물품요청 구매 발주 주문 본사 지사 용지 장비 요청', 'nav:all:preqs', preqWaiting().length ? '입고 확인 ' + preqWaiting().length : '');
   add('가맹점', '가맹점', '가맹점 거래처 상호 사업자 삭제 계약 만료', 'nav:all:merchants');
@@ -2109,7 +2109,7 @@ function sideHTML(k) {
     .map(g => '<div class="sl" data-act="merchant" data-arg="' + g.merchant + '"><b>' + esc(g.mname || (byId('merchants', g.merchant) || {}).name || '') + '</b><small>' + esc((g.date || '').slice(5) + ' · ' + logKind(g.kind) + ' · ' + (logReq(g) || logRes(g) || '').slice(0, 30)) + '</small></div>').join('');
   const recentM = recentMerchants().map(id => byId('merchants', id)).filter(m => m && !m.deleted).slice(0, 10)
     .map(m => '<div class="sl" data-act="merchant" data-arg="' + m.id + '"><b>' + esc(m.name) + '</b><small>' + esc(m.bizno || mNums(m).phone || mNums(m).mobile || '') + '</small></div>').join('');
-  if (k === 'task') return '<h1>내 할 일</h1><button class="btn gold full" data-act="newTask">+ 업무 지시</button>' +
+  if (k === 'task') return '<h1>내 할 일</h1><button class="btn gold full" data-act="newTask">+ 업무 요청</button>' +
     (late.length ? sideSec('⏰ 기한 지난 업무 (' + late.length + ')', late.slice(0, 10).map(sideTask).join('')) : '') +
     sideSec('내가 맡은 업무 (' + mine.length + ')', mine.slice(0, 30).map(sideTask).join(''), '맡은 업무가 없어요.') +
     sideSec('최근 완료', list('tasks').filter(t => t.status === '완료' && (t.assignee === S.uid || can('task_view_all'))).sort((a, b) => (b.doneAt || '').localeCompare(a.doneAt || '')).slice(0, 5).map(sideTask).join(''), '아직 없어요.');
@@ -2157,6 +2157,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.27', '2026-10-25', ['‘업무 지시’를 ‘업무 요청’으로 이름 바꿈 (요청하기·요청한 사람)']],
   ['웹 0.0.26', '2026-10-25', ['채팅 알림 음성을 밝은 여자 목소리 “나인톡!”으로 바꿈, 다른 알림 음성도 같은 목소리로']],
   ['웹 0.0.25', '2026-10-25', ['채팅 알림 소리를 카톡처럼 짧게 “나톡!”으로 바꾸고, 업무는 ‘띵동’ + “업무가 배정되었습니다”로 따로 울려요', '☰ → 내 계정·설정에 ‘업무 알림 소리’·‘채팅 알림 소리(나톡)’를 따로 켜고 끄는 칸과 각각 들어 보기', '채팅방 위 🔔 버튼으로 그 방만 알림 소리 끄기(🔕)']],
   ['웹 0.0.24', '2026-10-25', ['알림 음성이 안 나던 문제 고침: 미리 녹음한 음성 파일을 틀어서, 기기에 한국어 음성이 없어도 “업무가 배정되었습니다”·“나인톡”이 들려요. 화면을 한 번 누른 뒤부터 소리가 나요(브라우저 규칙)']],
@@ -2192,7 +2193,7 @@ const WEB_MANUAL = [
   ['처음 시작하기 · 로그인', '1. 관리자가 등록해 둔 내 휴대폰 번호를 넣고 ‘인증번호 받기’를 눌러요.\n2. 문자로 온 인증번호 6자리를 넣으면 로그인돼요. 한 번 로그인하면 계속 유지돼요.\n※ ‘등록되지 않은 번호입니다’가 나오면 관리자에게 번호 등록을 요청하세요.\n※ 아이폰: Safari 로 열고 공유 버튼 → ‘홈 화면에 추가’ 하면 앱처럼 써요.\n※ 로그아웃: 전체(☰) → 계정 → 로그아웃.'],
   ['PC 프로그램 (윈도우)', '전체(☰) → 계정 → ‘PC 프로그램 설치 파일 받기’로 설치 파일을 받아 실행하면 바탕화면·시작 메뉴에 ‘나인패밀리’가 생겨요.\n처음 실행할 때 ‘Windows의 PC 보호’ 창이 뜨면 ‘추가 정보’ → ‘실행’을 눌러 주세요.\n프로그램은 이 웹앱을 창으로 띄우는 방식이라, 업데이트가 나오면 다시 설치하지 않아도 다음에 켤 때(켜 둔 상태면 F5) 바로 바뀌어요.\n크롬·엣지에서 주소창 오른쪽 설치 버튼으로 설치해도 같아요.\n■ 왼쪽 칸: PC에서는 채팅처럼 화면 왼쪽에 바로가기 목록이 나와요. 업무는 기한 지난·내 업무, 프로젝트는 진행률, 일정은 오늘부터 일주일, 가맹점·응대 기록은 진행 중인 가맹점 업무와 최근 연 가맹점, ☰에서 연 화면은 같은 묶음 메뉴. 눌러서 바로 열어요.'],
   ['화면 구성', '휴대폰(아이폰): 안드로이드 앱과 같은 화면이에요. 아래 탭 업무·프로젝트·채팅·일정·전체, 나머지 기능은 전체 탭에 계정 → 회사 → 일 → 관리자 순서로 있어요.\nPC: 위쪽 가로줄이 주 메뉴(업무·프로젝트·채팅·일정·가맹점·응대 기록)예요. 왼쪽 위 ☰ 를 누르면 전체 메뉴가 펼쳐지고, ‘나인패밀리’를 누르면 홈(오늘 현황)으로 가요.\n전체 메뉴 위 기능 검색에 단어나 초성(예: ㅈㄱ)을 치면 기능을 바로 찾아요.\n안드로이드 앱·아이폰·PC 는 같은 서버를 써서, 어디서 고쳐도 다른 기기에 바로 보여요.'],
-  ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 지시: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 지시할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.\n■ 용지신청·새 가맹점: 요청사항 위 ‘＋ 용지신청’을 누르면 칸에 들어가요(다시 누르면 빠짐). 완료하면 응대 기록 종류가 ‘용지신청’. 가맹점 조회에서 못 찾으면 ‘새 가맹점 등록’ → 찾던 상호·사업자번호가 채워지고, 저장하면 업무 창으로 돌아와 자동 연결돼요(권한·암호 필요).'],
+  ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 요청: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 요청할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.\n■ 용지신청·새 가맹점: 요청사항 위 ‘＋ 용지신청’을 누르면 칸에 들어가요(다시 누르면 빠짐). 완료하면 응대 기록 종류가 ‘용지신청’. 가맹점 조회에서 못 찾으면 ‘새 가맹점 등록’ → 찾던 상호·사업자번호가 채워지고, 저장하면 업무 창으로 돌아와 자동 연결돼요(권한·암호 필요).'],
   ['프로젝트', '+ 로 이름·마감일·메모·체크리스트(한 줄에 하나)·담당자를 넣어 만들어요.\n프로젝트를 눌러 항목을 체크하면 진행률이 자동으로 올라가고, ‘항목 추가’로 늘려요. 100%가 되면 ‘완료 되돌리기’로 진행중으로 돌릴 수 있어요.\n목록 위 전체·진행중·완료로 걸러 봐요.'],
   ['채팅', '■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.\n■ 읽음 표시: 말풍선 시각 옆 노란 숫자 = 아직 안 읽은 사람 수. 모두 읽으면 숫자가 사라져요.'],
   ['일정 (달력)', '■ 일요일·공휴일은 빨간색(공휴일 이름 표시, 2026~2028년), 토요일은 파란색이에요. ‹ › 로 달을 넘기고 ‘오늘’로 돌아와요.\n■ 날짜를 누르면 그날 일정과 기한이 있는 업무가 보이고, 아래 ‘다가오는 일정’에 앞으로의 일정이 날짜 순으로 나와요.\n■ 일정을 누르면 내용이 보이고, 가맹점이 연결된 일정은 ‘가맹점 정보 보기’로 바로 가요.\n■ 일정 추가·삭제는 최고관리자만 해요(+ 버튼). 가맹점을 고르면 장소에 주소가 들어가요. 일반 직원은 업무에 기한을 넣으면 달력에 표시돼요.'],

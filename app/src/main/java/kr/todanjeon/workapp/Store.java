@@ -223,7 +223,19 @@ final class Store {
         }
     }
 
-    Store(Context c) {
+    /** 앱 화면과 상시 알림 서비스가 같은 보관본·서버 연결을 함께 쓴다(서버 읽기를 두 번 하지 않게). */
+    private static Store inst;
+
+    static synchronized Store get(Context c) {
+        if (inst == null) inst = new Store(c.getApplicationContext());
+        return inst;
+    }
+
+    boolean isOnline() {
+        return online;
+    }
+
+    private Store(Context c) {
         sp = c.getSharedPreferences("workapp", Context.MODE_PRIVATE);
         try {
             db = new JSONObject(sp.getString("db2", "{}"));
@@ -591,7 +603,7 @@ final class Store {
             t.put("status", "지시됨");
             t.put("created", now());
             t.put("history", new JSONArray());
-            log(t, creator, "업무 지시 → " + userName(assignee));
+            log(t, creator, "업무 요청 → " + userName(assignee));
             tasks().put(t);
             save();
             return t;

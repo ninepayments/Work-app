@@ -67,3 +67,5 @@
 - 로그인 테스트 번호 3개가 Firebase 콘솔에 있음(문자 없이 로그인됨). 공개 저장소에 코드를 적지 말 것.
 
 앱 기능·권한 전체 정리와 웹 현황(남은 차이)은 `FEATURES.md`. 자세한 사용법은 앱 안 사용설명서, 앞으로 할 일은 `BACKLOG.md`·`ROADMAP.md`.
+- 화면 꺼짐 알림(앱 v0.0.16): FCM(유료) 대신 상시 알림 서비스 NotifyService(foregroundServiceType remoteMessaging, START_STICKY, 부팅·앱 교체 때 다시 시작) + 배터리 최적화 예외 요청. Store 는 Store.get() 하나를 앱 화면·서비스가 같이 씀(서버 읽기 중복 없음). 알림·음성은 Alerts.java(채널 work2 중요도 높음, 소리는 res/raw 음성). 설정: prefs bgNotify / voice(업무) / voiceChat(채팅).
+- 용어: 화면 글은 '업무 요청'(예전 '업무 지시'). 저장 값 status '지시됨'은 그대로(화면엔 '미확인').
