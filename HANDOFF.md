@@ -75,3 +75,4 @@
 - 회귀 점검: tools/smoke/web-smoke.js (데모로 모든 화면 열기, web.yml 배포 전 자동 실행 — 실패하면 배포 안 됨). 작업 규칙은 CLAUDE.md.
 - 상품 목록(웹 0.0.30 / 앱 v0.0.19): config key 'products' {items:[{code,name}]}. stock·preq.items 에 model(이름) + code. 관리자가 상품 목록을 처음 열면 기존 이름에 P0001… 자동 부여(seedProducts). 이름 바꾸면 같은 이름 재고도 바뀜.
 - 엑셀 양식·재고 일괄 등록(웹 0.0.31 / 앱 v0.0.20): 양식은 브라우저 xlsxOf(zip 저장 방식)·앱 MerchantImport.xlsx 로 만듦(안내 줄 + 머리글 + '(예시)' 줄, 가져올 때 예시 줄 건너뜀). 재고 일괄 등록은 관리자만, 시작 때 seedProducts. 가맹점 설치 장비는 status 설치완료·gone '기존 설치'·merchant·mname, log k '기존 설치' q 0. PC 메모는 웹만(NAVPC 'memo', profiles.memos [{id,t,u,pin}]).
+- 물품요청 새 물품(웹 0.0.32 / 앱 v0.0.21): preq.items 에 code '' + fresh:true 허용. 관리자가 주문함·발송함·입고완료로 바꿀 때 preqCodeUp 이 상품 목록 등록·코드 부여.

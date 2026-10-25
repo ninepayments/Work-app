@@ -3408,7 +3408,25 @@ public class MainActivity extends Activity {
     private String itemCode(JSONObject x) {
         String c = x.optString("code");
         if (c.isEmpty()) c = codeOf(x.optString("model"));
-        return c.isEmpty() ? "" : "[" + c + "] ";
+        return c.isEmpty() ? "(새 물품) " : "[" + c + "] ";
+    }
+
+    /** 관리자(본사)가 처리할 때 코드 없는 품목(새 물품)을 상품 목록에 올리고 코드를 붙인다 — 웹 preqCodeUp 과 같음 */
+    private void preqCodeUp(JSONObject t) {
+        if (!prodAdmin()) return;
+        JSONArray it = t.optJSONObject("preq").optJSONArray("items");
+        for (int i = 0; it != null && i < it.length(); i++) {
+            JSONObject x = it.optJSONObject(i);
+            if (!x.optString("code").isEmpty()) continue;
+            JSONObject p = prodFind(x.optString("model"));
+            if (p == null) p = prodResolve(x.optString("model"));
+            if (p == null) continue;
+            try {
+                x.put("code", p.optString("code")).put("model", p.optString("name"));
+                x.remove("fresh");
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     private String preqItems(JSONObject t) {
@@ -3477,25 +3495,38 @@ public class MainActivity extends Activity {
         final Spinner to = spinner(LOCS);
         to.setSelection(1);
         labeled(f, "받을 곳", to);
-        f.addView(Ui.text(this, "요청 품목 (상품 목록의 상품코드로 골라요)", 12, Ui.GRAY, true), Ui.lp(this, 10));
+        f.addView(Ui.text(this, "요청 품목", 12, Ui.GRAY, true), Ui.lp(this, 10));
+        f.addView(Ui.text(this, "… 를 누르면 재고 품목(상품코드·보관지별 재고)에서 골라요. 목록에 없는 물품은 이름을 그대로 적으면 돼요 — 본사가 확인할 때 상품 목록에 올라가요.", 12, Ui.GRAY, false), Ui.lp(this, 2));
         final LinearLayout rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
         f.addView(rows);
         final List<EditText[]> items = new ArrayList<>();
         final Runnable addRow = () -> {
             LinearLayout r = new LinearLayout(this);
-            final EditText m = Ui.field(this, "상품코드·상품명 (예: P0001)", false);
+            final EditText m = Ui.field(this, "재고 품목 또는 새 물품 이름", false);
             EditText q = Ui.field(this, "수량", false);
             q.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
             Button pk = Ui.button(this, "…", Ui.FIELD, Ui.INK);
             pk.setOnClickListener(v -> {
-                List<String> ms = new ArrayList<>();
-                for (JSONObject p : products()) ms.add(prodLabel(p));
+                final List<String> ms = new ArrayList<>(), shown = new ArrayList<>();
+                java.util.Map<String, int[]> cnt = new java.util.HashMap<>();
+                for (JSONObject r : inStock()) {
+                    String k = r.optString("model").trim();
+                    if (!cnt.containsKey(k)) cnt.put(k, new int[LOCS.length]);
+                    for (int li = 0; li < LOCS.length; li++) if (LOCS[li].equals(locOf(r))) cnt.get(k)[li] += r.optInt("qty", 1);
+                }
+                for (JSONObject p : products()) {
+                    ms.add(prodLabel(p));
+                    int[] c = cnt.get(p.optString("name"));
+                    StringBuilder sb = new StringBuilder(prodLabel(p)).append("\n   재고");
+                    for (int li = 0; li < LOCS.length; li++) sb.append(li > 0 ? " · " : " ").append(LOCS[li]).append(" ").append(c == null ? 0 : c[li]);
+                    shown.add(sb.toString());
+                }
                 if (ms.isEmpty()) {
-                    Ui.toast(this, "상품 목록이 비어 있어요. 본사 관리자에게 등록을 요청해 주세요.");
+                    Ui.toast(this, "등록된 재고 품목이 없어요. 물품 이름을 직접 적어 주세요.");
                     return;
                 }
-                new Dlg(this).setTitle("상품 고르기").setItems(ms.toArray(new String[0]), (d, w) -> m.setText(ms.get(w))).setNegativeButton("닫기", null).show();
+                new Dlg(this).setTitle("재고 품목에서 고르기").setItems(shown.toArray(new String[0]), (d, w) -> m.setText(ms.get(w))).setNegativeButton("닫기", null).show();
             });
             r.addView(m, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 3f));
             r.addView(pk, new LinearLayout.LayoutParams(Ui.dp(this, 44), ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -3538,10 +3569,16 @@ public class MainActivity extends Activity {
                         Ui.toast(this, "품목마다 수량을 적어 주세요.");
                         return;
                     }
-                    JSONObject pr = prodResolve(m);
-                    if (pr == null) return;
-                    it.put(new JSONObject().put("code", pr.optString("code")).put("model", pr.optString("name")).put("qty", q));
-                    ti.append(ti.length() > 0 ? ", " : "").append(pr.optString("name")).append(" ").append(q);
+                    JSONObject pr = prodFind(m); // 목록에 있으면 그 코드, 없으면 적은 이름 그대로(새 물품)
+                    String pn = pr != null ? pr.optString("name") : m.replaceAll("^\\[[^\\]]*\\]\\s*", "").trim();
+                    if (pn.isEmpty()) {
+                        Ui.toast(this, "품목 이름을 적어 주세요.");
+                        return;
+                    }
+                    JSONObject itx = new JSONObject().put("code", pr != null ? pr.optString("code") : "").put("model", pn).put("qty", q);
+                    if (pr == null) itx.put("fresh", true);
+                    it.put(itx);
+                    ti.append(ti.length() > 0 ? ", " : "").append(pn).append(" ").append(q);
                 }
                 if (it.length() == 0 || staff.isEmpty()) {
                     Ui.toast(this, "요청할 품목을 적어 주세요.");
@@ -3564,6 +3601,7 @@ public class MainActivity extends Activity {
     }
 
     private void preqStage(JSONObject t, String st, String msg) {
+        if ("주문함".equals(st) || "발송함".equals(st) || "입고완료".equals(st)) preqCodeUp(t);
         try {
             t.optJSONObject("preq").put("stage", st);
             store.log(t, myId(), "물품요청 → " + st + (msg == null || msg.isEmpty() ? "" : " : " + msg));
@@ -3684,6 +3722,7 @@ public class MainActivity extends Activity {
         final AlertDialog dlg = new Dlg(this).setTitle("입고 확인 — " + toL).setView(sv).setNegativeButton("취소", null).setPositiveButton("입고 확인", null).create();
         dlg.show();
         dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            preqCodeUp(t);
             String memo = "물품요청 입고 (" + store.userName(t.optInt("creator")) + " 요청)";
             for (EditText[] e : ins)
                 for (String s : e[1].getText().toString().split("[\\n,]+"))
@@ -5685,7 +5724,7 @@ public class MainActivity extends Activity {
             {"단체 문자 (가맹점)", "(전체 → 단체 문자 보내기, 또는 전체 탭 검색창에 '문자')\n\n■ 이렇게 동작해요\n- 내용을 쓰고, 보낼 가맹점을 고른 뒤 '문자 보내기 시작'을 누르면 가맹점 한 곳씩 이 폰의 문자 앱이 열립니다. 내용이 미리 채워져 있으니 확인하고 '전송'만 누르면 돼요.\n- 한 곳씩 따로 보내서 받는 분들끼리 번호가 보이지 않습니다. 문자 요금은 이 폰의 요금제로 나갑니다.\n- 내용에 {상호} 라고 쓰면 가맹점 이름으로 바뀝니다. 예: {상호} 사장님, 안녕하세요. 나인페이먼츠입니다.\n\n■ 받는 가맹점 고르기\n- 칸을 눌러 하나씩 고르거나, 위의 'S 등급 선택' 같은 버튼으로 등급 전체를 한 번에 고릅니다. '보이는 전체 선택'은 검색 결과 전체를 고르고, '선택 해제'는 모두 풉니다.\n- 유선 번호(02·062 등)는 문자를 받을 수 없어서 선택할 수 없어요.\n\n■ 보내는 순서\n1. '문자 앱 열기' → 문자 앱에서 전송.\n2. 이 앱으로 돌아오면 다음 가맹점이 준비돼 있습니다. 필요 없으면 '건너뛰기', 그만두려면 '중단'.\n3. 끝나면 문자 앱의 보낸 기록에서 보내졌는지 확인하세요. 앱은 전송을 눌렀는지 알 수 없어요.\n\n※ 수십 곳 이상을 한꺼번에 보내는 기능(문자 업체 연동)은 서버 요금제 전환 후에 만들 예정입니다."},
             {"프로필 · 버전", "■ 프로필\n- 전체 탭 맨 위 내 카드(또는 오른쪽 위 동그라미)를 누르면 프로필이 열립니다.\n- '사진 변경'으로 앨범에서 사진을 고르면 자동으로 동그랗게 잘려 저장되고, 채팅과 화면 위쪽에 나와요.\n- '상태 메시지'에 외근 중, 오후 복귀 같은 한 줄을 적어 두면 다른 직원이 프로필에서 볼 수 있어요.\n- 채팅에서 다른 직원 사진을 누르면 그 직원의 프로필과 전화하기 버튼이 나옵니다.\n\n■ 버전 보기\n- 전체 탭 맨 아래, 로그인 화면, 전체 → 버전·업데이트 내역에 현재 버전이 표시됩니다. (예: v0.0.1 (빌드 33))\n- 업데이트 내역에는 버전마다 무엇이 바뀌었는지 적혀 있어요.\n\n■ 버전 번호 규칙\n- 0.0.1에서 시작해 업데이트할 때마다 끝 숫자가 하나씩 올라갑니다 (0.0.2, 0.0.3 …).\n- 괄호 안 빌드 번호는 배포할 때마다 1씩 올라가요.\n- 실제 문자 인증으로 전 직원이 쓰기 시작하면 1.0.0이 됩니다.\n- 새 버전이 나올 때마다 이 사용설명서도 함께 새로 고쳐집니다."},
             {"자주 묻는 질문", "Q. 인증번호 문자가 안 와요.\nA. 번호가 등록되었는지, 폰 신호가 되는지 확인하세요. 하루에 받을 수 있는 횟수가 제한되어 있어 여러 번 시도하면 잠시 막힐 수 있어요.\n\nQ. 폰을 바꿨어요.\nA. 새 폰에 앱을 설치하고 같은 번호로 다시 인증하면 모든 자료가 그대로 나옵니다. 자료는 서버에 저장돼 있어요.\n\nQ. 인터넷이 없을 때도 써도 되나요?\nA. 열어서 보기와 입력은 가능하고, 인터넷이 다시 연결되면 자동으로 서버에 올라갑니다.\n\nQ. 실수로 지웠어요.\nA. 지운 자료도 서버에는 기록이 남아 있으니 관리자에게 말씀해 주세요."},
-            {"물품요청 (본사 ← 지사)", "■ 요청\n- 전체 → 업무 → 물품요청, 또는 재고 화면 아래 '＋ 본사에 물품요청'.\n- 받을 곳(광주지사·본사), 품목과 수량(줄 추가 가능, '…'로 있던 모델 고르기), 본사 담당자, 희망 도착일, 메모를 적어 보내요.\n\n■ 본사 담당자\n- 업무 목록에 '미확인'으로 뜨고 알림(음성: 물품요청이 들어왔습니다)이 와요.\n- 요청을 열어 '주문함' → '발송 (발주처리)'(택배사·송장번호 메모)를 누르고, 안 되면 '반려'(사유).\n\n■ 요청한 사람\n- 발송되면 알림(음성: 물품이 발송되었습니다)과 업무 숫자가 떠요.\n- 물건을 받고 '입고 확인'에서 받은 수량·시리얼(바코드 스캔 가능)을 적으면 받은 곳 재고에 바로 들어가고, 재고 이력에 '물품요청 입고'로 남아요.\n\n■ 진행 단계: 요청 › 주문함 › 발송함 › 입고완료 (또는 반려). 모든 단계는 처리 이력에 남아요."},
+            {"물품요청 (본사 ← 지사)", "■ 품목 옆 … 를 누르면 재고 품목이 상품코드·보관지별 재고 수와 함께 떠서 골라요. 목록에 없는 물품은 이름만 적으면 '새 물품'으로 요청되고, 본사(관리자)가 주문·발송을 표시할 때 상품 목록에 올라가 상품코드가 붙어요.\n■ 요청\n- 전체 → 업무 → 물품요청, 또는 재고 화면 아래 '＋ 본사에 물품요청'.\n- 받을 곳(광주지사·본사), 품목과 수량(줄 추가 가능, '…'로 있던 모델 고르기), 본사 담당자, 희망 도착일, 메모를 적어 보내요.\n\n■ 본사 담당자\n- 업무 목록에 '미확인'으로 뜨고 알림(음성: 물품요청이 들어왔습니다)이 와요.\n- 요청을 열어 '주문함' → '발송 (발주처리)'(택배사·송장번호 메모)를 누르고, 안 되면 '반려'(사유).\n\n■ 요청한 사람\n- 발송되면 알림(음성: 물품이 발송되었습니다)과 업무 숫자가 떠요.\n- 물건을 받고 '입고 확인'에서 받은 수량·시리얼(바코드 스캔 가능)을 적으면 받은 곳 재고에 바로 들어가고, 재고 이력에 '물품요청 입고'로 남아요.\n\n■ 진행 단계: 요청 › 주문함 › 발송함 › 입고완료 (또는 반려). 모든 단계는 처리 이력에 남아요."},
             {"알림 소리·음성", "■ 새 업무가 배정되면 '띵동' 소리와 함께 \"업무가 배정되었습니다\", 물품요청은 \"물품요청이 들어왔습니다\"·\"물품이 발송되었습니다\", 공지는 \"새 공지가 있습니다\"라고 말해 줘요.\n■ 채팅이 오면 카톡처럼 짧게 \"나인톡!\" 하고 울려요.\n■ 전체 → 내 계정·설정 → '알림 및 소리 설정'에서 '업무 알림 소리'와 '채팅 알림 소리(나인톡)'를 따로 끄고 켜고, '들어 보기'로 미리 들어 봐요.\n■ 채팅방 하나만 조용히 하려면 대화방 메뉴 → 음소거.\n■ 소리가 안 나면 폰 미디어 볼륨을 올려 주세요.\n■ 화면이 꺼져 있거나 앱을 닫아도 알림이 와요(상단에 '알림 받는 중'이 작게 보여요). 처음 한 번 배터리 절약에서 빼기를 허용해 주세요. 전체 → 내 계정·설정 → '알림 및 소리 설정'에서 켜고 꺼요."}
     };
 
@@ -5852,6 +5891,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.21", "2026-10-25", "• 물품요청: … 를 누르면 재고 품목(상품코드·보관지별 재고 수)에서 고르고, 목록에 없는 물품은 이름만 적어도 요청돼요('새 물품' 표시). 본사가 주문·발송을 표시할 때 상품 목록에 올라가고 상품코드가 붙어요"},
             {"0.0.20", "2026-10-25", "• 가맹점 일괄 가져오기에 업로드 양식(.xlsx) 받기 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요\n• 재고 일괄 등록(엑셀, 관리자): 상품코드/상품명·시리얼·수량·현재위치 — 본사·광주지사는 우리 재고, 가맹점 상호는 이미 설치된 장비로 기록만(재고 수 제외)\n• (PC 웹에는 위쪽 메뉴 끝에 메모가 생겼어요)"},
             {"0.0.19", "2026-10-25", "• 상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 계약·재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요\n• 재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색\n• 목록에 없는 상품은 관리자가 입고·요청할 때 새 코드로 바로 등록돼요"},
             {"0.0.18", "2026-10-25", "• 전체 → 내 계정·설정 → '알림 및 소리 설정' 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기, 화면 꺼져도 알림 받기도 여기서"},

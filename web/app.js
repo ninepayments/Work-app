@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.31';
+const VERSION = '웹 0.0.32';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -1076,7 +1076,20 @@ function prodResolve(v) {
   if (!prodAdmin()) { warn('상품 목록에 없는 상품이에요: ' + name + '\n본사 관리자에게 상품 등록(☰ → 계약·재고 → 상품 목록)을 요청해 주세요.'); return null; }
   const p = {code: nextProdCode(), name}; saveProducts(products().concat(p)); toast('새 상품을 등록했어요: ' + prodLabel(p)); return p;
 }
-const prodOptions = () => '<datalist id="prodlist">' + products().map(p => '<option value="' + esc(prodLabel(p)) + '">').join('') + '</datalist>';
+const prodOptions = withStock => { // withStock: 물품요청 창 — 고를 때 보관지별 지금 재고 수를 같이 보여 준다
+  const cnt = {}; if (withStock) inStock().forEach(r => { const k = (r.model || '').trim(); cnt[k] = cnt[k] || {}; cnt[k][locOf(r)] = (cnt[k][locOf(r)] || 0) + (r.qty || 1); });
+  return '<datalist id="prodlist">' + products().map(p => '<option value="' + esc(prodLabel(p)) + '"' + (withStock ? ' label="' + esc('재고 ' + LOCS.map(l => l + ' ' + ((cnt[p.name] || {})[l] || 0)).join(' · ')) + '"' : '') + '>').join('') + '</datalist>';
+};
+// 물품요청 품목: 상품 목록에 있으면 그 코드, 없으면 적은 이름 그대로(코드 없음) — 본사가 주문·발송을 표시할 때 상품 목록에 등록하고 코드를 붙인다
+function preqProd(v) {
+  const p = prodFind(v); if (p) return {code: p.code, model: p.name};
+  return {code: '', model: String(v || '').replace(/^\[[^\]]*\]\s*/, '').trim(), fresh: true};
+}
+function preqCodeUp(t) { // 관리자(본사)가 처리할 때 코드 없는 품목을 상품 목록에 올리고 코드를 붙인다
+  if (!prodAdmin()) return; let ch = false;
+  (t.preq.items || []).forEach(x => { if (x.code) return; const p = prodFind(x.model) || prodResolve(x.model); if (p) { x.code = p.code; x.model = p.name; delete x.fresh; ch = true; } });
+  return ch;
+}
 // 관리자가 처음 열면 기존 재고·요청에 쓰인 이름에 코드를 붙여 목록을 만든다
 function seedProducts() {
   if (!prodAdmin()) return 0;
@@ -1396,7 +1409,7 @@ const locOf = r => r.loc || '본사';
 const PSTAGES = ['요청', '주문함', '발송함', '입고완료'];
 const preqs = () => list('tasks').filter(t => t.preq).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
 const preqWaiting = () => preqs().filter(t => t.preq.stage === '발송함' && (t.creator === S.uid || can('staff_manage'))); // 받는 쪽이 입고 확인할 것
-const preqItems = t => (t.preq.items || []).map(x => (x.code || codeOf(x.model) ? '[' + (x.code || codeOf(x.model)) + '] ' : '') + x.model + ' ' + x.qty + (x.serial ? '' : '개')).join(', ');
+const preqItems = t => (t.preq.items || []).map(x => (x.code || codeOf(x.model) ? '[' + (x.code || codeOf(x.model)) + '] ' : '(새 물품) ') + x.model + ' ' + x.qty + (x.serial ? '' : '개')).join(', ');
 function preqStageHTML(st) {
   if (st === '반려') return '<span class="chip" style="background:#fdecea;color:var(--red)">반려</span>';
   const i = PSTAGES.indexOf(st);
@@ -1418,16 +1431,17 @@ function viewPreqs() {
 }
 ACT.newPreq = () => {
   const staff = list('users').filter(u => u.active !== false).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  const row = () => '<div class="row prow2" style="gap:6px"><input class="pm" list="prodlist" placeholder="상품코드·상품명 (예: P0001)" style="flex:3" autocomplete="off"><input class="pq" inputmode="numeric" placeholder="수량" style="flex:1"></div>';
+  const row = () => '<div class="row prow2" style="gap:6px"><input class="pm" list="prodlist" placeholder="재고 품목 검색 또는 새 물품 이름" style="flex:3" autocomplete="off"><input class="pq" inputmode="numeric" placeholder="수량" style="flex:1"></div>';
   formModal('본사에 물품요청', '<div class="sub" style="margin-top:0">본사 담당자에게 알림이 가요. 담당자가 주문·발송을 표시하고, 물건이 오면 ‘입고 확인’을 누르면 받은 곳 재고에 들어가요.</div>' +
     '<label class="fl" for="f_to">받을 곳</label><select id="f_to">' + LOCS.map(l => '<option' + (l === '광주지사' ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
-    '<div class="lb">요청 품목 (상품 목록의 상품코드로 골라요)</div>' + prodOptions() + '<div id="prows">' + row() + row() + '</div><button type="button" class="btn full" id="paddr">＋ 품목 줄 추가</button>' +
+    '<div class="lb">요청 품목</div><div class="sub" style="margin:0 0 4px">칸을 누르면 재고 품목(상품코드·보관지별 재고)이 떠요. 목록에 없는 물품은 이름을 그대로 적으면 돼요 — 본사가 확인할 때 상품 목록에 올라가요.</div>' + prodOptions(true) + '<div id="prows">' + row() + row() + '</div><button type="button" class="btn full" id="paddr">＋ 품목 줄 추가</button>' +
     '<label class="fl" for="f_as">본사 담당자 (알림이 가요)</label><select id="f_as">' + staff.map(u => '<option value="' + u.id + '">' + esc(u.name) + '</option>').join('') + '</select>' +
     '<label class="fl" for="f_d">희망 도착일 (선택)</label><input id="f_d" type="date"><label class="fl" for="f_m">메모 (선택)</label><textarea id="f_m" placeholder="예: 다음 주 설치 3건 예정"></textarea>', () => {
     const raw = [...document.querySelectorAll('#prows .prow2')].map(r => ({v: r.querySelector('.pm').value.trim(), qty: numOf(r.querySelector('.pq').value)})).filter(x => x.v);
     if (!raw.length) return warn('요청할 품목을 적어 주세요.');
     if (raw.some(x => x.qty < 1)) return warn('품목마다 수량을 적어 주세요.');
-    const items = []; for (const x of raw) { const p = prodResolve(x.v); if (!p) return false; items.push({code: p.code, model: p.name, qty: x.qty}); }
+    const items = raw.map(x => Object.assign(preqProd(x.v), {qty: x.qty}));
+    if (items.some(x => !x.model)) return warn('품목 이름을 적어 주세요.');
     const to = $('#f_to').value, as = Number($('#f_as').value), d = $('#f_d').value;
     const t = create('tasks', {title: '물품요청 · ' + to + ' · ' + items.map(x => x.model + ' ' + x.qty).join(', '), type: '물품요청', client: to, due: d, memo: $('#f_m').value.trim(), assignee: as, creator: S.uid, status: '지시됨', history: [], preq: {to, items, stage: '요청'}});
     tlog(t, '물품요청 → ' + uname(as) + ' (' + to + ')'); put('tasks', t); render(); toast(uname(as) + '님에게 물품요청을 보냈어요.'); return true;
@@ -1435,6 +1449,7 @@ ACT.newPreq = () => {
   $('#paddr').onclick = () => $('#prows').insertAdjacentHTML('beforeend', row());
 };
 function preqStage(t, st, msg) {
+  if (st === '주문함' || st === '발송함' || st === '입고완료') preqCodeUp(t);
   t.preq.stage = st; tlog(t, '물품요청 → ' + st + (msg ? ' : ' + msg : ''));
   if (st === '주문함' || st === '발송함') t.status = '진행중';
   if (st === '입고완료' || st === '반려') { t.status = '완료'; t.doneAt = nowStr(); t.doneMsg = st + (msg ? ' : ' + msg : ''); }
@@ -1446,7 +1461,7 @@ ACT.preq = id => {
   const P = t.preq, st = P.stage, hq = t.assignee === S.uid || can('staff_manage'), rq = t.creator === S.uid || can('staff_manage');
   const ln = (k, v) => v ? '<div class="line"><b>' + k + '</b><div>' + esc(v) + '</div></div>' : '';
   modal('<h3>📦 물품요청 — ' + esc(P.to) + '</h3>' + preqStageHTML(st) +
-    '<table class="ptbl"><tr><th>상품코드</th><th>품목</th><th>수량</th></tr>' + (P.items || []).map(x => '<tr><td>' + esc(x.code || codeOf(x.model) || '-') + '</td><td>' + esc(x.model) + '</td><td>' + x.qty + '</td></tr>').join('') + '</table>' +
+    '<table class="ptbl"><tr><th>상품코드</th><th>품목</th><th>수량</th></tr>' + (P.items || []).map(x => '<tr><td>' + esc(x.code || codeOf(x.model) || '새 물품') + '</td><td>' + esc(x.model) + '</td><td>' + x.qty + '</td></tr>').join('') + '</table>' +
     ln('받을 곳', P.to) + ln('요청한 사람', uname(t.creator) + ' · ' + (t.created || '')) + ln('본사 담당', uname(t.assignee)) + ln('희망 도착일', t.due) + ln('메모', t.memo) + ln('발송 메모', P.ship) +
     '<h2>처리 이력</h2>' + (t.history || []).map(h => '<div class="hist">' + esc(h.t + '  ' + uname(h.who) + '\n' + h.text) + '</div>').join('') +
     '<div class="btns" style="margin-top:12px;flex-wrap:wrap">' +
@@ -1467,7 +1482,7 @@ ACT.preqIn = id => {
   const t = byId('tasks', id); const P = t.preq;
   formModal('입고 확인 — ' + P.to, '<div class="sub" style="margin-top:0">받은 그대로 적어 주세요. 시리얼이 있는 장비는 시리얼을 한 줄에 하나씩 적거나 스캐너로 찍으면 시리얼마다 입고돼요.</div>' +
     (P.items || []).map((x, i) => '<div class="adjg"><b>' + esc((x.code ? '[' + x.code + '] ' : '') + x.model) + ' (요청 ' + x.qty + ')</b><div class="row" style="gap:6px"><span class="sub" style="margin:0">받은 수량</span><input id="pi_q' + i + '" inputmode="numeric" value="' + x.qty + '" style="width:90px;margin:0"></div><textarea id="pi_s' + i + '" placeholder="시리얼 (있으면, 한 줄에 하나)" style="min-height:44px"></textarea></div>').join(''), () => {
-    const memo = '물품요청 입고 (' + uname(t.creator) + ' 요청)';
+    preqCodeUp(t); const memo = '물품요청 입고 (' + uname(t.creator) + ' 요청)';
     const plan = (P.items || []).map((x, i) => ({x, q: numOf($('#pi_q' + i).value), ss: $('#pi_s' + i).value.split(/[\n,]+/).map(s => s.trim()).filter(Boolean)}));
     for (const p of plan) for (const s of p.ss) if (list('stock').some(r => r.status !== '설치완료' && (r.serial || '').trim().toLowerCase() === s.toLowerCase())) return warn('이미 재고에 있는 시리얼이에요: ' + s);
     plan.forEach(({x, q, ss}) => {
@@ -2387,6 +2402,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.32', '2026-10-25', ['물품요청: 칸을 누르면 재고 품목(상품코드·보관지별 재고 수)에서 고르고, 목록에 없는 물품은 이름만 적어도 요청돼요(‘새 물품’ 표시). 본사가 주문·발송을 표시할 때 상품 목록에 올라가고 상품코드가 붙어요']],
   ['웹 0.0.31', '2026-10-25', ['가맹점 일괄 가져오기에 업로드 양식(.xlsx) 받기 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요', '재고 일괄 등록(엑셀, 관리자): 상품코드/상품명·시리얼·수량·현재위치 — 본사·광주지사는 우리 재고, 가맹점 상호는 이미 설치된 장비로 기록만(재고 수 제외)', 'PC 위쪽 메뉴 맨 끝에 ‘메모’: 업무 중 메모 추가·수정(자동 저장)·고정·삭제']],
   ['웹 0.0.30', '2026-10-25', ['상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 계약·재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요', '재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색']],
   ['웹 0.0.29', '2026-10-25', ['☰ → 내 계정·설정 → ‘알림 및 소리 설정’ 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기']],
@@ -2448,7 +2464,7 @@ const WEB_MANUAL = [
   ['단체 문자 (가맹점)', '■ 전체 → 단체 문자 보내기. 내용을 쓰고({상호} 는 가맹점 이름으로 바뀜), 등급 버튼·검색·체크로 받을 가맹점을 골라요(휴대폰 번호가 있는 곳만).\n■ ‘문자 보내기 시작’ → 한 곳씩 휴대폰 문자 앱이 열리고 내용이 채워져 있어요. 보내고 돌아오면 다음 가맹점이 준비돼요. 받는 분끼리 번호가 보이지 않고, 요금은 그 휴대폰 요금제로 나가요.\n■ PC에는 문자 앱이 없어 보낼 수 없어요(남은 번호 복사는 가능). 알리고 연동 후 PC에서도 바로 보낼 수 있게 할 예정이에요.'],
   ['안드로이드 앱과 다른 점', '■ 웹에 아직 없는 세부 기능: 채팅방 이름 변경·초대·음소거·방 안 검색, 프로젝트 항목 삭제·진행 기록, 시리얼 사진 인식.\n■ 웹에서 먼저 생긴 기능: 저장 상태 표시, 가맹점 동시 수정 경고, 웹 기기끼리 채팅 읽음 맞춤.\n■ 가맹점 삭제: 웹은 ‘가맹점 등록·수정’ 권한 + 암호, 앱은 최고관리자만.'],
   ['자주 묻는 질문', 'Q. 새 버전은 어떻게 받아요?\nA. 새 버전이 나오면 화면 위쪽에 ‘지금 업데이트’ 띠가 떠요. 누르거나, 새로고침(F5)·프로그램을 껐다 켜도 바로 적용돼요. 전체 → 회사 → 업데이트 확인으로 직접 확인할 수도 있어요.\n\nQ. 인증번호 문자가 안 와요.\nA. 번호가 등록됐는지 확인하세요. 짧은 시간에 여러 번 요청하면 잠시 막힐 수 있어요(30분쯤 뒤 다시).\n\nQ. 기기를 바꿨어요.\nA. 같은 번호로 다시 로그인하면 모든 자료가 그대로 나와요. 자료는 서버에 있어요.\n\nQ. 인터넷이 없을 때도 되나요?\nA. 받아 둔 자료로 보기와 입력이 되고, 연결되면 저절로 서버에 올라가요(화면 위 ‘저장 대기’ 띠).\n\nQ. 실수로 지웠어요.\nA. 지운 자료도 서버에 남아 있어요. 관리자에게 말씀해 주세요(가맹점은 보호·복원에서 바로 되살려요).\n\nQ. 업데이트는 어떻게 받아요?\nA. 웹앱·PC 프로그램은 다시 열면(F5) 자동으로 최신이에요. 안드로이드 앱은 새 APK 를 받아 설치해요.'],
-  ['물품요청 (본사 ← 지사)', '■ 요청: ☰ → 업무 → 물품요청, 또는 재고 화면 아래 ‘＋ 본사에 물품요청’. 받을 곳(광주지사·본사), 품목과 수량(줄 추가 가능), 본사 담당자, 희망 도착일, 메모를 적어 보내요.\n■ 본사 담당자: 업무 목록에 ‘미확인’으로 뜨고 알림(음성: 물품요청이 들어왔습니다)이 가요. 요청을 열어 ‘주문함’ → ‘발송(발주처리)’(택배사·송장번호 메모)를 누르거나, 안 되면 ‘반려’(사유).\n■ 요청한 사람: 발송되면 알림(음성: 물품이 발송되었습니다)과 업무 숫자가 떠요. 물건을 받고 ‘입고 확인’에서 받은 수량·시리얼을 적으면 받은 곳(보관지) 재고에 바로 입고되고, 재고 이력에 ‘물품요청 입고’로 남아요.\n■ 진행 단계: 요청 › 주문함 › 발송함 › 입고완료 (또는 반려). 모든 단계는 처리 이력에 시각·사람과 함께 남아요.']
+  ['물품요청 (본사 ← 지사)', '■ 품목 칸을 누르면 재고 품목이 상품코드·보관지별 재고 수와 함께 떠서 골라요. 목록에 없는 물품은 이름만 적으면 ‘새 물품’으로 요청되고, 본사(관리자)가 주문·발송을 표시할 때 상품 목록에 올라가 상품코드가 붙어요.\n■ 요청: ☰ → 업무 → 물품요청, 또는 재고 화면 아래 ‘＋ 본사에 물품요청’. 받을 곳(광주지사·본사), 품목과 수량(줄 추가 가능), 본사 담당자, 희망 도착일, 메모를 적어 보내요.\n■ 본사 담당자: 업무 목록에 ‘미확인’으로 뜨고 알림(음성: 물품요청이 들어왔습니다)이 가요. 요청을 열어 ‘주문함’ → ‘발송(발주처리)’(택배사·송장번호 메모)를 누르거나, 안 되면 ‘반려’(사유).\n■ 요청한 사람: 발송되면 알림(음성: 물품이 발송되었습니다)과 업무 숫자가 떠요. 물건을 받고 ‘입고 확인’에서 받은 수량·시리얼을 적으면 받은 곳(보관지) 재고에 바로 입고되고, 재고 이력에 ‘물품요청 입고’로 남아요.\n■ 진행 단계: 요청 › 주문함 › 발송함 › 입고완료 (또는 반려). 모든 단계는 처리 이력에 시각·사람과 함께 남아요.']
 ];
 // 사용설명서 순서: 시작하기 → 위쪽 주 메뉴 → ☰ 전체 메뉴 묶음(메뉴와 같은 순서) → 도움말
 const MAN_GROUPS = [['시작하기', ['처음 시작하기 · 로그인', 'PC 프로그램 (윈도우)', '화면 구성']],
