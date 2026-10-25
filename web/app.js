@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.34';
+const VERSION = '웹 0.0.35';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -461,13 +461,13 @@ ACT.tstatus = a => {
   const [id, st] = a.split('|'); const t = byId('tasks', id); if (!t || t.status === st) return;
   t.status = st; tlog(t, '상태 → ' + st); put('tasks', t); closeModal(); render(); toast('바꿨어요.');
 };
-ACT.thold = id => formModal('보류·연기', '<div class="sub">다시 할 날짜를 정하면 일정 달력도 같이 바뀌어요. (정하지 않아도 돼요)</div><label class="fl" for="f_d">다시 할 날짜 (선택)</label><input type="date" id="f_d"><label class="fl" for="f_t">시간 (선택)</label><input type="time" id="f_t">', () => {
+ACT.thold = id => formModal('보류·연기', '<div class="sub">다시 할 날짜를 정하면 일정 달력도 같이 바뀌어요. (정하지 않아도 돼요)</div><label class="fl" for="f_d">다시 할 날짜 (선택)</label><input type="date" id="f_d"><label class="fl" for="f_t">시간 (선택)</label>' + timeSel('f_t') + '', () => {
   const t = byId('tasks', id); const d = $('#f_d').value, tm = $('#f_t').value;
   t.status = '보류'; tlog(t, '상태 → 보류');
   if (d) { const nd = d + (tm ? ' ' + tm : ''); tlog(t, '일정 변경 ' + (t.due || '없음') + ' → ' + nd); t.due = nd; }
   put('tasks', t); render(); toast('보류로 바꿨어요.'); return true;
 }, '보류하기');
-ACT.tresched = id => formModal('일정 다시 잡기', '<label class="fl" for="f_d">날짜 (필수)</label><input type="date" id="f_d"><label class="fl" for="f_t">시간 (선택)</label><input type="time" id="f_t">', () => {
+ACT.tresched = id => formModal('일정 다시 잡기', '<label class="fl" for="f_d">날짜 (필수)</label><input type="date" id="f_d"><label class="fl" for="f_t">시간 (선택)</label>' + timeSel('f_t') + '', () => {
   const d = $('#f_d').value, tm = $('#f_t').value; if (!d) return warn('날짜를 골라 주세요.');
   const t = byId('tasks', id); const nd = d + (tm ? ' ' + tm : ''); tlog(t, '일정 변경 ' + (t.due || '없음') + ' → ' + nd); t.due = nd; put('tasks', t); render(); toast('일정을 바꿨어요.'); return true;
 }, '변경');
@@ -496,7 +496,7 @@ ACT.newTask = draft => {
   formModal('업무 요청', '<label class="fl" for="f_t1">업무 제목 (필수)</label><input id="f_t1" placeholder="예: A마트 포스 설치"><label class="fl" for="f_ty">종류</label><select id="f_ty">' + TYPES.map(x => '<option>' + x + '</option>').join('') + '</select>' + MP_FILL +
     '<label class="fl" for="f_c">거래처 (상호)</label><input id="f_c" placeholder="가맹점을 고르면 자동으로 채워져요"><label class="fl" for="f_p">매장 전화</label><input id="f_p" type="tel" placeholder="예: 062-123-4567"><label class="fl" for="f_a">매장 주소</label><input id="f_a" placeholder="예: 광주 동구 …">' +
     '<label class="fl" for="f_rq">가맹점 요청사항 (빠른 선택 + 직접 입력 — 완료하면 처리결과와 함께 응대 기록에 남아요)</label><div class="pills" style="margin-top:4px">' + reqQuick().map(w => '<button type="button" class="pill rqq" data-w="' + w + '">＋ ' + w + '</button>').join('') + '</div><textarea id="f_rq" placeholder="예: 카드 결제가 안 된다고 함, 영수증 출력 안 됨"></textarea>' +
-    '<label class="fl" for="f_d">기한 날짜 (선택 — 고르면 일정 달력에도 표시돼요)</label><input id="f_d" type="date"><label class="fl" for="f_tm">기한 시간 (선택)</label><input id="f_tm" type="time"><label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모"></textarea><label class="fl" for="f_w">담당 직원</label><select id="f_w">' + staff.map(u => '<option value="' + u.id + '"' + (u.id === S.uid ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('') + '</select>', () => {
+    '<label class="fl" for="f_d">기한 날짜 (선택 — 고르면 일정 달력에도 표시돼요)</label><input id="f_d" type="date"><label class="fl" for="f_tm">기한 시간 (선택)</label>' + timeSel('f_tm') + '<label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모"></textarea><label class="fl" for="f_w">담당 직원</label><select id="f_w">' + staff.map(u => '<option value="' + u.id + '"' + (u.id === S.uid ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('') + '</select>', () => {
     const ti = $('#f_t1').value.trim(); if (!ti) return warn('업무 제목을 입력해 주세요.');
     const d = $('#f_d').value, tm = $('#f_tm').value; const as = Number($('#f_w').value);
     const t = create('tasks', {title: ti, type: $('#f_ty').value, client: $('#f_c').value.trim(), phone: $('#f_p').value.trim(), addr: $('#f_a').value.trim(), due: d ? d + (tm ? ' ' + tm : '') : '', memo: $('#f_m').value.trim(), req: $('#f_rq').value.trim(), merchant: pickedMer && pickedMer.name === $('#f_c').value.trim() ? pickedMer.id : 0, assignee: as, creator: S.uid, status: '지시됨', history: []});
@@ -595,7 +595,7 @@ ACT.caltoday = () => { const t = todayStr().split('-'); S.calY = +t[0]; S.calM =
 ACT.calmove = a => { S.calM += Number(a); if (S.calM < 1) { S.calM = 12; S.calY--; } if (S.calM > 12) { S.calM = 1; S.calY++; } render(); };
 ACT.newEvent = () => {
   let mer = null;
-  formModal('일정 추가', '<label class="fl" for="f_t1">일정 제목 (필수)</label><input id="f_t1" placeholder="예: 본사 회의"><label class="fl" for="f_d">날짜 (필수)</label><input id="f_d" type="date" value="' + (S.calSel || todayStr()) + '"><label class="fl" for="f_tm">시간 (선택)</label><input id="f_tm" type="time">' + MP_FILL.replace('고르면 거래처·전화·주소가 자동으로 채워져요', '고르면 장소에 가맹점 주소가 들어가요') + '<label class="fl" for="f_p">장소·주소</label><input id="f_p" placeholder="예: 광주지사">', () => {
+  formModal('일정 추가', '<label class="fl" for="f_t1">일정 제목 (필수)</label><input id="f_t1" placeholder="예: 본사 회의"><label class="fl" for="f_d">날짜 (필수)</label><input id="f_d" type="date" value="' + (S.calSel || todayStr()) + '"><label class="fl" for="f_tm">시간 (선택)</label>' + timeSel('f_tm') + '' + MP_FILL.replace('고르면 거래처·전화·주소가 자동으로 채워져요', '고르면 장소에 가맹점 주소가 들어가요') + '<label class="fl" for="f_p">장소·주소</label><input id="f_p" placeholder="예: 광주지사">', () => {
     const ti = $('#f_t1').value.trim(), d = $('#f_d').value; if (!ti || !d) return warn('제목과 날짜를 확인해 주세요.');
     const e = create('events', {date: d, title: ti, who: S.uid, time: $('#f_tm').value, place: $('#f_p').value.trim()}); if (mer) e.merchant = mer.id;
     put('events', e); S.calSel = d; render(); toast('일정을 남겼어요.'); return true;
@@ -1049,6 +1049,13 @@ ACT.scanInto = id => scanCamera(code => { const el = $('#' + id); if (!el) retur
 const canPerf = () => !!(S.caps && (S.caps.perf || S.caps.admin)); // 단가(입고·출고)는 실적 권한자만 (서버 규칙과 같음)
 const costOf = sid => list('costs').find(c => c.stock === sid);
 function costDoc(sid) { let c = costOf(sid); if (!c) { c = create('costs', {stock: sid, buy: 0, sell: 0}); } return c; }
+// 시간 고르기: 30분 단위 (오전 9:00, 오전 9:30 …) — 값은 예전처럼 'HH:MM'
+const TIME_SLOTS = Array.from({length: 48}, (_, i) => pad(Math.floor(i / 2)) + ':' + (i % 2 ? '30' : '00'));
+const timeLabel = v => { const [h, m] = v.split(':').map(Number); return (h < 12 ? '오전 ' : '오후 ') + ((h % 12) || 12) + ':' + pad(m); };
+function timeSel(id, val) {
+  const opts = TIME_SLOTS.concat(val && !TIME_SLOTS.includes(val) ? [val] : []);
+  return '<select id="' + id + '"><option value="">(시간 없음)</option>' + opts.map(v => '<option value="' + v + '"' + (v === val ? ' selected' : '') + '>' + timeLabel(v) + '</option>').join('') + '</select>';
+}
 const numOf = v => Number(String(v || '').replace(/[^0-9]/g, '')) || 0;
 const OUT_KINDS = ['반품 (공급처로)', '불량·폐기', 'A/S 교체', '분실', '기타'];
 function slog(r, k, q, m) { // 바꾸기 '전에' 부른다 — 이력 기능 전에 등록된 재고는 그때 수량을 첫 입고로 남긴다
@@ -2495,6 +2502,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.35', '2026-10-26', ['업무·일정 시간 고르기를 30분 단위로 (오전 9:00, 오전 9:30 …)']],
   ['웹 0.0.34', '2026-10-25', ['전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도), 순서 정리', '직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정과 권한 설정 창이 따로', '권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기', '직책 목록(관리자가 추가·수정·삭제, 위에 있을수록 앞): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순 선택', '직원 완전 삭제(삭제 비밀번호 필요), 가맹점·재고·응대 기록·자료실 삭제도 삭제 비밀번호를 물어요 (☰ → 관리자 → 삭제 비밀번호)']],
   ['웹 0.0.33', '2026-10-25', ['가맹점 등급 표기를 직원들이 부르는 대로: 0코드·1코드·2코드·3코드, 그다음 해지가맹점·신규가맹점·협력사 (목록·단체 문자·등록 화면·업로드 양식)']],
   ['웹 0.0.32', '2026-10-25', ['물품요청: 칸을 누르면 재고 품목(상품코드·보관지별 재고 수)에서 고르고, 목록에 없는 물품은 이름만 적어도 요청돼요(‘새 물품’ 표시). 본사가 주문·발송을 표시할 때 상품 목록에 올라가고 상품코드가 붙어요']],

@@ -5488,14 +5488,22 @@ public class MainActivity extends Activity {
         e.setHint(hint);
         e.setFocusable(false);
         e.setCursorVisible(false);
-        e.setOnClickListener(v -> {
-            int h = 9, mi = 0;
-            String cur = e.getText().toString().trim();
-            if (cur.matches("\\d{1,2}:\\d{2}")) {
-                h = Integer.parseInt(cur.split(":")[0]);
-                mi = Integer.parseInt(cur.split(":")[1]);
+        e.setOnClickListener(v -> { // 30분 단위로 고른다 (오전 9:00, 오전 9:30 …) — 값은 예전처럼 HH:MM
+            final String[] vals = new String[49], labels = new String[49];
+            vals[0] = "";
+            labels[0] = "(시간 없음)";
+            int sel = -1;
+            for (int i = 0; i < 48; i++) {
+                int hh = i / 2, mm = i % 2 * 30;
+                vals[i + 1] = String.format(Locale.US, "%02d:%02d", hh, mm);
+                labels[i + 1] = (hh < 12 ? "오전 " : "오후 ") + (hh % 12 == 0 ? 12 : hh % 12) + ":" + (mm == 0 ? "00" : "30");
+                if (vals[i + 1].equals(e.getText().toString().trim())) sel = i + 1;
             }
-            new android.app.TimePickerDialog(this, (tp, hh, mm) -> e.setText(String.format(Locale.US, "%02d:%02d", hh, mm)), h, mi, true).show();
+            if (sel < 0) sel = 19; // 처음엔 오전 9:00 근처
+            new Dlg(this).setTitle("시간 (30분 단위)").setSingleChoiceItems(labels, sel, (d, w) -> {
+                e.setText(vals[w]);
+                d.dismiss();
+            }).setNegativeButton("닫기", null).show();
         });
         e.setOnLongClickListener(v -> {
             e.setText("");
@@ -6288,6 +6296,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.24", "2026-10-26", "• 업무·일정 시간 고르기를 30분 단위로 (오전 9:00, 오전 9:30 …)"},
             {"0.0.23", "2026-10-25", "• 전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도)\n• 직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정·사진 바꾸기·권한 설정·완전 삭제가 따로\n• 권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기\n• 직책 목록(관리자가 추가·수정·삭제): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순\n• 직원 완전 삭제와 가맹점·재고·응대 기록·자료실 삭제에 삭제 비밀번호 (전체 → 관리자 → 삭제 비밀번호)"},
             {"0.0.22", "2026-10-25", "• 가맹점 등급 표기를 직원들이 부르는 대로: 0코드·1코드·2코드·3코드, 그다음 해지가맹점·신규가맹점·협력사 (목록·단체 문자·등록 화면·업로드 양식)"},
             {"0.0.21", "2026-10-25", "• 물품요청: … 를 누르면 재고 품목(상품코드·보관지별 재고 수)에서 고르고, 목록에 없는 물품은 이름만 적어도 요청돼요('새 물품' 표시). 본사가 주문·발송을 표시할 때 상품 목록에 올라가고 상품코드가 붙어요"},
