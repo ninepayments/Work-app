@@ -648,6 +648,7 @@ public class MainActivity extends Activity {
         else if ("merchants".equals(k)) renderMerchants();
         else if ("stock".equals(k)) renderStock();
         else if ("stocklog".equals(k)) renderStockLog();
+        else if ("products".equals(k)) renderProducts();
         else if ("preqs".equals(k)) renderPreqs();
         else if ("contracts".equals(k)) renderContracts();
         else if ("manual".equals(k)) renderManual();
@@ -1970,6 +1971,7 @@ public class MainActivity extends Activity {
         e.add(new Entry("계약·재고", "입금 확인", "입금 확인 입금 내역 미납금 판매대금 정보변경수수료 입금확인", () -> goSub("deposit")));
         e.add(new Entry("계약·재고", "재고 (입고·출고·정정)", "재고 장비 바코드 시리얼 단가 입고 출고 정정 스캔 본사 광주지사 보관지", () -> goSub("stock")));
         e.add(new Entry("계약·재고", "재고 이력", "재고 이력 입고 출고 정정 이동 실사 조사 반품 불량", () -> goSub("stocklog")));
+        e.add(new Entry("계약·재고", "상품 목록 (상품코드)", "상품 목록 상품코드 품목 코드 등록 물품요청 재고", () -> goSub("products")));
         e.add(new Entry("실적", "내 실적", "내 실적 월별 성장률 계약", () -> goSub("myperf")));
         if (canPerf()) {
             e.add(new Entry("실적", "전체 실적·직원별 순위", "전체 실적 직원별 순위 성장률 월별 그래프", () -> goSub("perf")));
@@ -3210,7 +3212,7 @@ public class MainActivity extends Activity {
             for (JSONObject r : store.list(store.arr("stock"))) {
                 if (r.optBoolean("deleted") || "설치완료".equals(r.optString("status"))) continue;
                 if (!stockLoc.isEmpty() && !stockLoc.equals(locOf(r))) continue;
-                if (!Kor.match(r.optString("model") + " " + r.optString("serial") + " " + locOf(r), q.getText().toString())) continue;
+                if (!Kor.match(r.optString("model") + " " + codeOf(r.optString("model")) + " " + r.optString("serial") + " " + locOf(r), q.getText().toString())) continue;
                 if (!g.containsKey(r.optString("model"))) g.put(r.optString("model"), new ArrayList<JSONObject>());
                 g.get(r.optString("model")).add(r);
             }
@@ -3225,7 +3227,7 @@ public class MainActivity extends Activity {
                 LinearLayout card = Ui.card(this);
                 LinearLayout head = new LinearLayout(this);
                 head.setGravity(Gravity.CENTER_VERTICAL);
-                head.addView(Ui.text(this, e.getKey(), 16, Ui.INK, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                head.addView(Ui.text(this, withCode(e.getKey()), 16, Ui.INK, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
                 boolean low = safe > 0 && have < safe;
                 head.addView(Ui.chip(this, "재고 " + have + (out > 0 ? " · 출고중 " + out : ""), low ? Color.rgb(253, 236, 234) : Ui.TINT, low ? Ui.RED : Ui.DEEP));
                 card.addView(head);
@@ -3257,7 +3259,7 @@ public class MainActivity extends Activity {
 
     private void showAddStock() {
         LinearLayout f = form();
-        final EditText model = Ui.field(this, "모델명 (예: 토스 포스 T2)", false);
+        final EditText model = Ui.field(this, "상품 (상품코드나 이름, 예: P0001)", false);
         final EditText serials = Ui.field(this, "시리얼 (여러 개는 줄을 바꿔 한 줄에 하나)", false);
         serials.setSingleLine(false);
         serials.setMinLines(3);
@@ -3271,12 +3273,7 @@ public class MainActivity extends Activity {
         final Spinner locSp = spinner(LOCS);
         if ("광주지사".equals(stockLoc)) locSp.setSelection(1);
         f.addView(model);
-        List<String> models = stockModels();
-        if (!models.isEmpty()) {
-            Button pickM = Ui.button(this, "있던 모델에서 고르기", Ui.TINT, Ui.DEEP);
-            pickM.setOnClickListener(v -> new Dlg(this).setTitle("모델 고르기").setItems(models.toArray(new String[0]), (d, w) -> model.setText(models.get(w))).setNegativeButton("닫기", null).show());
-            f.addView(pickM, Ui.lp(this, 6));
-        }
+        f.addView(prodPickButton(model), Ui.lp(this, 6));
         f.addView(serials);
         f.addView(scanButtons(serials, true));
         f.addView(Ui.text(this, "시리얼이 없는 물품은 같은 모델이 있으면 그 수량에 더해져요.", 12, Ui.GRAY, false), Ui.lp(this, 6));
@@ -3291,9 +3288,8 @@ public class MainActivity extends Activity {
                 .setNegativeButton("취소", null).setPositiveButton("입고", null).create();
         dlg.show();
         dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            String m = model.getText().toString().trim();
-            if (m.isEmpty()) {
-                Ui.toast(this, "모델명을 입력해 주세요.");
+            if (model.getText().toString().trim().isEmpty()) {
+                Ui.toast(this, "상품을 골라 주세요.");
                 return;
             }
             int sf = 0, qn = 0;
@@ -3320,6 +3316,9 @@ public class MainActivity extends Activity {
                     return;
                 }
             }
+            final JSONObject pr = prodResolve(model.getText().toString());
+            if (pr == null) return;
+            final String m = pr.optString("name"), pcode = pr.optString("code");
             long by = canPerf() ? parseWon(buy) : 0;
             String mm = memo.getText().toString().trim();
             final String lcv = LOCS[locSp.getSelectedItemPosition()];
@@ -3331,12 +3330,14 @@ public class MainActivity extends Activity {
                     if (same != null) {
                         store.slog(same, "입고", qn, mm);
                         same.put("qty", same.optInt("qty", 1) + qn);
+                        same.put("code", pcode);
                         if (sf > 0) same.put("safe", sf);
                         if (by > 0) store.costDoc(same.optInt("id"), true).put("buy", by);
                     } else {
                         JSONObject r = store.create("stock");
                         r.put("log", new JSONArray());
                         r.put("model", m);
+                        r.put("code", pcode);
                         r.put("serial", "");
                         r.put("qty", qn);
                         r.put("safe", sf);
@@ -3351,6 +3352,7 @@ public class MainActivity extends Activity {
                         JSONObject r = store.create("stock");
                         r.put("log", new JSONArray());
                         r.put("model", m);
+                        r.put("code", pcode);
                         r.put("serial", s);
                         r.put("qty", 1);
                         r.put("safe", sf);
@@ -3394,10 +3396,16 @@ public class MainActivity extends Activity {
         return n;
     }
 
+    private String itemCode(JSONObject x) {
+        String c = x.optString("code");
+        if (c.isEmpty()) c = codeOf(x.optString("model"));
+        return c.isEmpty() ? "" : "[" + c + "] ";
+    }
+
     private String preqItems(JSONObject t) {
         JSONArray it = t.optJSONObject("preq").optJSONArray("items");
         StringBuilder b = new StringBuilder();
-        for (int i = 0; it != null && i < it.length(); i++) b.append(i > 0 ? ", " : "").append(it.optJSONObject(i).optString("model")).append(" ").append(it.optJSONObject(i).optInt("qty"));
+        for (int i = 0; it != null && i < it.length(); i++) b.append(i > 0 ? ", " : "").append(itemCode(it.optJSONObject(i))).append(it.optJSONObject(i).optString("model")).append(" ").append(it.optJSONObject(i).optInt("qty"));
         return b.toString();
     }
 
@@ -3460,21 +3468,25 @@ public class MainActivity extends Activity {
         final Spinner to = spinner(LOCS);
         to.setSelection(1);
         labeled(f, "받을 곳", to);
-        f.addView(Ui.text(this, "요청 품목", 12, Ui.GRAY, true), Ui.lp(this, 10));
+        f.addView(Ui.text(this, "요청 품목 (상품 목록의 상품코드로 골라요)", 12, Ui.GRAY, true), Ui.lp(this, 10));
         final LinearLayout rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
         f.addView(rows);
         final List<EditText[]> items = new ArrayList<>();
         final Runnable addRow = () -> {
             LinearLayout r = new LinearLayout(this);
-            final EditText m = Ui.field(this, "품목 (예: 영수증 용지)", false);
+            final EditText m = Ui.field(this, "상품코드·상품명 (예: P0001)", false);
             EditText q = Ui.field(this, "수량", false);
             q.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
             Button pk = Ui.button(this, "…", Ui.FIELD, Ui.INK);
             pk.setOnClickListener(v -> {
-                List<String> ms = stockModels();
-                if (ms.isEmpty()) return;
-                new Dlg(this).setTitle("품목 고르기").setItems(ms.toArray(new String[0]), (d, w) -> m.setText(ms.get(w))).setNegativeButton("닫기", null).show();
+                List<String> ms = new ArrayList<>();
+                for (JSONObject p : products()) ms.add(prodLabel(p));
+                if (ms.isEmpty()) {
+                    Ui.toast(this, "상품 목록이 비어 있어요. 본사 관리자에게 등록을 요청해 주세요.");
+                    return;
+                }
+                new Dlg(this).setTitle("상품 고르기").setItems(ms.toArray(new String[0]), (d, w) -> m.setText(ms.get(w))).setNegativeButton("닫기", null).show();
             });
             r.addView(m, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 3f));
             r.addView(pk, new LinearLayout.LayoutParams(Ui.dp(this, 44), ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -3517,8 +3529,10 @@ public class MainActivity extends Activity {
                         Ui.toast(this, "품목마다 수량을 적어 주세요.");
                         return;
                     }
-                    it.put(new JSONObject().put("model", m).put("qty", q));
-                    ti.append(ti.length() > 0 ? ", " : "").append(m).append(" ").append(q);
+                    JSONObject pr = prodResolve(m);
+                    if (pr == null) return;
+                    it.put(new JSONObject().put("code", pr.optString("code")).put("model", pr.optString("name")).put("qty", q));
+                    ti.append(ti.length() > 0 ? ", " : "").append(pr.optString("name")).append(" ").append(q);
                 }
                 if (it.length() == 0 || staff.isEmpty()) {
                     Ui.toast(this, "요청할 품목을 적어 주세요.");
@@ -3570,7 +3584,7 @@ public class MainActivity extends Activity {
         LinearLayout l = form();
         l.addView(Ui.text(this, preqStageText(st), 13, "반려".equals(st) ? Ui.RED : Ui.DEEP, true));
         JSONArray it = P.optJSONArray("items");
-        for (int i = 0; it != null && i < it.length(); i++) l.addView(Ui.text(this, "• " + it.optJSONObject(i).optString("model") + "  ×" + it.optJSONObject(i).optInt("qty"), 15, Ui.INK, false), Ui.lp(this, 4));
+        for (int i = 0; it != null && i < it.length(); i++) l.addView(Ui.text(this, "• " + itemCode(it.optJSONObject(i)) + it.optJSONObject(i).optString("model") + "  ×" + it.optJSONObject(i).optInt("qty"), 15, Ui.INK, false), Ui.lp(this, 4));
         addLine(l, "받을 곳", P.optString("to"));
         addLine(l, "요청한 사람", store.userName(t.optInt("creator")) + " · " + t.optString("created"));
         addLine(l, "본사 담당", store.userName(t.optInt("assignee")));
@@ -3645,7 +3659,7 @@ public class MainActivity extends Activity {
         final List<EditText[]> ins = new ArrayList<>();
         for (int i = 0; it != null && i < it.length(); i++) {
             JSONObject x = it.optJSONObject(i);
-            f.addView(Ui.text(this, x.optString("model") + " (요청 " + x.optInt("qty") + ")", 14, Ui.INK, true), Ui.lp(this, 12));
+            f.addView(Ui.text(this, itemCode(x) + x.optString("model") + " (요청 " + x.optInt("qty") + ")", 14, Ui.INK, true), Ui.lp(this, 12));
             EditText q = Ui.field(this, "받은 수량", false);
             q.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
             q.setText(String.valueOf(x.optInt("qty")));
@@ -3673,6 +3687,7 @@ public class MainActivity extends Activity {
             try {
                 for (int i = 0; i < ins.size(); i++) {
                     String model = it.optJSONObject(i).optString("model");
+                    String pcode = it.optJSONObject(i).optString("code", codeOf(model));
                     List<String> ss = new ArrayList<>();
                     for (String s : ins.get(i)[1].getText().toString().split("[\\n,]+")) if (!s.trim().isEmpty()) ss.add(s.trim());
                     int q = 0;
@@ -3684,7 +3699,7 @@ public class MainActivity extends Activity {
                     if (!ss.isEmpty()) {
                         for (String s : ss) {
                             JSONObject r = store.create("stock");
-                            r.put("log", new JSONArray()).put("model", model).put("serial", s).put("qty", 1).put("safe", 0).put("status", "재고").put("loc", toL).put("deleted", false);
+                            r.put("log", new JSONArray()).put("model", model).put("code", pcode).put("serial", s).put("qty", 1).put("safe", 0).put("status", "재고").put("loc", toL).put("deleted", false);
                             store.slog(r, "입고", 1, memo);
                         }
                     } else if (q > 0) {
@@ -3695,7 +3710,7 @@ public class MainActivity extends Activity {
                             same.put("qty", same.optInt("qty", 1) + q);
                         } else {
                             JSONObject r = store.create("stock");
-                            r.put("log", new JSONArray()).put("model", model).put("serial", "").put("qty", q).put("safe", 0).put("status", "재고").put("loc", toL).put("deleted", false);
+                            r.put("log", new JSONArray()).put("model", model).put("code", pcode).put("serial", "").put("qty", q).put("safe", 0).put("status", "재고").put("loc", toL).put("deleted", false);
                             store.slog(r, "입고", q, memo);
                         }
                     }
@@ -3712,6 +3727,246 @@ public class MainActivity extends Activity {
     // ---------- 재고 출고·수량 정정·이력 (웹 0.0.14 와 같은 방식) ----------
     // 계약 없이 나간 것(반품·불량·A/S 교체·분실·정정)은 status '설치완료' + gone(사유) 로 둔다 → 목록·수익 계산에서 빠진다.
     private static final String[] OUT_KINDS = {"반품 (공급처로)", "불량·폐기", "A/S 교체", "분실", "기타"};
+
+    // ---------- 상품 목록 (상품코드) — 웹 0.0.30 과 같은 방식 ----------
+    // 재고와 물품요청이 같은 상품코드를 쓴다. config 문서 key 'products' {items:[{code, name}]} — 등록·수정은 관리자.
+    // 재고·요청에는 지금처럼 model(상품명)을 저장하고 code 도 같이 적는다.
+    private JSONObject prodDoc() {
+        for (JSONObject c : store.list(store.arr("config"))) if ("products".equals(c.optString("key"))) return c;
+        return null;
+    }
+
+    private List<JSONObject> products() {
+        List<JSONObject> out = new ArrayList<>();
+        JSONObject d = prodDoc();
+        JSONArray a = d == null ? null : d.optJSONArray("items");
+        for (int i = 0; a != null && i < a.length(); i++) {
+            JSONObject p = a.optJSONObject(i);
+            if (p != null && !p.optString("code").isEmpty() && !p.optString("name").isEmpty()) out.add(p);
+        }
+        Collections.sort(out, (x, y) -> x.optString("code").compareTo(y.optString("code")));
+        return out;
+    }
+
+    private boolean prodAdmin() {
+        return can(Perm.STAFF_MANAGE);
+    }
+
+    private static String prodLabel(JSONObject p) {
+        return "[" + p.optString("code") + "] " + p.optString("name");
+    }
+
+    /** '[P0001] 영수증 용지' · 'P0001' · '영수증 용지' 모두 찾는다 */
+    private JSONObject prodFind(String v) {
+        v = v == null ? "" : v.trim();
+        if (v.isEmpty()) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^\\[([^\\]]+)\\]\\s*(.*)$").matcher(v);
+        boolean br = m.matches();
+        String code = (br ? m.group(1) : v).trim(), name = (br ? m.group(2) : v).trim();
+        for (JSONObject p : products()) if (p.optString("code").equalsIgnoreCase(code)) return p;
+        for (JSONObject p : products()) if (p.optString("name").equals(name)) return p;
+        return null;
+    }
+
+    private String codeOf(String name) {
+        String n = name == null ? "" : name.trim();
+        for (JSONObject p : products()) if (p.optString("name").equals(n)) return p.optString("code");
+        return "";
+    }
+
+    private String withCode(String name) {
+        String c = codeOf(name);
+        return (c.isEmpty() ? "" : "[" + c + "] ") + name;
+    }
+
+    private String nextProdCode(List<JSONObject> ps) {
+        int n = 0;
+        for (JSONObject p : ps) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("^[Pp](\\d+)$").matcher(p.optString("code"));
+            if (m.matches()) n = Math.max(n, Integer.parseInt(m.group(1)));
+        }
+        return String.format(Locale.ROOT, "P%04d", n + 1);
+    }
+
+    private void saveProducts(List<JSONObject> items) {
+        JSONObject o = prodDoc();
+        if (o == null) o = store.create("config");
+        try {
+            JSONArray a = new JSONArray();
+            for (JSONObject p : items) a.put(p);
+            o.put("key", "products");
+            o.put("items", a);
+            o.put("changedBy", myId());
+            o.put("changedAt", store.now());
+        } catch (Exception ignored) {
+        }
+        store.save();
+    }
+
+    /** 입력값을 상품으로. 목록에 없으면 관리자는 새 코드로 바로 등록, 다른 사람은 막는다(코드가 엇갈리지 않게). */
+    private JSONObject prodResolve(String v) {
+        JSONObject hit = prodFind(v);
+        if (hit != null) return hit;
+        String name = (v == null ? "" : v).replaceAll("^\\[[^\\]]*\\]\\s*", "").trim();
+        if (name.isEmpty()) return null;
+        if (!prodAdmin()) {
+            Ui.warn(this, "상품 목록에 없는 상품이에요: " + name + "\n본사 관리자에게 상품 등록(☰ → 계약·재고 → 상품 목록)을 요청해 주세요.");
+            return null;
+        }
+        List<JSONObject> ps = products();
+        JSONObject p = new JSONObject();
+        try {
+            p.put("code", nextProdCode(ps)).put("name", name);
+        } catch (Exception ignored) {
+        }
+        ps.add(p);
+        saveProducts(ps);
+        Ui.toast(this, "새 상품을 등록했어요: " + prodLabel(p));
+        return p;
+    }
+
+    /** 상품 목록에서 골라 칸에 넣는 버튼 (목록이 비었으면 쓰던 모델명) */
+    private Button prodPickButton(final EditText target) {
+        Button b = Ui.button(this, "상품 목록에서 고르기", Ui.TINT, Ui.DEEP);
+        b.setOnClickListener(v -> {
+            final List<String> ls = new ArrayList<>();
+            for (JSONObject p : products()) ls.add(prodLabel(p));
+            if (ls.isEmpty()) ls.addAll(stockModels());
+            if (ls.isEmpty()) {
+                Ui.toast(this, "등록된 상품이 없어요.");
+                return;
+            }
+            new Dlg(this).setTitle("상품 고르기").setItems(ls.toArray(new String[0]), (d, w) -> target.setText(ls.get(w))).setNegativeButton("닫기", null).show();
+        });
+        return b;
+    }
+
+    /** 관리자가 처음 열면 기존 재고·요청에 쓰인 이름에 코드를 붙인다 */
+    private int seedProducts() {
+        if (!prodAdmin()) return 0;
+        List<JSONObject> ps = products();
+        java.util.Set<String> have = new java.util.HashSet<>();
+        for (JSONObject p : ps) have.add(p.optString("name"));
+        java.util.TreeSet<String> names = new java.util.TreeSet<>(stockModels());
+        for (JSONObject t : preqList()) {
+            JSONArray it = t.optJSONObject("preq").optJSONArray("items");
+            for (int i = 0; it != null && i < it.length(); i++) if (!it.optJSONObject(i).optString("model").trim().isEmpty()) names.add(it.optJSONObject(i).optString("model").trim());
+        }
+        int n = 0;
+        for (String nm : names) {
+            if (have.contains(nm)) continue;
+            JSONObject p = new JSONObject();
+            try {
+                p.put("code", nextProdCode(ps)).put("name", nm);
+            } catch (Exception ignored) {
+            }
+            ps.add(p);
+            n++;
+        }
+        if (n > 0) saveProducts(ps);
+        return n;
+    }
+
+    private boolean prodSeeded = false;
+
+    private void renderProducts() {
+        if (!prodSeeded) {
+            prodSeeded = true;
+            int n = seedProducts();
+            if (n > 0) Ui.toast(this, "기존 재고 상품 " + n + "개에 상품코드를 붙였어요.");
+        }
+        content.addView(title("상품 목록 (상품코드)"));
+        content.addView(Ui.text(this, "재고 입고와 물품요청은 이 목록의 상품코드·상품명을 같이 써요. " + (prodAdmin() ? "상품을 눌러 코드·이름을 고치고, '＋ 상품 등록'으로 추가해요." : "새 상품은 본사 관리자가 등록해요."), 13, Ui.GRAY, false));
+        if (prodAdmin()) {
+            Button add = Ui.button(this, "＋ 상품 등록", Ui.GOLD, Ui.DARK);
+            add.setOnClickListener(v -> showProdEdit(null));
+            content.addView(add, Ui.lp(this, 10));
+        }
+        final EditText q = Ui.field(this, "🔍 상품코드·상품명 (초성)", false);
+        content.addView(q, Ui.lp(this, 10));
+        final LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        content.addView(list);
+        final java.util.Map<String, Integer> cnt = new java.util.HashMap<>();
+        for (JSONObject r : inStock()) {
+            String k = r.optString("model").trim();
+            cnt.put(k, (cnt.containsKey(k) ? cnt.get(k) : 0) + r.optInt("qty", 1));
+        }
+        final Runnable fill = () -> {
+            list.removeAllViews();
+            int n = 0;
+            for (final JSONObject p : products()) {
+                if (!Kor.match(p.optString("code") + " " + p.optString("name"), q.getText().toString())) continue;
+                n++;
+                LinearLayout c = Ui.cardH(this);
+                c.addView(Ui.chip(this, p.optString("code"), Ui.TINT, Ui.DEEP));
+                TextView nm = Ui.text(this, p.optString("name"), 15, Ui.INK, true);
+                nm.setPadding(Ui.dp(this, 10), 0, 0, 0);
+                c.addView(nm, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                Integer h = cnt.get(p.optString("name"));
+                c.addView(Ui.text(this, "재고 " + (h == null ? 0 : h), 12, Ui.GRAY, false));
+                if (prodAdmin()) c.setOnClickListener(v -> showProdEdit(p));
+                list.addView(c, Ui.lp(this, 8));
+            }
+            if (n == 0) list.addView(Ui.text(this, "등록된 상품이 없어요.", 14, Ui.GRAY, false), Ui.lp(this, 16));
+        };
+        q.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence a, int b, int c, int d) {
+            }
+
+            public void onTextChanged(CharSequence a, int b, int c, int d) {
+            }
+
+            public void afterTextChanged(Editable e) {
+                fill.run();
+            }
+        });
+        fill.run();
+    }
+
+    private void showProdEdit(final JSONObject old) {
+        LinearLayout f = form();
+        final EditText code = Ui.field(this, "상품코드 (예: P0001)", false);
+        code.setText(old != null ? old.optString("code") : nextProdCode(products()));
+        final EditText name = Ui.field(this, "상품명 (예: 영수증 용지)", false);
+        if (old != null) name.setText(old.optString("name"));
+        f.addView(code);
+        f.addView(name);
+        if (old != null) f.addView(Ui.text(this, "상품명을 바꾸면 재고에 있는 같은 상품 이름도 함께 바뀌어요.", 12, Ui.GRAY, false), Ui.lp(this, 6));
+        final AlertDialog dlg = new Dlg(this).setTitle(old != null ? "상품 수정" : "상품 등록").setView(f).setNegativeButton("취소", null).setPositiveButton("저장", null).create();
+        dlg.show();
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String c = code.getText().toString().trim(), n = name.getText().toString().trim();
+            if (c.isEmpty() || n.isEmpty()) {
+                Ui.warn(this, "상품코드와 상품명을 모두 적어 주세요.");
+                return;
+            }
+            String oc = old == null ? "" : old.optString("code"), on = old == null ? "" : old.optString("name");
+            List<JSONObject> ps = new ArrayList<>();
+            for (JSONObject p : products()) {
+                if (old != null && p.optString("code").equals(oc)) continue;
+                if (p.optString("code").equalsIgnoreCase(c)) {
+                    Ui.warn(this, "이미 있는 상품코드예요: " + c);
+                    return;
+                }
+                if (p.optString("name").equals(n)) {
+                    Ui.warn(this, "이미 있는 상품명이에요: " + n);
+                    return;
+                }
+                ps.add(p);
+            }
+            try {
+                ps.add(new JSONObject().put("code", c).put("name", n));
+                if (old != null && (!on.equals(n) || !oc.equals(c)))
+                    for (JSONObject r : store.list(store.arr("stock"))) if (r.optString("model").trim().equals(on)) r.put("model", n).put("code", c);
+            } catch (Exception ignored) {
+            }
+            saveProducts(ps);
+            dlg.dismiss();
+            Ui.toast(this, "저장했어요: [" + c + "] " + n);
+            render();
+        });
+    }
 
     private List<String> stockModels() {
         java.util.TreeSet<String> s = new java.util.TreeSet<>();
@@ -4057,7 +4312,7 @@ public class MainActivity extends Activity {
                 if (++n > 300) break;
                 int col = "입고".equals(k) ? Ui.GREEN : "정정".equals(k) ? Ui.AMBER : "이동".equals(k) ? Ui.GRAY : Ui.RED;
                 LinearLayout c = Ui.card(this);
-                c.addView(Ui.text(this, r.optString("model") + (r.optString("serial").isEmpty() ? "" : " / " + r.optString("serial")), 14, Ui.INK, true));
+                c.addView(Ui.text(this, withCode(r.optString("model")) + (r.optString("serial").isEmpty() ? "" : " / " + r.optString("serial")), 14, Ui.INK, true));
                 c.addView(Ui.text(this, k + " " + (x.optInt("q") > 0 ? "+" : "") + x.optInt("q"), 14, col, true), Ui.lp(this, 2));
                 c.addView(Ui.text(this, moveLine(x), 12, Ui.GRAY, false), Ui.lp(this, 2));
                 c.setOnClickListener(v -> showStockRow(r));
@@ -4081,14 +4336,15 @@ public class MainActivity extends Activity {
 
     private void showStockRow(final JSONObject r) {
         LinearLayout f = form();
-        final EditText model = Ui.field(this, "모델명", false);
-        model.setText(r.optString("model"));
+        final EditText model = Ui.field(this, "상품 (상품코드·이름)", false);
+        model.setText(withCode(r.optString("model")));
         final EditText serial = Ui.field(this, "시리얼", false);
         serial.setText(r.optString("serial"));
         final EditText safe = Ui.field(this, "안전재고", false);
         safe.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         safe.setText(String.valueOf(r.optInt("safe")));
         f.addView(model);
+        f.addView(prodPickButton(model), Ui.lp(this, 6));
         f.addView(serial);
         f.addView(scanButtons(serial, false));
         f.addView(safe);
@@ -4144,7 +4400,11 @@ public class MainActivity extends Activity {
                             store.slog(r, "이동", 0, locOf(r) + " → " + nl);
                             r.put("loc", nl);
                         }
-                        r.put("model", model.getText().toString().trim());
+                        String mv = model.getText().toString().trim();
+                        if (!mv.isEmpty() && !mv.equals(withCode(r.optString("model")))) {
+                            JSONObject pr = prodResolve(mv);
+                            if (pr != null) r.put("model", pr.optString("name")).put("code", pr.optString("code"));
+                        }
                         r.put("serial", serial.getText().toString().trim());
                         int sf = 0;
                         try {
@@ -5582,6 +5842,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.19", "2026-10-25", "• 상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 계약·재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요\n• 재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색\n• 목록에 없는 상품은 관리자가 입고·요청할 때 새 코드로 바로 등록돼요"},
             {"0.0.18", "2026-10-25", "• 전체 → 내 계정·설정 → '알림 및 소리 설정' 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기, 화면 꺼져도 알림 받기도 여기서"},
             {"0.0.17", "2026-10-25", "• 아래 탭의 안 본 개수를 빨간 동그라미 숫자로 (업무·채팅·☰), 전체 메뉴·채팅 목록도 같은 모양\n• 아래 탭 '전체'를 ☰ 로\n• 업무 요청 '가맹점 요청사항' 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)\n• 직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)"},
             {"0.0.16", "2026-10-25", "• 화면이 꺼져 있거나 앱을 닫아도 새 업무·채팅 알림이 와요: 상단에 '알림 받는 중' 표시가 작게 남고, 알림이 오면 화면이 켜지며 음성이 나와요. 처음 한 번 '배터리 절약에서 빼기'를 허용해 주세요 (전체 → 내 계정·설정 → 화면 꺼져도 알림 받기)\n• 폰을 다시 켜도 알림 받기가 저절로 다시 시작돼요\n• '업무 지시'를 '업무 요청'으로 이름 바꿈"},

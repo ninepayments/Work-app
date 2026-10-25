@@ -73,3 +73,4 @@
 - 용어: 화면 글은 '업무 요청'(예전 '업무 지시'). 저장 값 status '지시됨'은 그대로(화면엔 '미확인').
 - 빠른 선택 버튼(가맹점 요청사항): config 문서 key 'req_quick' {items:[...]}, 없으면 ['용지신청']. 관리자 메뉴에서 편집(웹·앱). 직원 이름은 이름만 — 직원과 권한 화면을 관리자가 열면 직함 접미사 자동 제거(stripTitle).
 - 회귀 점검: tools/smoke/web-smoke.js (데모로 모든 화면 열기, web.yml 배포 전 자동 실행 — 실패하면 배포 안 됨). 작업 규칙은 CLAUDE.md.
+- 상품 목록(웹 0.0.30 / 앱 v0.0.19): config key 'products' {items:[{code,name}]}. stock·preq.items 에 model(이름) + code. 관리자가 상품 목록을 처음 열면 기존 이름에 P0001… 자동 부여(seedProducts). 이름 바꾸면 같은 이름 재고도 바뀜.

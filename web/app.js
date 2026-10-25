@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.29';
+const VERSION = '웹 0.0.30';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -349,6 +349,7 @@ function viewBody(k) {
     case 'logs': return viewAllLogs();
     case 'stock': return viewStock();
     case 'stocklog': return viewStockLog();
+    case 'products': return viewProducts();
     case 'preqs': return viewPreqs();
     case 'contracts': return viewContracts();
     case 'deposit': return viewDeposits();
@@ -1051,6 +1052,64 @@ function slog(r, k, q, m) { // 바꾸기 '전에' 부른다 — 이력 기능 �
 }
 const inStock = () => list('stock').filter(r => r.status === '재고');
 const stockModels = () => [...new Set(list('stock').map(r => (r.model || '').trim()).filter(Boolean))].sort();
+// ---------- 상품 목록 (상품코드) ----------
+// 재고와 물품요청이 같은 상품코드를 쓴다. 목록은 config 문서 key 'products' {items:[{code, name}]} — 등록·수정은 관리자(서버 규칙: config 는 관리자만 쓰기).
+// 재고·요청에는 지금처럼 model(상품명)을 저장하고 code 도 같이 적는다 → 옛 자료도 이름으로 코드를 찾아 보여 준다.
+const prodDoc = () => list('config').find(c => c.key === 'products');
+const products = () => ((prodDoc() || {}).items || []).filter(p => p && p.code && p.name).slice().sort((a, b) => a.code.localeCompare(b.code));
+const prodAdmin = () => !!(S.caps && S.caps.admin) || can('staff_manage');
+const prodLabel = p => '[' + p.code + '] ' + p.name;
+function prodFind(v) { // '[P0001] 영수증 용지' · 'P0001' · '영수증 용지' 모두 찾는다
+  v = String(v || '').trim(); if (!v) return null;
+  const m = v.match(/^\[([^\]]+)\]\s*(.*)$/); const code = (m ? m[1] : v).trim().toLowerCase(), name = (m ? m[2] : v).trim();
+  return products().find(p => p.code.toLowerCase() === code) || products().find(p => p.name === name) || null;
+}
+const codeOf = name => { const p = products().find(x => x.name === String(name || '').trim()); return p ? p.code : ''; };
+const withCode = name => { const c = codeOf(name); return (c ? '[' + c + '] ' : '') + (name || ''); };
+function nextProdCode() { let n = 0; products().forEach(p => { const m = /^P(\d+)$/i.exec(p.code); if (m) n = Math.max(n, Number(m[1])); }); return 'P' + String(n + 1).padStart(4, '0'); }
+function saveProducts(items) { const o = prodDoc() || create('config', {key: 'products'}); o.items = items; o.changedBy = S.uid; o.changedAt = nowStr(); put('config', o); }
+// 입력값을 상품으로 바꾼다. 목록에 없으면 관리자는 새 코드로 바로 등록, 다른 사람은 막는다(코드가 엇갈리지 않게).
+function prodResolve(v) {
+  const hit = prodFind(v); if (hit) return hit;
+  const name = String(v || '').replace(/^\[[^\]]*\]\s*/, '').trim(); if (!name) return null;
+  if (!prodAdmin()) { warn('상품 목록에 없는 상품이에요: ' + name + '\n본사 관리자에게 상품 등록(☰ → 계약·재고 → 상품 목록)을 요청해 주세요.'); return null; }
+  const p = {code: nextProdCode(), name}; saveProducts(products().concat(p)); toast('새 상품을 등록했어요: ' + prodLabel(p)); return p;
+}
+const prodOptions = () => '<datalist id="prodlist">' + products().map(p => '<option value="' + esc(prodLabel(p)) + '">').join('') + '</datalist>';
+// 관리자가 처음 열면 기존 재고·요청에 쓰인 이름에 코드를 붙여 목록을 만든다
+function seedProducts() {
+  if (!prodAdmin()) return 0;
+  const have = new Set(products().map(p => p.name)), names = new Set(stockModels());
+  preqs().forEach(t => (t.preq.items || []).forEach(x => x.model && names.add(String(x.model).trim())));
+  const add = [...names].filter(n => n && !have.has(n)).sort(); if (!add.length) return 0;
+  let items = products(); add.forEach(n => { const n0 = items.reduce((m, p) => { const k = /^P(\d+)$/i.exec(p.code); return k ? Math.max(m, Number(k[1])) : m; }, 0); items = items.concat({code: 'P' + String(n0 + 1).padStart(4, '0'), name: n}); });
+  saveProducts(items); return add.length;
+}
+function viewProducts() {
+  if (!S.prodSeeded) { S.prodSeeded = true; setTimeout(() => { const n = seedProducts(); if (n) { toast('기존 재고 상품 ' + n + '개에 상품코드를 붙였어요.'); render(); } }, 0); }
+  const cnt = {}; inStock().forEach(r => { const k = (r.model || '').trim(); cnt[k] = (cnt[k] || 0) + (r.qty || 1); });
+  const ps = products().filter(p => kmatch(p.code + ' ' + p.name, S.pq || ''));
+  return '<h1>상품 목록 (상품코드)</h1><div class="sub">재고 입고와 물품요청은 이 목록의 상품코드·상품명을 같이 써요. ' + (prodAdmin() ? '상품을 눌러 코드·이름을 고치고, ‘＋ 상품 등록’으로 추가해요.' : '새 상품은 본사 관리자가 등록해요.') + '</div>' +
+    (prodAdmin() ? '<button class="btn gold full" data-act="prodEdit" data-arg="">＋ 상품 등록</button>' : '') +
+    '<input id="prq" data-q="pq" placeholder="🔍 상품코드·상품명 (초성)" value="' + esc(S.pq || '') + '" autocomplete="off">' +
+    '<div class="qres" data-for="pq">' + (ps.length ? ps.map(p => '<div class="card"' + (prodAdmin() ? ' data-act="prodEdit" data-arg="' + esc(p.code) + '"' : '') + '><div class="row"><span class="chip">' + esc(p.code) + '</span><div class="grow t1">' + esc(p.name) + '</div><span class="sub" style="margin:0">재고 ' + (cnt[p.name] || 0) + '</span></div></div>').join('') : '<div class="empty">등록된 상품이 없어요.</div>') + '</div>';
+}
+ACT.prodEdit = code => {
+  if (!prodAdmin()) return toast('상품 등록·수정은 관리자만 할 수 있어요.');
+  const old = code ? products().find(p => p.code === code) : null;
+  formModal(old ? '상품 수정' : '상품 등록', '<label class="fl" for="f_pc">상품코드</label><input id="f_pc" value="' + esc(old ? old.code : nextProdCode()) + '" placeholder="예: P0001">' +
+    '<label class="fl" for="f_pn">상품명</label><input id="f_pn" value="' + esc(old ? old.name : '') + '" placeholder="예: 영수증 용지">' +
+    (old ? '<div class="sub">상품명을 바꾸면 재고에 있는 같은 상품 이름도 함께 바뀌어요.</div>' : ''), () => {
+    const c = $('#f_pc').value.trim(), n = $('#f_pn').value.trim();
+    if (!c || !n) return warn('상품코드와 상품명을 모두 적어 주세요.');
+    if (products().some(p => p !== old && p.code.toLowerCase() === c.toLowerCase())) return warn('이미 있는 상품코드예요: ' + c);
+    if (products().some(p => p !== old && p.name === n)) return warn('이미 있는 상품명이에요: ' + n);
+    saveProducts(products().filter(p => p !== old).concat({code: c, name: n}));
+    if (old && old.name !== n) list('stock').filter(r => (r.model || '').trim() === old.name).forEach(r => { r.model = n; r.code = c; put('stock', r); });
+    else if (old && old.code !== c) list('stock').filter(r => (r.model || '').trim() === n).forEach(r => { r.code = c; put('stock', r); });
+    render(); toast('저장했어요: [' + c + '] ' + n); return true;
+  }, '저장');
+};
 function viewStock() {
   let asset = '';
   if (canPerf()) {
@@ -1061,20 +1120,20 @@ function viewStock() {
   return '<h1>재고</h1><div class="sub">입고·출고·수량 정정을 하면 이력이 남아요. 계약에서 장비를 고르면 ‘출고중’이 되고, 설치 완료하면 재고에서 빠집니다. 검색칸에 바코드 스캐너로 찍으면 그 장비가 바로 열려요.</div>' +
     '<div class="pills"><span class="sub" style="align-self:center;margin:0">보관지</span>' + ['', ...LOCS].map(l => '<button class="pill ' + ((S.sloc || '') === l ? 'on' : '') + '" data-act="sloc" data-arg="' + l + '">' + (l || '전체') + '</button>').join('') + '</div>' +
     '<div class="stkacts"><button class="btn gold" data-act="newStock">＋ 입고</button><button class="btn tint" data-act="outStock">− 출고</button><button class="btn tint" data-act="adjStock">± 수량 정정</button><button class="btn" data-nav="all" data-sub="stocklog">이력</button></div>' + asset +
-    '<div class="row" style="gap:8px"><input id="sq" data-q="sq" placeholder="🔍 모델명·시리얼 (초성)" value="' + esc(S.sq || '') + '" autocomplete="off"><button class="btn tint" data-act="scanInto" data-arg="sq" style="flex:none" aria-label="카메라로 바코드 찍기">📷 바코드</button></div>' +
+    '<div class="row" style="gap:8px"><input id="sq" data-q="sq" placeholder="🔍 상품코드·상품명·시리얼 (초성)" value="' + esc(S.sq || '') + '" autocomplete="off"><button class="btn tint" data-act="scanInto" data-arg="sq" style="flex:none" aria-label="카메라로 바코드 찍기">📷 바코드</button></div>' +
     '<div class="qres" data-for="sq">' + stockGroups() + '</div>' + preqSection();
 }
 ACT.sloc = l => { S.sloc = l; render(); };
 function stockGroups() {
   const g = new Map();
-  list('stock').filter(r => r.status !== '설치완료' && (!S.sloc || locOf(r) === S.sloc) && kmatch((r.model || '') + ' ' + (r.serial || '') + ' ' + locOf(r), S.sq || '')).sort((a, b) => (a.model || '').localeCompare(b.model || '') || (a.serial || '').localeCompare(b.serial || ''))
+  list('stock').filter(r => r.status !== '설치완료' && (!S.sloc || locOf(r) === S.sloc) && kmatch((r.model || '') + ' ' + codeOf(r.model) + ' ' + (r.serial || '') + ' ' + locOf(r), S.sq || '')).sort((a, b) => (a.model || '').localeCompare(b.model || '') || (a.serial || '').localeCompare(b.serial || ''))
     .forEach(r => { if (!g.has(r.model)) g.set(r.model, []); g.get(r.model).push(r); });
   if (!g.size) return '<div class="empty">' + ((S.sq || '').trim() ? '찾는 장비가 없어요.' : '등록된 재고가 없습니다. ‘＋ 입고’로 추가해 주세요.') + '</div>';
   return [...g.entries()].map(([model, rows]) => {
     let have = 0, out = 0, safe = 0;
     const byLoc = {}; rows.forEach(r => { if (r.status === '출고중') out += r.qty || 1; else { have += r.qty || 1; byLoc[locOf(r)] = (byLoc[locOf(r)] || 0) + (r.qty || 1); } safe = Math.max(safe, r.safe || 0); });
     const low = safe > 0 && have < safe;
-    return '<div class="card flat"><div class="row"><div class="grow t1">' + esc(model) + '</div><span class="chip"' + (low ? ' style="background:#fdecea;color:var(--red)"' : '') + '>재고 ' + have + (out ? ' · 출고중 ' + out : '') + '</span></div>' + (S.sloc ? '' : '<div class="sub" style="margin:2px 0 0">' + LOCS.map(l => l + ' ' + (byLoc[l] || 0)).join(' · ') + '</div>') +
+    return '<div class="card flat"><div class="row"><div class="grow t1">' + esc(withCode(model)) + '</div><span class="chip"' + (low ? ' style="background:#fdecea;color:var(--red)"' : '') + '>재고 ' + have + (out ? ' · 출고중 ' + out : '') + '</span></div>' + (S.sloc ? '' : '<div class="sub" style="margin:2px 0 0">' + LOCS.map(l => l + ' ' + (byLoc[l] || 0)).join(' · ') + '</div>') +
       (safe ? '<div class="sub" style="' + (low ? 'color:var(--red);font-weight:700' : '') + '">안전재고 ' + safe + '대' + (low ? ' — 부족해요!' : '') + '</div>' : '') +
       rows.map(r => '<button class="srow' + (r.status === '출고중' ? ' out' : '') + '" data-act="editStock" data-arg="' + r.id + '">' + esc((S.sloc ? '' : '[' + locOf(r) + '] ') + (r.serial ? r.serial : '시리얼 없음 · ' + (r.qty || 1) + '개')) + (r.status === '출고중' ? '<i>출고중</i>' : '') + '</button>').join('') + '</div>';
   }).join('');
@@ -1088,24 +1147,25 @@ document.addEventListener('keydown', e => {
 });
 ACT.newStock = () => {
   formModal('입고 (재고 추가)',
-    '<label class="fl" for="f_mo">모델명 (필수 · 있던 모델은 아래에서 골라도 돼요)</label><input id="f_mo" list="f_mol" placeholder="예: 토스 포스 T2" autocomplete="off"><datalist id="f_mol">' + stockModels().map(m => '<option value="' + esc(m) + '">').join('') + '</datalist>' +
+    '<label class="fl" for="f_mo">상품 (필수 · 상품코드나 이름으로 골라요' + (prodAdmin() ? ', 목록에 없으면 새 코드로 등록돼요' : '') + ')</label><input id="f_mo" list="prodlist" placeholder="예: P0001 또는 토스 포스 T2" autocomplete="off">' + prodOptions() +
     '<label class="fl" for="f_se">시리얼 (여러 개는 한 줄에 하나 — 스캐너로 계속 찍으면 줄이 바뀌어요)</label><textarea id="f_se" placeholder="시리얼 번호"></textarea><button class="btn tint full" data-act="scanInto" data-arg="f_se">📷 카메라로 바코드 찍기</button>' +
     '<label class="fl" for="f_q">시리얼이 없는 물품의 수량 (같은 모델이 있으면 그 수량에 더해져요)</label><input id="f_q" inputmode="numeric" placeholder="예: 10">' +
     '<label class="fl" for="f_lc">보관지</label><select id="f_lc">' + LOCS.map(l => '<option' + (l === (S.sloc || '본사') ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
     '<label class="fl" for="f_mm">입고처·메모 (선택)</label><input id="f_mm" placeholder="예: 토스플레이스 본사 10/24 배송분">' +
     '<label class="fl" for="f_sf">안전재고 (이 수 아래면 알려줘요, 선택)</label><input id="f_sf" inputmode="numeric" placeholder="예: 3">' +
     (canPerf() ? '<label class="fl" for="f_b">입고 단가 (1대당 산 값, 원, 선택)</label><input id="f_b" inputmode="numeric" placeholder="예: 250000">' : ''), () => {
-    const m = $('#f_mo').value.trim(); if (!m) return warn('모델명을 입력해 주세요.');
+    if (!$('#f_mo').value.trim()) return warn('상품을 골라 주세요.');
     const qn = numOf($('#f_q').value), sf = numOf($('#f_sf').value), by = canPerf() ? numOf($('#f_b').value) : 0, memo = $('#f_mm').value.trim(), lc = $('#f_lc').value;
     const ss = $('#f_se').value.split(/[\n,]+/).map(x => x.trim()).filter(Boolean);
     if (!ss.length && qn < 1) return warn('시리얼을 적거나 수량을 입력해 주세요.');
     const seen = new Set();
     for (const x of ss) { const k = x.toLowerCase(); if (seen.has(k) || list('stock').some(r => r.status !== '설치완료' && (r.serial || '').trim().toLowerCase() === k)) return warn('이미 재고에 있는 시리얼이에요: ' + x); seen.add(k); }
-    const one = (serial, qty) => { const r = create('stock', {model: m, serial, qty, safe: sf, status: '재고', loc: lc, deleted: false, log: []}); slog(r, '입고', qty, memo); put('stock', r); if (by > 0) { const c = costDoc(r.id); c.buy = by; put('costs', c); } };
+    const pr = prodResolve($('#f_mo').value); if (!pr) return false; const m = pr.name;
+    const one = (serial, qty) => { const r = create('stock', {model: m, code: pr.code, serial, qty, safe: sf, status: '재고', loc: lc, deleted: false, log: []}); slog(r, '입고', qty, memo); put('stock', r); if (by > 0) { const c = costDoc(r.id); c.buy = by; put('costs', c); } };
     if (ss.length) ss.forEach(x => one(x, 1));
     else {
       const same = inStock().find(r => !r.serial && (r.model || '').trim() === m && locOf(r) === lc);
-      if (same) { slog(same, '입고', qn, memo); same.qty = (same.qty || 1) + qn; if (sf) same.safe = sf; put('stock', same); if (by > 0) { const c = costDoc(same.id); c.buy = by; put('costs', c); } }
+      if (same) { slog(same, '입고', qn, memo); same.qty = (same.qty || 1) + qn; same.code = pr.code; if (sf) same.safe = sf; put('stock', same); if (by > 0) { const c = costDoc(same.id); c.buy = by; put('costs', c); } }
       else one('', qn);
     }
     render(); toast(lc + '에 입고했어요: ' + m + ' ' + (ss.length || qn) + (ss.length ? '대' : '개')); return true;
@@ -1200,13 +1260,13 @@ function stockLogList() {
   if (!ls.length) return '<div class="empty">이력이 없어요.</div>';
   const col = k => k === '입고' ? 'var(--green)' : k === '정정' ? 'var(--amber)' : k === '이동' ? 'var(--gray)' : 'var(--red)';
   return '<div class="sub" style="font-weight:700">' + ls.length + '건</div>' + ls.slice(0, 300).map(x => '<div class="mv" data-act="editStock" data-arg="' + x.r.id + '"><span class="mvd">' + esc((x.d || '').slice(2, 16) || '예전 자료') + '</span><span class="chip" style="color:' + col(x.k) + ';background:var(--field)">' + esc(x.k) + '</span>' +
-    '<span class="grow"><b>' + esc(x.r.model) + '</b>' + (x.r.serial ? ' / ' + esc(x.r.serial) : '') + (x.m ? '<small>' + esc(x.m) + '</small>' : '') + '</span><b class="mvq" style="color:' + col(x.k) + '">' + (x.q > 0 ? '+' : '') + x.q + '</b><span class="mvb">' + esc(x.by ? uname(x.by) : '') + '</span></div>').join('');
+    '<span class="grow"><b>' + esc(withCode(x.r.model)) + '</b>' + (x.r.serial ? ' / ' + esc(x.r.serial) : '') + (x.m ? '<small>' + esc(x.m) + '</small>' : '') + '</span><b class="mvq" style="color:' + col(x.k) + '">' + (x.q > 0 ? '+' : '') + x.q + '</b><span class="mvb">' + esc(x.by ? uname(x.by) : '') + '</span></div>').join('');
 }
 const stockState = r => r.status === '설치완료' ? (r.gone ? '출고 완료 (' + r.gone + ')' : '설치 완료') : (r.status || '재고');
 ACT.editStock = id => {
   const r = byId('stock', id); if (!r) return; const c = canPerf() ? costOf(r.id) : null; const mer = r.merchant ? byId('merchants', r.merchant) : null;
   const hist = (r.log || []).slice().reverse().slice(0, 8);
-  formModal('재고 수정', '<label class="fl" for="f_mo">모델명</label><input id="f_mo" value="' + esc(r.model) + '"><label class="fl" for="f_se">시리얼</label><input id="f_se" value="' + esc(r.serial) + '"><button class="btn tint full" data-act="scanInto" data-arg="f_se">📷 카메라로 바코드 찍기</button>' +
+  formModal('재고 수정', '<label class="fl" for="f_mo">상품 (상품코드·이름)</label><input id="f_mo" list="prodlist" value="' + esc(withCode(r.model)) + '" autocomplete="off">' + prodOptions() + '<label class="fl" for="f_se">시리얼</label><input id="f_se" value="' + esc(r.serial) + '"><button class="btn tint full" data-act="scanInto" data-arg="f_se">📷 카메라로 바코드 찍기</button>' +
     (r.serial ? '' : '<div class="sub">수량은 ‘수량 정정’ 또는 ‘입고’·‘출고’로 바꿔 주세요 (지금 ' + (r.qty || 1) + '개).</div>') +
     '<label class="fl" for="f_sf">안전재고</label><input id="f_sf" inputmode="numeric" value="' + (r.safe || 0) + '">' +
     (r.status === '재고' ? '<label class="fl" for="f_lc">보관지 (바꾸면 ‘이동’으로 이력에 남아요)</label><select id="f_lc">' + LOCS.map(l => '<option' + (l === locOf(r) ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' : '') +
@@ -1214,11 +1274,12 @@ ACT.editStock = id => {
     '<div class="sub" style="margin-top:10px">상태: ' + esc(stockState(r)) + (mer ? ' · ' + esc(mer.name) : '') + '</div>' +
     (hist.length ? '<div class="lb">이 장비 이력</div>' + hist.map(x => '<div class="sub" style="margin:2px 0">' + esc((x.d || '').slice(2) + ' · ' + x.k + ' ' + (x.q > 0 ? '+' : '') + x.q + (x.m ? ' · ' + x.m : '') + (x.by ? ' · ' + uname(x.by) : '')) + '</div>').join('') : '') +
     '<div class="btns" style="margin-top:10px">' + (r.status === '재고' ? '<button class="btn tint" id="f_out">이 장비 출고</button>' : '') + '<button class="btn red" id="f_del">삭제</button></div>', () => {
-    const m = $('#f_mo').value.trim(); if (!m) return warn('모델명을 입력해 주세요.');
+    if (!$('#f_mo').value.trim()) return warn('상품을 골라 주세요.');
     const se = $('#f_se').value.trim();
     if (se && se.toLowerCase() !== (r.serial || '').trim().toLowerCase() && list('stock').some(x => x.id !== r.id && x.status !== '설치완료' && (x.serial || '').trim().toLowerCase() === se.toLowerCase())) return warn('이미 있는 시리얼이에요: ' + se);
+    const pr = $('#f_mo').value.trim() === withCode(r.model) ? {name: r.model, code: codeOf(r.model) || r.code || ''} : prodResolve($('#f_mo').value); if (!pr) return false; const m = pr.name;
     if ($('#f_lc') && $('#f_lc').value !== locOf(r)) { slog(r, '이동', 0, locOf(r) + ' → ' + $('#f_lc').value); r.loc = $('#f_lc').value; }
-    r.model = m; r.serial = se; r.safe = numOf($('#f_sf').value); put('stock', r);
+    r.model = m; if (pr.code) r.code = pr.code; r.serial = se; r.safe = numOf($('#f_sf').value); put('stock', r);
     if (canPerf()) { const b2 = numOf($('#f_b').value), s2 = numOf($('#f_s').value); const cd = costOf(r.id) || (b2 || s2 ? costDoc(r.id) : null); if (cd) { cd.buy = b2; cd.sell = s2; put('costs', cd); } }
     render(); toast('저장했어요.'); return true;
   }, '저장');
@@ -1235,7 +1296,7 @@ const locOf = r => r.loc || '본사';
 const PSTAGES = ['요청', '주문함', '발송함', '입고완료'];
 const preqs = () => list('tasks').filter(t => t.preq).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
 const preqWaiting = () => preqs().filter(t => t.preq.stage === '발송함' && (t.creator === S.uid || can('staff_manage'))); // 받는 쪽이 입고 확인할 것
-const preqItems = t => (t.preq.items || []).map(x => x.model + ' ' + x.qty + (x.serial ? '' : '개')).join(', ');
+const preqItems = t => (t.preq.items || []).map(x => (x.code || codeOf(x.model) ? '[' + (x.code || codeOf(x.model)) + '] ' : '') + x.model + ' ' + x.qty + (x.serial ? '' : '개')).join(', ');
 function preqStageHTML(st) {
   if (st === '반려') return '<span class="chip" style="background:#fdecea;color:var(--red)">반려</span>';
   const i = PSTAGES.indexOf(st);
@@ -1257,15 +1318,16 @@ function viewPreqs() {
 }
 ACT.newPreq = () => {
   const staff = list('users').filter(u => u.active !== false).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  const row = () => '<div class="row prow2" style="gap:6px"><input class="pm" list="pmodels" placeholder="품목 (예: 영수증 용지)" style="flex:3"><input class="pq" inputmode="numeric" placeholder="수량" style="flex:1"></div>';
+  const row = () => '<div class="row prow2" style="gap:6px"><input class="pm" list="prodlist" placeholder="상품코드·상품명 (예: P0001)" style="flex:3" autocomplete="off"><input class="pq" inputmode="numeric" placeholder="수량" style="flex:1"></div>';
   formModal('본사에 물품요청', '<div class="sub" style="margin-top:0">본사 담당자에게 알림이 가요. 담당자가 주문·발송을 표시하고, 물건이 오면 ‘입고 확인’을 누르면 받은 곳 재고에 들어가요.</div>' +
     '<label class="fl" for="f_to">받을 곳</label><select id="f_to">' + LOCS.map(l => '<option' + (l === '광주지사' ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
-    '<div class="lb">요청 품목</div><datalist id="pmodels">' + stockModels().map(m => '<option value="' + esc(m) + '">').join('') + '</datalist><div id="prows">' + row() + row() + '</div><button type="button" class="btn full" id="paddr">＋ 품목 줄 추가</button>' +
+    '<div class="lb">요청 품목 (상품 목록의 상품코드로 골라요)</div>' + prodOptions() + '<div id="prows">' + row() + row() + '</div><button type="button" class="btn full" id="paddr">＋ 품목 줄 추가</button>' +
     '<label class="fl" for="f_as">본사 담당자 (알림이 가요)</label><select id="f_as">' + staff.map(u => '<option value="' + u.id + '">' + esc(u.name) + '</option>').join('') + '</select>' +
     '<label class="fl" for="f_d">희망 도착일 (선택)</label><input id="f_d" type="date"><label class="fl" for="f_m">메모 (선택)</label><textarea id="f_m" placeholder="예: 다음 주 설치 3건 예정"></textarea>', () => {
-    const items = [...document.querySelectorAll('#prows .prow2')].map(r => ({model: r.querySelector('.pm').value.trim(), qty: numOf(r.querySelector('.pq').value)})).filter(x => x.model);
-    if (!items.length) return warn('요청할 품목을 적어 주세요.');
-    if (items.some(x => x.qty < 1)) return warn('품목마다 수량을 적어 주세요.');
+    const raw = [...document.querySelectorAll('#prows .prow2')].map(r => ({v: r.querySelector('.pm').value.trim(), qty: numOf(r.querySelector('.pq').value)})).filter(x => x.v);
+    if (!raw.length) return warn('요청할 품목을 적어 주세요.');
+    if (raw.some(x => x.qty < 1)) return warn('품목마다 수량을 적어 주세요.');
+    const items = []; for (const x of raw) { const p = prodResolve(x.v); if (!p) return false; items.push({code: p.code, model: p.name, qty: x.qty}); }
     const to = $('#f_to').value, as = Number($('#f_as').value), d = $('#f_d').value;
     const t = create('tasks', {title: '물품요청 · ' + to + ' · ' + items.map(x => x.model + ' ' + x.qty).join(', '), type: '물품요청', client: to, due: d, memo: $('#f_m').value.trim(), assignee: as, creator: S.uid, status: '지시됨', history: [], preq: {to, items, stage: '요청'}});
     tlog(t, '물품요청 → ' + uname(as) + ' (' + to + ')'); put('tasks', t); render(); toast(uname(as) + '님에게 물품요청을 보냈어요.'); return true;
@@ -1284,7 +1346,7 @@ ACT.preq = id => {
   const P = t.preq, st = P.stage, hq = t.assignee === S.uid || can('staff_manage'), rq = t.creator === S.uid || can('staff_manage');
   const ln = (k, v) => v ? '<div class="line"><b>' + k + '</b><div>' + esc(v) + '</div></div>' : '';
   modal('<h3>📦 물품요청 — ' + esc(P.to) + '</h3>' + preqStageHTML(st) +
-    '<table class="ptbl"><tr><th>품목</th><th>수량</th></tr>' + (P.items || []).map(x => '<tr><td>' + esc(x.model) + '</td><td>' + x.qty + '</td></tr>').join('') + '</table>' +
+    '<table class="ptbl"><tr><th>상품코드</th><th>품목</th><th>수량</th></tr>' + (P.items || []).map(x => '<tr><td>' + esc(x.code || codeOf(x.model) || '-') + '</td><td>' + esc(x.model) + '</td><td>' + x.qty + '</td></tr>').join('') + '</table>' +
     ln('받을 곳', P.to) + ln('요청한 사람', uname(t.creator) + ' · ' + (t.created || '')) + ln('본사 담당', uname(t.assignee)) + ln('희망 도착일', t.due) + ln('메모', t.memo) + ln('발송 메모', P.ship) +
     '<h2>처리 이력</h2>' + (t.history || []).map(h => '<div class="hist">' + esc(h.t + '  ' + uname(h.who) + '\n' + h.text) + '</div>').join('') +
     '<div class="btns" style="margin-top:12px;flex-wrap:wrap">' +
@@ -1304,16 +1366,16 @@ ACT.preqNo = id => formModal('반려', '<label class="fl" for="f_s">반려 사�
 ACT.preqIn = id => {
   const t = byId('tasks', id); const P = t.preq;
   formModal('입고 확인 — ' + P.to, '<div class="sub" style="margin-top:0">받은 그대로 적어 주세요. 시리얼이 있는 장비는 시리얼을 한 줄에 하나씩 적거나 스캐너로 찍으면 시리얼마다 입고돼요.</div>' +
-    (P.items || []).map((x, i) => '<div class="adjg"><b>' + esc(x.model) + ' (요청 ' + x.qty + ')</b><div class="row" style="gap:6px"><span class="sub" style="margin:0">받은 수량</span><input id="pi_q' + i + '" inputmode="numeric" value="' + x.qty + '" style="width:90px;margin:0"></div><textarea id="pi_s' + i + '" placeholder="시리얼 (있으면, 한 줄에 하나)" style="min-height:44px"></textarea></div>').join(''), () => {
+    (P.items || []).map((x, i) => '<div class="adjg"><b>' + esc((x.code ? '[' + x.code + '] ' : '') + x.model) + ' (요청 ' + x.qty + ')</b><div class="row" style="gap:6px"><span class="sub" style="margin:0">받은 수량</span><input id="pi_q' + i + '" inputmode="numeric" value="' + x.qty + '" style="width:90px;margin:0"></div><textarea id="pi_s' + i + '" placeholder="시리얼 (있으면, 한 줄에 하나)" style="min-height:44px"></textarea></div>').join(''), () => {
     const memo = '물품요청 입고 (' + uname(t.creator) + ' 요청)';
     const plan = (P.items || []).map((x, i) => ({x, q: numOf($('#pi_q' + i).value), ss: $('#pi_s' + i).value.split(/[\n,]+/).map(s => s.trim()).filter(Boolean)}));
     for (const p of plan) for (const s of p.ss) if (list('stock').some(r => r.status !== '설치완료' && (r.serial || '').trim().toLowerCase() === s.toLowerCase())) return warn('이미 재고에 있는 시리얼이에요: ' + s);
     plan.forEach(({x, q, ss}) => {
-      if (ss.length) ss.forEach(s => { const r = create('stock', {model: x.model, serial: s, qty: 1, safe: 0, status: '재고', loc: P.to, deleted: false, log: []}); slog(r, '입고', 1, memo); put('stock', r); });
+      if (ss.length) ss.forEach(s => { const r = create('stock', {model: x.model, code: x.code || codeOf(x.model), serial: s, qty: 1, safe: 0, status: '재고', loc: P.to, deleted: false, log: []}); slog(r, '입고', 1, memo); put('stock', r); });
       else if (q > 0) {
         const same = inStock().find(r => !r.serial && (r.model || '').trim() === x.model && locOf(r) === P.to);
         if (same) { slog(same, '입고', q, memo); same.qty = (same.qty || 1) + q; put('stock', same); }
-        else { const r = create('stock', {model: x.model, serial: '', qty: q, safe: 0, status: '재고', loc: P.to, deleted: false, log: []}); slog(r, '입고', q, memo); put('stock', r); }
+        else { const r = create('stock', {model: x.model, code: x.code || codeOf(x.model), serial: '', qty: q, safe: 0, status: '재고', loc: P.to, deleted: false, log: []}); slog(r, '입고', q, memo); put('stock', r); }
       }
     });
     preqStage(t, '입고완료', plan.map(p => p.x.model + ' ' + (p.ss.length || p.q)).join(', '));
@@ -2060,6 +2122,7 @@ function menuItems() {
   add('계약·재고', '입금 확인', '입금 확인 입금 내역 미납금 판매대금 정보변경수수료', 'nav:all:deposit');
   add('계약·재고', '재고 (입고·출고·정정)', '재고 장비 바코드 시리얼 단가 입고 출고 수량 정정 스캔 본사 광주지사 보관지', 'nav:all:stock');
   add('계약·재고', '재고 이력', '재고 이력 입고 출고 정정 이동 실사 조사 반품 불량', 'nav:all:stocklog');
+  add('계약·재고', '상품 목록 (상품코드)', '상품 목록 상품코드 품목 코드 등록 물품요청 재고', 'nav:all:products');
   add('실적', '내 실적', '내 실적 월별 성장률 계약', 'nav:all:myperf');
   if (P) { add('실적', '전체 실적·직원별 순위', '전체 실적 직원별 순위 성장률', 'nav:all:perf'); add('실적', '수익 현황 (입고·출고 단가)', '수익 현황 입고 출고 단가 매출 매입', 'nav:all:profit'); }
   add('보고', '일일보고 쓰기', '일일보고 보고 오늘 한 일', 'nav:all:daily');
@@ -2175,6 +2238,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.30', '2026-10-25', ['상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 계약·재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요', '재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색']],
   ['웹 0.0.29', '2026-10-25', ['☰ → 내 계정·설정 → ‘알림 및 소리 설정’ 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기']],
   ['웹 0.0.28', '2026-10-25', ['업무 요청 ‘가맹점 요청사항’ 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)', '직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)', '휴대폰 아래 탭: ‘전체’를 ☰ 로']],
   ['웹 0.0.27', '2026-10-25', ['‘업무 지시’를 ‘업무 요청’으로 이름 바꿈 (요청하기·요청한 사람)']],
