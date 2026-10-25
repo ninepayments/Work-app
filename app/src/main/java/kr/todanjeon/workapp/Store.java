@@ -27,7 +27,7 @@ import java.util.Map;
  */
 final class Store {
     static final String[] COLLS = {"users", "tasks", "notices", "projects", "contracts", "events", "merchants", "stock", "rooms", "msgs", "reports", "profiles", "costs", "contacts", "deposits", "library", "mlogs", "config"};
-    static final String[] GRADES = {"S · 5만원 이상", "A · 3만원 이상", "B · 1만원 이상", "C · 1만원 미만", "해지가맹점", "신규가맹점", "", "협력사"};
+    static final String[] GRADES = {"VAN 수수료 월 5만원 이상", "월 3만원 이상", "월 1만원 이상", "월 1만원 미만", "해지가맹점", "신규가맹점", "", "협력사"}; // 0~3은 '0코드'처럼 코드로 부른다
 
     private final SharedPreferences sp;
     private final Handler main = new Handler(Looper.getMainLooper());

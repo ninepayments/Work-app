@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.32';
+const VERSION = '웹 0.0.33';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -856,7 +856,7 @@ ACT.merchant = id => {
   const ln = (k, v) => v ? '<div class="line"><b>' + k + '</b><div>' + esc(v) + '</div></div>' : '';
   const nm = mNums(m); const ph = nm.phone.replace(/[^0-9+*#]/g, ''); const mp = nm.mobile.replace(/[^0-9+*#]/g, '');
   const callBtn = (num, raw, lb) => num ? '<a class="btn tint full" style="display:block;text-align:center;text-decoration:none;margin-top:6px" href="tel:' + num + '">📞 ' + lb + ' ' + esc(raw) + ' 전화 걸기</a>' : '';
-  modal('<h3>' + esc(m.name) + '</h3>' + ln('사업자번호', m.bizno) + ln('전화번호', nm.phone) + ln('휴대폰번호', nm.mobile) + ln('이메일', m.email) + ln('주소', m.addr) + ln('VAN사', m.van) + ln('계약조건', termsText(m)) + ln('계약기간', m.cstart || m.cend ? (m.cstart || '') + ' ~ ' + (m.cend || '') + (m.cend ? '  (' + dday(daysLeft(m.cend)) + ')' : '') : '') + ln('등급', gradeLabel(m.grade)) + ln('메모', m.memo) +
+  modal('<h3>' + esc(m.name) + '</h3>' + ln('사업자번호', m.bizno) + ln('전화번호', nm.phone) + ln('휴대폰번호', nm.mobile) + ln('이메일', m.email) + ln('주소', m.addr) + ln('VAN사', m.van) + ln('계약조건', termsText(m)) + ln('계약기간', m.cstart || m.cend ? (m.cstart || '') + ' ~ ' + (m.cend || '') + (m.cend ? '  (' + dday(daysLeft(m.cend)) + ')' : '') : '') + ln('등급', gradeFull(m.grade)) + ln('메모', m.memo) +
     callBtn(ph, nm.phone, '전화') + callBtn(mp, nm.mobile, '휴대폰') +
     openTasksOf(m) +
     '<h2>📝 응대 기록 (' + logs.length + '건)</h2><button class="btn gold full" data-act="newLog" data-arg="' + m.id + '">+ 응대 기록 남기기</button>' +
@@ -902,8 +902,10 @@ function termsText(m) {
   return p.join(' · ');
 }
 const mfield = (id, label, ph, v, t) => '<label class="fl" for="' + id + '">' + label + '</label><input id="' + id + '" placeholder="' + ph + '" value="' + esc(v || '') + '"' + (t ? ' type="' + t + '"' : '') + '>';
-const GRADES = ['S · 5만원 이상', 'A · 3만원 이상', 'B · 1만원 이상', 'C · 1만원 미만', '해지가맹점', '신규가맹점', '', '협력사'];
-const gradeLabel = g => (g == null || g === '' || !GRADES[g]) ? '' : g + '코드 · ' + GRADES[g];
+// 등급(저장 값 0~5·7): 직원들은 0~3은 '0코드'처럼 코드로, 나머지는 이름(해지가맹점·신규가맹점·협력사)으로 부른다
+const GRADES = ['VAN 수수료 월 5만원 이상', '월 3만원 이상', '월 1만원 이상', '월 1만원 미만', '해지가맹점', '신규가맹점', '', '협력사'];
+const gradeLabel = g => (g == null || g === '' || !GRADES[g]) ? '' : (Number(g) <= 3 ? g + '코드' : GRADES[g]); // 짧게: 목록·칩
+const gradeFull = g => (g == null || g === '' || !GRADES[g]) ? '' : (Number(g) <= 3 ? g + '코드 · ' + GRADES[g] : GRADES[g]); // 고를 때·상세
 function merchantForm(m) {
   m = m || {}; const nm = mNums(m);
   return mfield('f_n', '상호 (필수)', '예: 토스단말기 전문', m.name) + mfield('f_b', '사업자번호', '예: 123-45-67890', m.bizno) +
@@ -914,7 +916,7 @@ function merchantForm(m) {
     '<label class="fl" for="f_ca" id="f_cal">' + amtLabel(m.ctype) + '</label><input id="f_ca" inputmode="numeric" placeholder="숫자만 (예: 30000)" value="' + esc(m.camt || '') + '">' +
     mfield('f_t', '계약조건 (추가 내용)', '예: 36개월 약정, 위약금 없음', m.terms) +
     '<div class="row" style="gap:8px"><div class="grow">' + mfield('f_cs', '계약시작일', '', m.cstart, 'date') + '</div><div class="grow">' + mfield('f_ce', '계약종료일', '', m.cend, 'date') + '</div></div>' +
-    '<label class="fl" for="f_g">등급 코드 (밴피 기준)</label><select id="f_g">' + GRADES.map((g, i) => g ? '<option value="' + i + '"' + (Number(m.grade == null ? 5 : m.grade) === i ? ' selected' : '') + '>' + gradeLabel(i) + '</option>' : '').join('') + '</select>' +
+    '<label class="fl" for="f_g">등급 (0~3코드: 밴피 기준)</label><select id="f_g">' + GRADES.map((g, i) => g ? '<option value="' + i + '"' + (Number(m.grade == null ? 5 : m.grade) === i ? ' selected' : '') + '>' + gradeFull(i) + '</option>' : '').join('') + '</select>' +
     '<label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모">' + esc(m.memo || '') + '</textarea>';
 }
 function wireMerchantForm() { const ct = $('#f_ct'); if (ct) ct.onchange = () => { $('#f_cal').textContent = amtLabel(ct.value); }; }
@@ -2007,8 +2009,8 @@ const M_TPL_HEAD = ['거래처코드', '거래처명(상호)', '사업자등록�
 ACT.mTemplate = () => saveBytes('나인패밀리_가맹점_업로드양식.xlsx', xlsxOf([
   '■ 가맹점 일괄 업로드 양식 — 이카운트 ‘거래처등록’ 목록을 엑셀로 내려받아 그대로 올려도 되고, 아래 머리글 밑에 붙여 넣어도 돼요.',
   '■ 거래처명(상호)은 꼭 있어야 해요. 같은 거래처코드·사업자번호·상호가 이미 있으면 새로 만들지 않고 값이 있는 칸만 바꿔요(빈 칸은 그대로).',
-  '■ 등급: S·A·B·C·해지·신규·협력 / 날짜: 2026-10-01 처럼 / ‘(예시)’로 시작하는 줄은 올릴 때 건너뛰어요(지우지 않아도 돼요).'],
-  M_TPL_HEAD, [['(예시) E0001', '(예시) 삼영푸드', '123-45-67890', '홍길동', '062-123-4567', '010-1234-5678', '광주 서구 상무대로 1', 'A', '음식점', '한식', 'KIS정보통신', '2025-01-01', '2027-12-31', '포스 2대']],
+  '■ 등급: 0코드·1코드·2코드·3코드·해지가맹점·신규가맹점·협력사 (S·A·B·C 로 적어도 돼요) / 날짜: 2026-10-01 처럼 / ‘(예시)’로 시작하는 줄은 올릴 때 건너뛰어요(지우지 않아도 돼요).'],
+  M_TPL_HEAD, [['(예시) E0001', '(예시) 삼영푸드', '123-45-67890', '홍길동', '062-123-4567', '010-1234-5678', '광주 서구 상무대로 1', '1코드', '음식점', '한식', 'KIS정보통신', '2025-01-01', '2027-12-31', '포스 2대']],
   [12, 22, 16, 10, 14, 14, 30, 8, 10, 10, 14, 12, 12, 20]), XLSX_MIME);
 // ---------- 가맹점 일괄 가져오기 (엑셀 .xlsx · CSV — 앱의 MerchantImport 와 같은 규칙) ----------
 async function unzip(buf) { // .xlsx 는 zip — 필요한 xml 만 꺼낸다 (압축 해제는 브라우저 기본 기능)
@@ -2124,7 +2126,7 @@ function viewSms() {
   const t = keepVal('sms', ''), by = smsBytes(t);
   return '<h1>단체 문자 보내기</h1><div class="sub">고른 가맹점에 한 곳씩 휴대폰의 문자 앱을 열어 드려요. 받는 분들끼리 번호가 보이지 않고, 문자 요금은 그 휴대폰 요금제로 나가요.' + (isWide() ? ' <b>PC에서는 문자 앱이 없어서 보낼 수 없어요 — 휴대폰(아이폰 웹앱·안드로이드 앱)에서 보내 주세요.</b> 알리고 연동 후에는 PC에서도 바로 보낼 수 있게 할게요.' : '') + '</div>' +
     '<label class="fl" for="f_sms">보낼 내용 ({상호} 는 가맹점 이름으로 바뀌어요)</label><textarea id="f_sms" data-keep="sms" placeholder="예: {상호} 사장님, 안녕하세요. 나인페이먼츠입니다.">' + esc(t) + '</textarea><div class="sub" id="smscnt">' + t.length + '자 · ' + by + '바이트' + (by > 90 ? ' (90바이트를 넘으면 장문 문자로 나가요)' : '') + '</div>' +
-    '<h2>받는 가맹점</h2><div class="pills">' + GRADES.map((g, i) => g ? '<button class="pill" data-act="smsGrade" data-arg="' + i + '">' + g.split(' ')[0] + ' 등급</button>' : '').join('') + '<button class="pill" data-act="smsAll">보이는 전체 선택</button><button class="pill" data-act="smsNone">선택 해제</button></div>' +
+    '<h2>받는 가맹점</h2><div class="pills">' + GRADES.map((g, i) => g ? '<button class="pill" data-act="smsGrade" data-arg="' + i + '">' + gradeLabel(i) + '</button>' : '').join('') + '<button class="pill" data-act="smsAll">보이는 전체 선택</button><button class="pill" data-act="smsNone">선택 해제</button></div>' +
     '<input id="smsq" data-q="smsq" placeholder="🔍 상호·초성·번호" value="' + esc(S.smsq || '') + '"><div class="qres" data-for="smsq">' + smsList() + '</div>' +
     '<button class="btn gold full" data-act="smsStart">문자 보내기 시작 (' + S.smsSel.size + '곳)</button>';
 }
@@ -2402,6 +2404,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.33', '2026-10-25', ['가맹점 등급 표기를 직원들이 부르는 대로: 0코드·1코드·2코드·3코드, 그다음 해지가맹점·신규가맹점·협력사 (목록·단체 문자·등록 화면·업로드 양식)']],
   ['웹 0.0.32', '2026-10-25', ['물품요청: 칸을 누르면 재고 품목(상품코드·보관지별 재고 수)에서 고르고, 목록에 없는 물품은 이름만 적어도 요청돼요(‘새 물품’ 표시). 본사가 주문·발송을 표시할 때 상품 목록에 올라가고 상품코드가 붙어요']],
   ['웹 0.0.31', '2026-10-25', ['가맹점 일괄 가져오기에 업로드 양식(.xlsx) 받기 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요', '재고 일괄 등록(엑셀, 관리자): 상품코드/상품명·시리얼·수량·현재위치 — 본사·광주지사는 우리 재고, 가맹점 상호는 이미 설치된 장비로 기록만(재고 수 제외)', 'PC 위쪽 메뉴 맨 끝에 ‘메모’: 업무 중 메모 추가·수정(자동 저장)·고정·삭제']],
   ['웹 0.0.30', '2026-10-25', ['상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 계약·재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요', '재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색']],
