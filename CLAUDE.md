@@ -11,7 +11,7 @@
 ## 지켜야 할 값 (바꾸지 말 것)
 | 항목 | 값 |
 |---|---|
-| Firebase 프로젝트 ID | `nine-family` (Spark 무료 요금제) |
+| Firebase 프로젝트 ID | `nine-family` (Blaze 요금제 — 2026-10-26 전환) |
 | Firebase 안드로이드 앱 ID | `1:48232341344:android:1f92f90d8572379ba34805` (`Cloud.java`) |
 | 안드로이드 패키지명(applicationId·namespace) | `kr.todanjeon.workapp` |
 | 앱 서명 | `app/debug.keystore` 고정 (SHA-1 `8F:F0:BE:53:90:51:33:D2:5A:58:ED:82:00:B7:87:5C:13:D4:41:F6`). 바꾸면 기존 설치 폰에서 업데이트가 실패한다 |

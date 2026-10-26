@@ -116,3 +116,4 @@
 - 2026-10-26: 채팅 임시 저장 — 웹 localStorage draft_<uid>_<방>, 앱 chatprefs ck("draft", 방). 보내면 지움.
 - 2026-10-26: 최고관리자 = 양문희·가태현(users.super, 이름으로도 인정) — 관리자 기기에서 모든 권한 자동 부여, 최고관리자가 아닌 관리자는 권한 변경·사용 중지·삭제 불가.
 - 2026-10-26: App Check — 웹은 APPCHECK_KEY(reCAPTCHA v3 사이트 키) 넣으면 켜짐(지금 비어 있음). 안드로이드는 Play 스토어 배포가 아니라 Play Integrity 를 못 써서 보류. 콘솔에서 '적용(enforce)'은 켜지 않는다.
+- 2026-10-26: Firebase 요금제가 Blaze(사용한 만큼 지불)로 전환된 것 확인(콘솔 화면) ← 'Spark 무료 요금제' 대체. 서버 프로그램(Cloud Functions) 사용 가능.
