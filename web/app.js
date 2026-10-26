@@ -332,7 +332,7 @@ function render() {
     const top = '<header class="pctop"><button class="hamb" data-act="menu" aria-label="' + (S.menu ? '전체 메뉴 닫기' : '전체 메뉴 열기') + '">' + (S.menu ? '✕' : '☰') + (!S.menu && badges.all ? '<span class="badge">' + badges.all + '</span>' : '') + '</button>' +
       '<div class="logo" data-act="home" title="홈으로"><img src="icon-192.png" alt="">나인패밀리</div><nav class="pcnav">' + NAVPC.map(btn).join('') + '</nav>' +
       '<button data-act="installApp" class="inst pcinst" style="display:none">PC에 설치하기</button><div class="me">' + esc(S.me.name) + ' · ' + (can('staff_manage') ? '관리자' : '직원') + '</div>' + (window.nineWin ? '<button class="pcwin" data-act="pcWin" aria-label="창 메뉴">⋮</button>' : '') + '</header>';
-    root.innerHTML = '<div class="app pc">' + top + (S.pcNew ? '<button class="chatbar pcnew" data-act="pcUpdate"><span class="cb1">💻 PC 프로그램 새 버전 ' + esc(S.pcNew) + '</span><span class="cb2">창 모양·⋮ 메뉴·트레이·바로가기 아이콘은 설치 파일을 다시 깔아야 바뀌어요</span><span class="cb3">' + (window.nineWin && window.nineWin.update ? '지금 업데이트' : '설치 파일 받기') + ' ›</span></button>' : '') + chatBarHTML() + '<div class="main">' + body + '</div></div>' + (S.menu ? '' : fab());
+    root.innerHTML = '<div class="app pc">' + top + chatBarHTML() + '<div class="main">' + body + '</div></div>' + (S.menu ? '' : fab());
   } else {
     root.innerHTML = '<div class="app">' + chatBarHTML() + '<div class="main">' + body + '</div><nav class="nav">' + NAVPHONE.map(btn).join('') + '</nav></div>' + fab();
   }
@@ -2622,7 +2622,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
-  ['웹 0.0.49', '2026-10-26', ['PC 프로그램(0.0.6)부터 새 버전 안내의 ‘지금 업데이트’를 누르면 알아서 받아 덮어 설치하고 다시 켜져요']],
+  ['웹 0.0.49', '2026-10-26', ['업데이트는 위쪽 ‘새 버전 · 지금 업데이트’ 한 곳에서: 가벼운 업데이트는 새로고침, PC 프로그램 재설치가 필요하면 같은 버튼이 알아서 받아 덮어 설치하고 다시 켜요(PC 0.0.6부터)']],
   ['웹 0.0.48', '2026-10-26', ['PC 프로그램이 옛 버전이면 위쪽에 ‘PC 프로그램 새 버전’ 안내(눌러서 설치 파일 받기)', 'PC 프로그램(0.0.5): ⋮ → 창 최소화를 누르면 화면 구석에 바로가기 아이콘(위젯) — 끌어서 옮기고, 더블클릭하면 다시 열려요. 안 읽은 개수는 빨간 숫자']],
   ['웹 0.0.47', '2026-10-26', ['PC 프로그램(0.0.4): 윈도우 제목줄 없이 전체 모드로 실행, 창 조작은 오른쪽 위 ⋮ 메뉴로. 창 줄이기 때는 위쪽 검은 줄을 끌어 옮겨요']],
   ['웹 0.0.46', '2026-10-26', ['알림 및 소리 설정에 ‘업무 알림 받기’·‘채팅 알림 받기’ 켜기·끄기', '채팅 알림은 방마다 1개만(새 글이 오면 그 방 알림이 바뀌어요)', '대화방을 열면 안 읽은 첫 글부터 보여요(‘여기까지 읽었어요’ 줄), 위로 올려 읽는 중에는 새 글이 와도 아래로 끌려가지 않아요']],
@@ -2757,17 +2757,17 @@ async function checkPcVersion() {
   try {
     const r = await (await fetch(PC_LATEST_API, {cache: 'no-store'})).json(); const t = String(r.tag_name || '');
     if (!t.startsWith('pc-v') || verNum(t) <= verNum(mine)) return;
-    S.pcNew = t.slice(4); render();
+    S.pcNew = t.slice(4); showUpdate(); // 웹 업데이트와 같은 자리(위쪽 '새 버전' 팝업)에 띄운다
   } catch (e) {}
 }
 ACT.pcUpdate = () => {
   const w = window.nineWin;
   if (w && w.update) { // 0.0.6 이상: 버튼 하나로 받아서 자동 설치·다시 켜기
-    askConfirm('PC 프로그램 새 버전 ' + S.pcNew, '새 버전을 받아 자동으로 설치하고 다시 켜요(1~2분). 로그인·자료는 그대로예요.', '지금 업데이트', () => {
+    { const b = $('#updbar'); if (b) b.remove();
       modal('<h3>새 버전 설치 중</h3><div class="sub" id="pcupd">설치 파일 받는 중… 0%</div><div class="sub" style="margin-top:8px">끝나면 프로그램이 잠깐 꺼졌다가 새 버전으로 다시 켜져요.</div>');
       w.onUpdate((k, v) => { const el = $('#pcupd'); if (!el) return; if (k === 'progress') el.textContent = '설치 파일 받는 중… ' + v + '%'; else if (k === 'install') el.textContent = '설치하는 중… 곧 다시 켜져요.'; else { el.textContent = '업데이트를 못 했어요: ' + v + ' — 인터넷 연결을 확인하고 다시 눌러 주세요.'; } });
       w.update();
-    });
+    }
     return;
   }
   askConfirm('PC 프로그램 새 버전 ' + S.pcNew, '지금 프로그램은 자동 업데이트가 없는 옛 버전이라 이번 한 번만 직접 설치해 주세요(다음부터는 버튼 하나로 자동).\n① 설치 파일 받기 → ② 이 프로그램 끄기(오른쪽 위 X) → ③ 받은 파일 실행. 로그인·자료는 그대로예요.', '설치 파일 받기', () => { location.href = 'https://github.com/ninepayments/Work-app/releases/latest/download/NineFamily-Setup.exe'; });
@@ -2821,11 +2821,11 @@ async function checkUpdate(manual) {
   showUpdate();
   if (manual && !newVer) toast('지금이 최신 버전이에요 (' + VERSION + ').');
 }
-function showUpdate() {
-  let b = $('#updbar'); if (!newVer) { if (b) b.remove(); return; }
+function showUpdate() { // 가벼운 업데이트(웹)는 새로고침, PC 프로그램 재설치가 필요하면 같은 자리·같은 버튼으로 덮어 설치
+  let b = $('#updbar'); const pc = !!S.pcNew; if (!newVer && !pc) { if (b) b.remove(); return; }
   if (!b) { b = document.createElement('div'); b.id = 'updbar'; document.body.appendChild(b); }
-  b.innerHTML = '새 버전 ' + esc(newVer.replace('웹 ', '')) + '<button data-act="doUpdate">지금 업데이트</button><button data-act="laterUpdate" aria-label="나중에">✕</button>';
-  b.querySelector('[data-act=doUpdate]').onclick = ACT.doUpdate; b.querySelector('[data-act=laterUpdate]').onclick = () => b.remove();
+  b.innerHTML = (pc ? 'PC 프로그램 새 버전 ' + esc(S.pcNew) + (window.nineWin && window.nineWin.update ? '' : ' (재설치)') : '새 버전 ' + esc(newVer.replace('웹 ', ''))) + '<button data-act="doUpdate">지금 업데이트</button><button data-act="laterUpdate" aria-label="나중에">✕</button>';
+  b.querySelector('[data-act=doUpdate]').onclick = pc ? ACT.pcUpdate : ACT.doUpdate; b.querySelector('[data-act=laterUpdate]').onclick = () => b.remove();
 }
 ACT.doUpdate = async () => {
   toast('업데이트하는 중…');
