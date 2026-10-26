@@ -1562,7 +1562,7 @@ function wireMerchantPicker(onPick) {
     const v = q.value.trim(); if (!v) { l.innerHTML = ''; return; }
     const hits = list('merchants').filter(m => kmatch(mHay(m), v)).sort((a, b) => (a.name || '').localeCompare(b.name || '')).slice(0, 8);
     l.innerHTML = hits.map(m => { const n = mNums(m); return '<button type="button" class="pick" data-id="' + m.id + '"><b>' + esc(m.name) + '</b><span>' + esc([m.bizno, n.phone || n.mobile].filter(Boolean).join(' · ')) + '</span></button>'; }).join('') ||
-      ('<div class="sub">찾는 가맹점이 없어요.</div>' + (S.mpNew ? '<button type="button" class="btn gold full" id="mpnew">＋ 새 가맹점 등록 (‘' + esc(v) + '’)</button>' : ''));
+      ('<div class="sub">찾는 가맹점이 없어요.' + (S.mpNew && !canEditMerchant() ? ' 상호를 아래 거래처 칸에 직접 적어도 돼요.' : '') + '</div>' + (S.mpNew && canEditMerchant() ? '<button type="button" class="btn gold full" id="mpnew">＋ 새 가맹점 등록 (‘' + esc(v) + '’)</button>' : ''));
     const nb = $('#mpnew'); if (nb) nb.onclick = () => { const f = S.mpNew; S.mpNew = null; f(v); };
   };
   q.addEventListener('input', fill);
@@ -2431,7 +2431,7 @@ function menuItems() {
   add('가맹점', '가맹점', '가맹점 거래처 상호 사업자 삭제 계약 만료', 'nav:all:merchants');
   add('가맹점', '응대 기록 조회', '응대 기록 AS 전화 응대 방문 메모 이력 날짜 가맹점', 'nav:all:logs');
   add('가맹점', '단체 문자 보내기', '단체 문자 sms 발송 가맹점 문자 안내', 'nav:all:sms');
-  add('가맹점', '가맹점 일괄 가져오기 (엑셀·이카운트)', '가맹점 일괄 가져오기 업로드 엑셀 csv 이카운트', 'act:importM');
+  if (canEditMerchant()) add('가맹점', '가맹점 일괄 가져오기 (엑셀·이카운트)', '가맹점 일괄 가져오기 업로드 엑셀 csv 이카운트', 'act:importM');
   const ex = expiringContracts().length;
   add('계약', '신규 계약 올리기', '신규 계약 올리기 CMS 판매 렌탈', 'act:newContract');
   add('계약', '계약 관리 (설치 완료·만료 알림)', '계약 설치 완료 만료 알림 장비', 'nav:all:contracts', ex ? '만료 ' + ex : '');

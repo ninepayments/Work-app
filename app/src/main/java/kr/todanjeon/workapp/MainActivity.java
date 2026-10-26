@@ -2354,7 +2354,7 @@ public class MainActivity extends Activity {
         e.add(new Entry("가맹점", "가맹점", "가맹점 거래처 상호 사업자 등급 삭제 계약 만료", () -> goSub("merchants")));
         e.add(new Entry("가맹점", "응대 기록 조회", "응대 기록 AS 전화 응대 방문 메모 이력 날짜 가맹점", () -> showMerchantLogs(null)));
         e.add(new Entry("가맹점", "단체 문자 보내기", "단체 문자 sms 발송 가맹점 문자 안내", () -> goSub("sms")));
-        e.add(new Entry("가맹점", "가맹점 일괄 가져오기 (엑셀·이카운트)", "가맹점 일괄 가져오기 업로드 엑셀 csv 이카운트 거래처 등록", () -> {
+        if (canEditMerchant()) e.add(new Entry("가맹점", "가맹점 일괄 가져오기 (엑셀·이카운트)", "가맹점 일괄 가져오기 업로드 엑셀 csv 이카운트 거래처 등록", () -> {
             goSub("merchants");
             startMerchantImport();
         }));
@@ -2761,12 +2761,9 @@ public class MainActivity extends Activity {
         box.addView(list);
         ScrollView sv = new ScrollView(this);
         sv.addView(box);
+        // 조회·검색·선택은 누구나 암호 없이. '새 가맹점 등록'은 찾는 가맹점이 없을 때 목록 아래에만, 등록 권한이 있는 사람에게만 보인다.
         final AlertDialog dlg = new Dlg(this).setTitle("가맹점 조회").setView(sv)
-                .setNegativeButton("닫기", null)
-                .setNeutralButton("새 가맹점 등록", (d, w) -> {
-                    newMerchantPrefill = q.getText().toString().trim();
-                    showEditMerchant(null, cb);
-                }).create();
+                .setNegativeButton("닫기", null).create();
         final Runnable fill = () -> {
             list.removeAllViews();
             String s = q.getText().toString();
@@ -2789,7 +2786,8 @@ public class MainActivity extends Activity {
                 list.addView(row, Ui.lp(this, 8));
             }
             if (n == 0) {
-                list.addView(Ui.text(this, "찾는 가맹점이 없습니다.", 14, Ui.GRAY, false), Ui.lp(this, 12));
+                list.addView(Ui.text(this, "찾는 가맹점이 없습니다." + (canEditMerchant() ? "" : " 상호는 거래처 칸에 직접 적어도 돼요."), 14, Ui.GRAY, false), Ui.lp(this, 12));
+                if (!canEditMerchant()) return;
                 Button nb = Ui.button(this, "＋ 새 가맹점 등록" + (s.trim().isEmpty() ? "" : " ('" + s.trim() + "')"), Ui.GOLD, Ui.DARK);
                 nb.setOnClickListener(v -> {
                     dlg.dismiss();
@@ -3456,12 +3454,14 @@ public class MainActivity extends Activity {
     private void renderMerchants() {
         content.addView(title("가맹점"));
         content.addView(Ui.text(this, "우리가 관리하는 가맹점 목록이에요. 오른쪽 아래 + 로 새로 등록하고, 눌러서 수정합니다.", 13, Ui.GRAY, false));
-        Button imp = Ui.button(this, "📥 엑셀·CSV 로 가맹점 일괄 가져오기 (이카운트 등)", Ui.TINT, Ui.DEEP);
-        imp.setOnClickListener(v -> startMerchantImport());
-        content.addView(imp, Ui.lp(this, 10));
-        Button mtp = Ui.button(this, "📄 가맹점 업로드 양식 받기 (.xlsx)", Ui.FIELD, Ui.INK);
-        mtp.setOnClickListener(v -> shareMerchantTemplate());
-        content.addView(mtp, Ui.lp(this, 6));
+        if (canEditMerchant()) { // 일괄 가져오기는 등록·수정 권한이 있는 사람만 (암호도 확인)
+            Button imp = Ui.button(this, "📥 엑셀·CSV 로 가맹점 일괄 가져오기 (이카운트 등)", Ui.TINT, Ui.DEEP);
+            imp.setOnClickListener(v -> startMerchantImport());
+            content.addView(imp, Ui.lp(this, 10));
+            Button mtp = Ui.button(this, "📄 가맹점 업로드 양식 받기 (.xlsx)", Ui.FIELD, Ui.INK);
+            mtp.setOnClickListener(v -> shareMerchantTemplate());
+            content.addView(mtp, Ui.lp(this, 6));
+        }
         if (can(Perm.STAFF_MANAGE)) {
             Button sf = Ui.button(this, "🛡 가맹점 보호·복원 (삭제 복원 · 백업 · 되돌리기)", Ui.FIELD, Ui.INK);
             sf.setOnClickListener(v -> showSafetyMenu());
@@ -7545,6 +7545,14 @@ public class MainActivity extends Activity {
 
     // ======================= v0.11: 가맹점 엑셀·CSV 일괄 가져오기 =======================
     private void startMerchantImport() {
+        if (!canEditMerchant()) {
+            Ui.toast(this, "가맹점 등록·수정 권한이 있어야 가져올 수 있어요.");
+            return;
+        }
+        withMerchantLock(this::pickMerchantFile);
+    }
+
+    private void pickMerchantFile() {
         Intent i = new Intent(Intent.ACTION_GET_CONTENT);
         i.setType("*/*");
         i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv", "text/comma-separated-values", "text/plain", "application/vnd.ms-excel", "application/octet-stream"});
