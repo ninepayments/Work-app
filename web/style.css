@@ -336,8 +336,14 @@ details.man[open]{padding-bottom:12px}
 .elec .pctop{-webkit-app-region:drag;user-select:none}.elec .pctop button,.elec .pctop .logo,.elec .pctop .pcnav,.elec .pctop .me{-webkit-app-region:no-drag}
 /* PC 오른쪽 채팅창 */
 .dockwrap{display:flex;flex:1;min-height:0;height:100%}.dockmain{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;height:100%}
-.chatdock{width:400px;flex:none;border-left:1px solid #e5e2da;background:#fff;display:flex;flex-direction:column;height:100%;min-height:0;box-shadow:-4px 0 12px rgba(0,0,0,.04)}
+.chatdock{width:470px;flex:none;border-left:1px solid #e5e2da;background:#fff;display:flex;flex-direction:column;height:100%;min-height:0;box-shadow:-4px 0 12px rgba(0,0,0,.04)}
 .chatdock .chatlist{width:auto;border:0;padding:0 16px 20px;height:100%}.chatdock .chatroom{height:100%;min-height:0}
 .pctop .pcdock{position:relative;border:0;background:#3a3424;color:#fff;border-radius:10px;padding:0 14px;height:40px;font-size:14px;cursor:pointer;margin-right:4px;font-family:inherit}
 .pctop .pcdock.on{background:var(--gold);color:var(--dark);font-weight:700}.pctop .pcdock .badge{position:absolute;top:-6px;right:-6px;margin:0}
-.app.dockon~.fab{right:430px}
+.app.dockon~.fab{right:500px}
+.dockroom{display:flex;height:100%;min-height:0}.dockroom>.chatroom{flex:1;min-width:0}
+.dockbar{width:70px;flex:none;overflow-y:auto;border-right:1px solid #eceef1;background:#faf8f3;padding:6px 0}
+.dtile{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;width:100%;border:0;background:none;padding:7px 2px;cursor:pointer;font-family:inherit}
+.dtile .av{width:42px;height:42px;border-radius:50%;background:#f3ead2;color:var(--deep);font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.dtile .av img,.dtile .av>*{max-width:42px;max-height:42px}.dtile .nm{font-size:11px;color:#555;white-space:nowrap;overflow:hidden;max-width:64px}
+.dtile.on{background:#f1e2b5}.dtile.dlist .av{background:#e9e6df;color:#555}.dtile .badge{position:absolute;top:4px;right:8px;margin:0}

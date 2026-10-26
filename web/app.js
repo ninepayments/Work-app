@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.51';
+const VERSION = '웹 0.0.52';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -303,7 +303,7 @@ async function logout() {
 // 휴대폰(아이폰)은 안드로이드 앱과 같은 화면: 아래 탭 5개(업무·프로젝트·채팅·일정·전체), 나머지 기능은 '전체' 탭 안에 있다.
 // PC(넓은 화면)는 토스포스 방식: 위쪽 가로줄에 주 메뉴, 왼쪽 위 ☰ 를 누르면 영역별 전체 메뉴가 펼쳐진다.
 const NAVPHONE = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['chat', '채팅', 'chat', ''], ['calendar', '일정', 'calendar', ''], ['all', '☰', 'all', '']];
-const NAVPC = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['chat', '채팅', 'chat', ''], ['calendar', '일정', 'calendar', ''], ['merchants', '가맹점', 'all', 'merchants'], ['logs', '응대 기록', 'all', 'logs'], ['memo', '메모', 'all', 'memo']];
+const NAVPC = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['calendar', '일정', 'calendar', ''], ['merchants', '가맹점', 'all', 'merchants'], ['logs', '응대 기록', 'all', 'logs'], ['memo', '메모', 'all', 'memo']];
 const isWide = () => window.innerWidth >= 900;
 if (window.nineWin) document.documentElement.classList.add('elec'); // PC 프로그램(제목줄 없는 창): 위쪽 검은 줄을 끌어 창을 옮긴다
 function newTaskCount() { return list('tasks').filter(t => t.assignee === S.uid && t.status === '지시됨').length + list('tasks').filter(t => t.preq && t.preq.stage === '발송함' && t.creator === S.uid).length; } // 물품요청이 발송되면 요청한 사람에게 '입고 확인' 알림
@@ -320,9 +320,11 @@ function render() {
   if (!S.me) { refreshMe(); if (!S.me) return; }
   if (S.me.active === false) { toast('사용이 중지된 계정입니다.'); return logout(); }
   const root = $('#root'); const wide = isWide(); if (!wide) S.menu = false;
+  if (wide && S.tab === 'chat') { LS('dock_' + S.uid, '1'); S.tab = 'task'; S.sub = ''; } // PC는 채팅 탭 대신 오른쪽 채팅창으로 (알림·프로필에서 대화 열기 등)
   const keepScroll = $('.scroll') ? $('.scroll').scrollTop : 0;
   const mb0 = $('#msgbox'), mbKeep = mb0 && S.mbRoom === S.room ? {top: mb0.scrollTop, bottom: mb0.scrollHeight - mb0.scrollTop - mb0.clientHeight < 120} : null;
   const act = document.activeElement; const focusId = act && act.id; const selPos = act && act.selectionStart; const focusVal = act && act.value;
+  if (S.room && S.me) markRead(S.room); // 보고 있는 방은 읽은 것으로 먼저 (숫자가 남지 않게)
   const badges = {task: newTaskCount(), all: unreadNotices(), chat: unreadTotal()};
   syncTitle(badges.task + badges.all + badges.chat); armBack();
   const k = S.sub || S.tab;
@@ -650,7 +652,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) flush
 function unreadMap() { const o = {}, since = {}; list('rooms').forEach(r => since[r.id] = readAt(r.id)); list('msgs').forEach(m => { if (since[m.room] != null && m.ts > since[m.room] && m.who !== S.uid) o[m.room] = (o[m.room] || 0) + 1; }); return o; }
 // 안 읽은 채팅 알림띠: 다른 화면을 보고 있어도 위쪽에 계속 떠 있고(읽을 때까지), 누르면 그 채팅방으로 간다. 알림 끈 방은 빼고 센다.
 function chatBarHTML() {
-  if (!S.me || S.tab === 'chat' || S.room || dockOn()) return ''; // 오른쪽 채팅창이 열려 있으면 거기서 보인다
+  if (!S.me || (S.tab === 'chat' && !isWide()) || S.room || dockOn()) return ''; // 오른쪽 채팅창이 열려 있으면 거기서 보인다
   const mu = mutedRooms(), since = {}; list('rooms').forEach(r => { if (!mu.includes(r.id)) since[r.id] = readAt(r.id); });
   let n = 0, last = null; list('msgs').forEach(m => { if (since[m.room] != null && m.ts > since[m.room] && m.who !== S.uid) { n++; if (!last || m.ts > last.ts) last = m; } });
   if (!n) return '';
@@ -658,9 +660,12 @@ function chatBarHTML() {
   return '<button class="chatbar" data-act="chatBar" data-arg="' + last.room + '"><span class="cb1">💬 안 읽은 채팅 <b>' + n + '</b></span><span class="cb2">' + esc((r ? roomTitle(r) + ' · ' : '') + uname(last.who) + ': ' + msgText(last)) + '</span><span class="cb3">보기 ›</span></button>';
 }
 // PC 프로그램(설치형)에서만: 오른쪽 위 ⋮ → 새로고침·다시시작·종료 / 창 최소화·창 줄이기(옮길 수 있는 작은 창)·크게보기(전체 모드) — 토스포스처럼
+// 창 줄이기: 두 화살표가 가운데로 마주봄 / 크게보기: 바깥으로 (토스포스와 같은 모양)
+const SV_IN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>';
+const SV_OUT = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
 ACT.pcWin = () => {
   if (!window.nineWin) return; const old = $('.pcwinpop'); if (old) { old.remove(); return; }
-  const it = [['reload', '⟳', '새로고침', '#1a9e5a'], ['restart', '↻', '다시시작', '#2f6fde'], ['quit', '⏻', '종료', '#d33'], ['min', '—', '창 최소화', ''], ['shrink', '⤡', '창 줄이기', ''], ['full', '⤢', '크게보기', '']];
+  const it = [['reload', '⟳', '새로고침', '#1a9e5a'], ['restart', '↻', '다시시작', '#2f6fde'], ['quit', '⏻', '종료', '#d33'], ['min', '—', '창 최소화', ''], ['shrink', SV_IN, '창 줄이기', ''], ['full', SV_OUT, '크게보기', '']];
   const p = document.createElement('div'); p.className = 'pcwinpop';
   p.innerHTML = it.map(([k, ic, lb, c]) => '<button type="button" data-k="' + k + '"><span class="ic"' + (c ? ' style="color:' + c + '"' : '') + '>' + ic + '</span>' + lb + '</button>').join('');
   document.body.appendChild(p);
@@ -671,9 +676,9 @@ ACT.pcWin = () => {
     else window.nineWin.act(b.dataset.k); };
 };
 // PC 오른쪽 채팅창(텔레그램 데스크톱처럼): 위쪽 💬 버튼으로 열고 닫는다. 다른 화면(가맹점 조회 등)을 보면서 채팅. 열림 여부는 이 PC에 기억.
-const dockOn = () => !!(S.me && isWide() && !S.menu && S.tab !== 'chat' && LS('dock_' + S.uid) === '1');
-ACT.dockToggle = () => { const on = LS('dock_' + S.uid) === '1'; LS('dock_' + S.uid, on ? '0' : '1'); if (on && S.tab !== 'chat') S.room = 0; if (!on && S.tab === 'chat') { S.tab = 'task'; S.sub = ''; } S.menu = false; render(); };
-ACT.chatBar = id => { if (LS('dock_' + S.uid) === '1' && isWide()) { S.menu = false; if (S.tab === 'chat') { S.tab = 'task'; S.sub = ''; } ACT.room(id); return; } S.tab = 'chat'; S.sub = ''; S.menu = false; ACT.room(id); };
+const dockOn = () => !!(S.me && isWide() && !S.menu && LS('dock_' + S.uid) === '1');
+ACT.dockToggle = () => { const on = LS('dock_' + S.uid) === '1'; LS('dock_' + S.uid, on ? '0' : '1'); if (on) S.room = 0; S.menu = false; render(); };
+ACT.chatBar = id => { if (isWide()) { LS('dock_' + S.uid, '1'); S.menu = false; ACT.room(id); return; } /* PC: 오른쪽 채팅창에서 그 방 */ S.tab = 'chat'; S.sub = ''; S.menu = false; ACT.room(id); };
 function unreadTotal() { if (!S.me) return 0; return Object.values(unreadMap()).reduce((a, b) => a + b, 0); }
 function unreadNotices() { return list('notices').filter(n => !(n.readBy || []).includes(S.uid)).length; }
 // 읽음 표시(카톡처럼): 이 방 사람 중 아직 안 읽은 사람 수. 각자 프로필의 rd{방: 시각}(웹·앱 v0.0.4 이상이 씀)으로 센다.
@@ -717,6 +722,12 @@ function viewChat(dock) { // dock: PC 오른쪽 채팅창(좁은 한 줄 모양)
     html += '<div class="m ' + (me ? 'me' : '') + '"><div>' + (me || room.dm ? '' : '<div class="who">' + esc(uname(m.who)) + '</div>') + '<div class="bub' + (m.kind === 'img' ? ' pic' : m.kind === 'stk' ? ' pic' : '') + '" data-mid="' + m.id + '">' + (m.rto ? '<div class="rto">' + esc((uname(m.rto.who)) + ': ' + (m.rto.text || '')) + '</div>' : '') + msgBody(m) + '</div>' + reactLine(m) + '<div class="who" style="' + (me ? 'text-align:right' : '') + '">' + (un && me ? '<b class="unr">' + un + '</b> ' : '') + pad(d.getHours()) + ':' + pad(d.getMinutes()) + (un && !me ? ' <b class="unr">' + un + '</b>' : '') + '</div></div></div>';
   });
   const roomView = '<div class="chatroom"><div class="hdr"><button data-act="leave">‹</button><div class="grow t1">' + esc(roomTitle(room)) + (room.grp ? ' <span class="sub">(' + (room.members || []).length + '명)</span>' : '') + '</div><button data-act="roomMute" title="이 채팅방 알림 소리" aria-label="이 채팅방 알림 소리 ' + (roomMuted(room.id) ? '켜기' : '끄기') + '">' + (roomMuted(room.id) ? '🔕' : '🔔') + '</button></div><div class="msgs" id="msgbox">' + (html || '<div class="empty">첫 메시지를 남겨 보세요.</div>') + '</div>' + (S.replyTo ? '<div class="replybar"><span>↩ ' + esc(uname(S.replyTo.who)) + '에게 답장: ' + esc(S.replyTo.text) + '</span><button data-act="replyOff" aria-label="답장 취소">✕</button></div>' : '') + stkPanelHTML() + '<div class="send"><button class="plus" data-act="attach" aria-label="사진·파일 보내기">+</button><textarea id="msgin" rows="1" placeholder="' + (coarse() ? '메시지 입력' : '메시지 입력 (Shift+Enter 줄바꿈)') + '" autocomplete="off"></textarea><button class="plus" data-act="stkPanel" aria-label="이모지·스티커">☺</button><button data-act="send">보내기</button></div><input type="file" id="fpick" hidden></div>';
+  if (dock) { // PC 오른쪽 채팅창: 텔레그램 PC처럼 왼쪽 세로줄에 대화방들, 오른쪽에 대화. 세로줄을 누르면 그 방으로 바뀐다
+    const bar = '<nav class="dockbar"><button class="dtile dlist" data-act="leave" title="대화방 목록"><span class="av">☰</span><span class="nm">목록</span></button>' +
+      rooms.map(x => { const r = x.r, c = un[r.id] || 0, t = roomTitle(r) || '?';
+        return '<button class="dtile' + (r.id === S.room ? ' on' : '') + '" data-act="room" data-arg="' + r.id + '" title="' + esc(t) + '"><span class="av">' + (r.dm && dmOther(r) ? avatarHTML(dmOther(r), 40) : esc(t.slice(0, 1))) + '</span><span class="nm">' + esc(t.length > 4 ? t.slice(0, 4) : t) + '</span>' + (c && !roomMuted(r.id) ? '<span class="badge">' + c + '</span>' : '') + '</button>'; }).join('') + '</nav>';
+    return '<div class="dockroom">' + bar + roomView + '</div>';
+  }
   return wide ? '<div class="chatwrap">' + lst + roomView + '</div>' : roomView;
 }
 const FRIENDS = ['나인이', '복이', '호야', '깍이', '도리'];
@@ -910,7 +921,7 @@ function viewMerchants() {
       const n = mNums(m), t = termsShort(m);
       return '<div class="card" data-act="merchant" data-arg="' + m.id + '"><div class="row"><div class="grow"><div class="t1">' + esc(m.name) + '</div><div class="t2">' + esc([m.bizno, n.phone || n.mobile, m.van].filter(Boolean).join(' · ') || '연락처 없음') + '</div>' + (m.addr ? '<div class="t2">' + esc(m.addr) + '</div>' : '') + (m.cend ? '<div class="t2">계약종료 ' + cendHTML(m) + '</div>' : '') + '</div>' + (t ? '<span class="chip">' + esc(t) + '</span>' : '') + '</div></div>';
     }).join('');
-  return '<h1>가맹점</h1><div class="sub">눌러서 보고' + (canEditMerchant() ? ', 오른쪽 아래 + 로 새로 등록해요.' : '요.') + '</div><input id="mq" data-q="mq" placeholder="🔍 상호·초성·사업자번호·전화" value="' + esc(S.mq) + '">' +
+  return '<h1>가맹점</h1><div class="sub">눌러서 보고' + (canEditMerchant() ? ', 오른쪽 아래 + 로 새로 등록해요.' : '요.') + '</div><input id="mq" data-q="mq" placeholder="🔍 상호·대표자·초성·사업자번호·전화·핸드폰" value="' + esc(S.mq) + '">' +
     '<div class="pills"><span class="sub" style="align-self:center;margin:0">계약 만료 예정</span>' + [[0, '전체'], [1, '1개월 이내'], [2, '2개월 이내'], [3, '3개월 이내'], [9, '만료됨']].map(([v, lb]) => '<button class="pill ' + (ef === v ? 'on' : '') + '" data-act="mExp" data-arg="' + v + '">' + lb + '</button>').join('') + '</div>' +
     '<div class="qres" data-for="mq"><div class="sub" style="margin-top:8px;font-weight:700">' + (S.mq.trim() || ef ? '찾은 가맹점 ' : '전체 ') + hits.length + '곳' + (ef ? ' · 계약종료일 빠른 순' : '') + '</div>' + rows +
     (hits.length > shown.length ? '<button class="btn full" data-act="mmore">더 보기 (' + (hits.length - shown.length) + '곳 남음)</button>' : '') +
@@ -1101,7 +1112,7 @@ function viewAllLogs() {
       (hits.length > 20 ? '<div class="sub">더 있어요. 검색어를 더 적어 주세요.</div>' : '') + (hits.length ? '' : '<div class="empty">찾는 가맹점이 없어요. (상호·초성·사업자번호로 찾아요)</div>');
   }
   const ls = list('mlogs').filter(g => kmatch(logAll(g), q)).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.created || '').localeCompare(a.created || ''));
-  return '<h1>가맹점 응대 기록</h1><div class="sub">상호·초성·사업자번호로 가맹점을 찾아 눌러서 기록을 보고·추가·수정해요.</div><input id="lmq" data-q="lmq" placeholder="🔍 상호·초성·사업자번호" value="' + esc(S.lmq) + '"><div class="qres" data-for="lmq">' + found + '</div>' +
+  return '<h1>가맹점 응대 기록</h1><div class="sub">상호·초성·사업자번호로 가맹점을 찾아 눌러서 기록을 보고·추가·수정해요.</div><input id="lmq" data-q="lmq" placeholder="🔍 상호·대표자·초성·사업자번호·전화" value="' + esc(S.lmq) + '"><div class="qres" data-for="lmq">' + found + '</div>' +
     '<h2>최근 기록</h2><input id="lq" data-q="lq" placeholder="가맹점·내용 검색 (초성 가능)" value="' + esc(q) + '"><div class="qres" data-for="lq"><div class="sub" style="margin-top:8px;font-weight:700">기록 ' + ls.length + '건 · 눌러서 수정</div>' +
     ls.slice(0, 100).map(g => logCard(g, 'editLog|' + g.id + '|' + g.merchant).replace('<span class="chip">' + esc(logKind(g.kind)) + '</span>', '<span class="chip">' + esc(logKind(g.kind)) + '</span> <b>' + esc(g.mname) + '</b>')).join('') + (ls.length > 100 ? '<div class="sub">최근 100건만 보여요.</div>' : '') + (ls.length ? '' : '<div class="empty">기록이 없어요.</div>') + '</div>';
 }
@@ -1622,8 +1633,8 @@ ACT.preqIn = id => {
 };
 
 // ---------- 가맹점 고르기 · 장비 고르기 (팝업 안에서 쓰는 조각) ----------
-const MP_FILL = '<div class="lb">가맹점 조회 (선택 · 고르면 거래처·전화·주소가 자동으로 채워져요)</div><div id="mpSel" class="sub" style="display:none"></div><input id="mpq" placeholder="🔍 상호·초성·사업자번호" autocomplete="off"><div id="mpl" class="picks"></div>';
-const MP_HTML = '<div class="lb">가맹점</div><div id="mpSel" class="sub">아직 고르지 않았어요. 아래에서 찾아 눌러 주세요.</div><input id="mpq" placeholder="🔍 상호·초성·사업자번호" autocomplete="off"><div id="mpl" class="picks"></div>';
+const MP_FILL = '<div class="lb">가맹점 조회 (선택 · 고르면 거래처·전화·주소가 자동으로 채워져요)</div><div id="mpSel" class="sub" style="display:none"></div><input id="mpq" placeholder="🔍 상호·대표자·초성·사업자번호·전화" autocomplete="off"><div id="mpl" class="picks"></div>';
+const MP_HTML = '<div class="lb">가맹점</div><div id="mpSel" class="sub">아직 고르지 않았어요. 아래에서 찾아 눌러 주세요.</div><input id="mpq" placeholder="🔍 상호·대표자·초성·사업자번호·전화" autocomplete="off"><div id="mpl" class="picks"></div>';
 function wireMerchantPicker(onPick) {
   S.mpNew = null; // '새 가맹점 등록' 버튼은 업무 요청 창에서만 (그 창이 다시 켠다)
   const q = $('#mpq'), l = $('#mpl');
@@ -2629,7 +2640,8 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
-  ['웹 0.0.51', '2026-10-26', ['전체 메뉴에 ‘채팅’ 묶음: 채팅 알림 및 소리 설정 / 업무 묶음: 업무 알림 및 소리 설정 (따로 분리)', '가맹점 찾기: 대표자명·전화번호·핸드폰번호(하이픈 없이도)로도 찾아요', 'PC(넓은 화면): 위쪽 ‘💬 채팅창’ 버튼으로 오른쪽에 채팅창을 열고 닫아요(텔레그램 데스크톱처럼) — 가맹점 조회 등 다른 화면을 보면서 채팅', 'PC 프로그램(0.0.8): ‘지금 업데이트’를 누르면 설치 파일을 받아 설치 창이 자동으로 열려요. 자동으로 못 받으면 ‘설치 파일 직접 받기’ 버튼']],
+  ['웹 0.0.52', '2026-10-26', ['PC 오른쪽 채팅창을 텔레그램 PC처럼: 처음엔 대화방 목록, 방에 들어가면 왼쪽 세로줄(대화방들)·오른쪽 대화. PC 위쪽 ‘채팅’ 메뉴는 없애고 ‘💬 채팅창’ 버튼으로', '⋮ 메뉴의 창 줄이기 아이콘을 화살표가 마주보는 모양으로']],
+  ['웹 0.0.51', '2026-10-26', ['전체 메뉴에 ‘채팅’ 묶음: 채팅 알림 및 소리 설정 / 업무 묶음: 업무 알림 및 소리 설정 (따로 분리)', '가맹점 찾기: 대표자명·전화번호·핸드폰번호(하이픈 없이도)로도 찾아요', 'PC(넓은 화면): 위쪽 ‘💬 채팅창’ 버튼으로 오른쪽에 채팅창을 열고 닫아요(텔레그램 데스크톱처럼) — 처음엔 대화방 목록, 방에 들어가면 왼쪽 세로줄에 대화방들·오른쪽에 대화(세로줄을 누르면 그 방으로). 위쪽 ‘채팅’ 메뉴는 없앴어요', 'PC 프로그램(0.0.8): ‘지금 업데이트’를 누르면 설치 파일을 받아 설치 창이 자동으로 열려요. 자동으로 못 받으면 ‘설치 파일 직접 받기’ 버튼']],
   ['웹 0.0.50', '2026-10-26', ['PC 프로그램 새 버전 안내가 이미 최신을 설치했는데도 뜨던 것 고침(설치된 버전을 확실히 읽어요)']],
   ['웹 0.0.49', '2026-10-26', ['업데이트는 위쪽 ‘새 버전 · 지금 업데이트’ 한 곳에서: 가벼운 업데이트는 새로고침, PC 프로그램 재설치가 필요하면 같은 버튼이 알아서 받아 덮어 설치하고 다시 켜요(PC 0.0.6부터)']],
   ['웹 0.0.48', '2026-10-26', ['PC 프로그램이 옛 버전이면 위쪽에 ‘PC 프로그램 새 버전’ 안내(눌러서 설치 파일 받기)', 'PC 프로그램(0.0.5): ⋮ → 창 최소화를 누르면 화면 구석에 바로가기 아이콘(위젯) — 끌어서 옮기고, 더블클릭하면 다시 열려요. 안 읽은 개수는 빨간 숫자']],
@@ -2691,7 +2703,7 @@ const WEB_MANUAL = [
   ['화면 구성', '휴대폰(아이폰): 안드로이드 앱과 같은 화면이에요. 아래 탭 업무·프로젝트·채팅·일정·전체, 나머지 기능은 전체 탭에 계정 → 회사 → 일 → 관리자 순서로 있어요.\nPC: 위쪽 가로줄이 주 메뉴(업무·프로젝트·채팅·일정·가맹점·응대 기록)예요. 왼쪽 위 ☰ 를 누르면 전체 메뉴가 펼쳐지고, ‘나인패밀리’를 누르면 홈(오늘 현황)으로 가요.\n전체 메뉴 위 기능 검색에 단어나 초성(예: ㅈㄱ)을 치면 기능을 바로 찾아요.\n안드로이드 앱·아이폰·PC 는 같은 서버를 써서, 어디서 고쳐도 다른 기기에 바로 보여요.'],
   ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 요청: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 요청할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.\n■ 용지신청·새 가맹점: 요청사항 위 ‘＋ 용지신청’을 누르면 칸에 들어가요(다시 누르면 빠짐). 완료하면 응대 기록 종류가 ‘용지신청’. 가맹점 조회에서 못 찾으면 ‘새 가맹점 등록’ → 찾던 상호·사업자번호가 채워지고, 저장하면 업무 창으로 돌아와 자동 연결돼요(권한·암호 필요).'],
   ['프로젝트', '+ 로 이름·마감일·메모·체크리스트(한 줄에 하나)·담당자를 넣어 만들어요.\n프로젝트를 눌러 항목을 체크하면 진행률이 자동으로 올라가고, ‘항목 추가’로 늘려요. 100%가 되면 ‘완료 되돌리기’로 진행중으로 돌릴 수 있어요.\n목록 위 전체·진행중·완료로 걸러 봐요.'],
-  ['채팅', '■ PC 오른쪽 채팅창: 위쪽 ‘💬 채팅창’ 버튼을 누르면 화면 오른쪽에 채팅이 열려요. 가맹점 조회 같은 다른 화면을 보면서 대화하고, 다시 누르면 닫혀요.\n■ 대화방을 열면 안 읽은 첫 글부터 보여요(‘여기까지 읽었어요’ 줄).\n■ 알림 받기: 전체 → 채팅 → ‘채팅 알림 및 소리 설정’에서 켜고 꺼요(업무 알림은 전체 → 업무 → ‘업무 알림 및 소리 설정’). 채팅 알림은 방마다 1개만 떠요.\n■ 안 읽은 채팅 알림띠: 다른 화면을 보고 있어도 위쪽에 ‘💬 안 읽은 채팅’ 띠가 읽을 때까지 떠 있어요. 누르면 그 채팅방으로 바로 가요(알림 끈 방은 빼요).\n■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 스크린샷: 대화방에서 Ctrl+V 로 붙여 넣으면 미리 보고 보내요(파일을 끌어다 놓아도 돼요).\n■ 줄바꿈: PC는 Shift+Enter, 휴대폰은 키보드 엔터(보내기는 버튼). 여러 줄이면 입력칸이 늘어나요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.\n■ 읽음 표시: 말풍선 시각 옆 노란 숫자 = 아직 안 읽은 사람 수. 모두 읽으면 숫자가 사라져요.'],
+  ['채팅', '■ PC 오른쪽 채팅창: 위쪽 ‘💬 채팅창’ 버튼을 누르면 화면 오른쪽에 대화방 목록이 열려요. 방에 들어가면 왼쪽 세로줄에 대화방들, 오른쪽에 대화가 보이고, 세로줄을 누르면 그 방으로 바뀌어요(☰ 목록으로 돌아가기). 가맹점 조회 같은 다른 화면을 보면서 대화하고, 다시 누르면 닫혀요. (PC에는 위쪽 ‘채팅’ 메뉴가 없어요)\n■ 대화방을 열면 안 읽은 첫 글부터 보여요(‘여기까지 읽었어요’ 줄).\n■ 알림 받기: 전체 → 채팅 → ‘채팅 알림 및 소리 설정’에서 켜고 꺼요(업무 알림은 전체 → 업무 → ‘업무 알림 및 소리 설정’). 채팅 알림은 방마다 1개만 떠요.\n■ 안 읽은 채팅 알림띠: 다른 화면을 보고 있어도 위쪽에 ‘💬 안 읽은 채팅’ 띠가 읽을 때까지 떠 있어요. 누르면 그 채팅방으로 바로 가요(알림 끈 방은 빼요).\n■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 스크린샷: 대화방에서 Ctrl+V 로 붙여 넣으면 미리 보고 보내요(파일을 끌어다 놓아도 돼요).\n■ 줄바꿈: PC는 Shift+Enter, 휴대폰은 키보드 엔터(보내기는 버튼). 여러 줄이면 입력칸이 늘어나요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.\n■ 읽음 표시: 말풍선 시각 옆 노란 숫자 = 아직 안 읽은 사람 수. 모두 읽으면 숫자가 사라져요.'],
   ['일정 (달력)', '■ 일요일·공휴일은 빨간색(공휴일 이름 표시, 2026~2028년), 토요일은 파란색이에요. ‹ › 로 달을 넘기고 ‘오늘’로 돌아와요.\n■ 날짜를 누르면 그날 일정과 기한이 있는 업무가 보이고, 아래 ‘다가오는 일정’에 앞으로의 일정이 날짜 순으로 나와요.\n■ 일정을 누르면 내용이 보이고, 가맹점이 연결된 일정은 ‘가맹점 정보 보기’로 바로 가요.\n■ 일정 추가·삭제는 최고관리자만 해요(+ 버튼). 가맹점을 고르면 장소에 주소가 들어가요. 일반 직원은 업무에 기한을 넣으면 달력에 표시돼요.'],
   ['가맹점', '■ 주소: 주소 칸(또는 ‘주소 검색’)을 누르면 인터넷 주소 검색처럼 도로명·지번·건물명으로 찾아 골라요. 고른 뒤 동·호수 같은 상세 주소를 이어 적어요.\n■ 검색: 상호, 초성(예: ㅅㅇㅍ), 사업자번호(- 없이도), 전화번호. 한글을 치는 중에도 바로 걸러져요. PC는 표로 보여요.\n■ 항목: 상호·사업자번호·전화번호·휴대폰번호·이메일·주소·VAN사·계약구분(임대면 월 CMS 금액, 판매면 판매 금액)·계약조건·등급 코드·메모. 칸마다 이름이 위에 있어요.\n■ 등급 코드(밴피 기준): 0 S·월 5만원 이상 / 1 A·3만원 이상 / 2 B·1만원 이상 / 3 C·1만원 미만 / 4 해지 / 5 신규 / 7 협력사.\n■ 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있어야 하고, 관리자가 수정 암호를 정해 두면 관리자도 암호를 넣어야 해요(한 번 넣으면 5분 동안 다시 묻지 않아요). 같은 사업자번호가 이미 있으면 등록할 때 알려 줘요.\n■ 삭제하면 목록에서만 사라지고 기록은 남아요(관리자가 복원 가능).\n■ 최고관리자는 가맹점 정보 창의 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.\n■ 계약기간·만료 예정: 등록·수정에 계약시작일·계약종료일. 목록 위 ‘계약 만료 예정’ 1·2·3개월 이내·만료됨을 누르면 그 가맹점만 종료일 빠른 순으로 보여요(검색과 같이 써요, 종료일이 빈 가맹점은 필터에서만 빠짐).\n■ VAN사: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG — 그 밖은 직접 입력하면 다음부터 목록에 같이 나와요.'],
   ['가맹점 응대 기록', '■ 가맹점을 열어 ‘+ 응대 기록 남기기’ → 날짜·종류(방문A/S·원격A/S·전화응대·기타)·요청사항·처리결과.\n■ 가맹점 창에서 종류 버튼과 날짜로 걸러 봐요.\n■ 전체 → 가맹점 응대 기록 조회: 상호·초성·사업자번호로 가맹점을 찾거나, 모든 가맹점의 최근 기록을 검색해요.\n■ 기록은 직원 누구나 고칠 수 있고 수정한 사람·시각이 남아요. 지우기는 쓴 사람과 최고관리자만 해요.'],
