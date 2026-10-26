@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.49';
+const VERSION = '웹 0.0.50';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -2622,6 +2622,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.50', '2026-10-26', ['PC 프로그램 새 버전 안내가 이미 최신을 설치했는데도 뜨던 것 고침(설치된 버전을 확실히 읽어요)']],
   ['웹 0.0.49', '2026-10-26', ['업데이트는 위쪽 ‘새 버전 · 지금 업데이트’ 한 곳에서: 가벼운 업데이트는 새로고침, PC 프로그램 재설치가 필요하면 같은 버튼이 알아서 받아 덮어 설치하고 다시 켜요(PC 0.0.6부터)']],
   ['웹 0.0.48', '2026-10-26', ['PC 프로그램이 옛 버전이면 위쪽에 ‘PC 프로그램 새 버전’ 안내(눌러서 설치 파일 받기)', 'PC 프로그램(0.0.5): ⋮ → 창 최소화를 누르면 화면 구석에 바로가기 아이콘(위젯) — 끌어서 옮기고, 더블클릭하면 다시 열려요. 안 읽은 개수는 빨간 숫자']],
   ['웹 0.0.47', '2026-10-26', ['PC 프로그램(0.0.4): 윈도우 제목줄 없이 전체 모드로 실행, 창 조작은 오른쪽 위 ⋮ 메뉴로. 창 줄이기 때는 위쪽 검은 줄을 끌어 옮겨요']],
@@ -2753,7 +2754,8 @@ const PC_LATEST_API = 'https://api.github.com/repos/ninepayments/Work-app/releas
 const verNum = v => String(v || '').replace(/^[^0-9]*/, '').split('.').map(Number).reduce((a, x) => a * 1000 + (x || 0), 0);
 async function checkPcVersion() {
   if (!/Electron/.test(navigator.userAgent)) return;
-  const mine = window.nineWin && window.nineWin.ver || '0.0.2'; // ⋮ 메뉴가 없는 옛 프로그램(0.0.2 이하)
+  const w = window.nineWin, ua = /NineFamilyPC\/([\d.]+)/.exec(navigator.userAgent); // 설치된 버전: 0.0.7부터 UA 꼬리, 그 전엔 있는 기능으로 짐작
+  const mine = ua ? ua[1] : w && w.ver ? w.ver : w && w.update ? '0.0.6' : w ? '0.0.5' : '0.0.2';
   try {
     const r = await (await fetch(PC_LATEST_API, {cache: 'no-store'})).json(); const t = String(r.tag_name || '');
     if (!t.startsWith('pc-v') || verNum(t) <= verNum(mine)) return;

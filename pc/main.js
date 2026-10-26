@@ -67,6 +67,7 @@ function createWindow() {
     if (widget) widget.webContents.send('nine-badge', badge);
   });
   win.on('session-end', () => { quitting = true; }); // 윈도우 끄기·로그아웃 때는 막지 않는다
+  win.webContents.setUserAgent(win.webContents.getUserAgent() + ' NineFamilyPC/' + app.getVersion()); // 웹이 설치된 PC 프로그램 버전을 알아보게
   win.loadURL(HOME);
   win.webContents.on('before-input-event', (e, i) => { // F5·Ctrl+R = 새 버전으로 새로고침 (메뉴줄이 없어서 직접 건다)
     if (i.type === 'keyDown' && (i.key === 'F5' || (i.control && i.key.toLowerCase() === 'r'))) { e.preventDefault(); win.webContents.reloadIgnoringCache(); }
