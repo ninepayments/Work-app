@@ -106,7 +106,7 @@ input[type=checkbox]{width:auto;margin:0}
 .fl{display:block;margin:12px 2px 0;font-size:12px;font-weight:700;color:var(--gray)}
 .fl+input,.fl+select,.fl+textarea{margin-top:4px}
 /* ---- 휴대폰: 앱과 같은 아래 탭 · 전체 탭 ---- */
-.back{border:0;background:none;color:var(--deep);font-weight:700;font-size:15px;padding:14px 0 0;cursor:pointer}
+.back{position:sticky;top:0;z-index:5;display:block;width:100%;text-align:left;border:0;background:#fff;color:var(--deep);font-weight:700;font-size:17px;padding:12px 0 8px;cursor:pointer}
 .prof{display:flex;cursor:pointer}
 .tile.big{width:48px;height:48px;border-radius:24px;font-size:18px}
 .msec h2{margin-top:18px}
