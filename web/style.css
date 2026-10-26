@@ -333,7 +333,8 @@ details.man[open]{padding-bottom:12px}
 .pcwinpop button:hover{background:#f3f4f6}.pcwinpop .ic{width:36px;height:36px;border-radius:50%;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:18px;color:#444}
 .unreadline{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--deep);font-size:12px;font-weight:700}.unreadline::before,.unreadline::after{content:"";flex:1;height:1px;background:#e2c46e}
 /* PC 프로그램(제목줄 없는 창): 위쪽 검은 줄을 끌어 옮긴다. 버튼·메뉴는 눌리게 */
-.elec .pctop{-webkit-app-region:drag;user-select:none}.elec .pctop button,.elec .pctop .logo,.elec .pctop .pcnav,.elec .pctop .me{-webkit-app-region:no-drag}
+.elec .pctop{-webkit-app-region:drag;user-select:none}.elec .pctop button,.elec .pctop .logo{-webkit-app-region:no-drag} /* 버튼 사이 빈 곳·이름 글자 쪽을 끌어 옮긴다(다른 모니터로) */
+.elec #updbar,.elec .pcwinpop,.elec #modal,.elec .toast,.elec .addrpop{-webkit-app-region:no-drag} /* 위쪽 줄에 겹쳐 뜨는 팝업은 눌리게 */
 /* PC 오른쪽 채팅창 */
 .dockwrap{display:flex;flex:1;min-height:0;height:100%}.dockmain{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;height:100%}
 .chatdock{width:470px;flex:none;border-left:1px solid #e5e2da;background:#fff;display:flex;flex-direction:column;height:100%;min-height:0;box-shadow:-4px 0 12px rgba(0,0,0,.04)}
