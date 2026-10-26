@@ -4,7 +4,6 @@
 const {app, BrowserWindow, shell, session, Menu, Tray, ipcMain, nativeImage, screen} = require('electron');
 const path = require('path');
 const fs = require('fs');
-const {spawn} = require('child_process');
 const SETUP_URL = 'https://github.com/ninepayments/Work-app/releases/latest/download/NineFamily-Setup.exe';
 
 const HOME = 'https://ninepayments.github.io/Work-app/';
@@ -94,25 +93,23 @@ ipcMain.on('nine-win', (e, k) => {
     win.setBounds({x: wa.x + Math.round((wa.width - w) / 2), y: wa.y + Math.round((wa.height - h) / 2), width: w, height: h});
   } else if (k === 'full') win.maximize();
 });
-// 새 버전 자동 설치: 최신 설치 파일을 받아 조용히(/S) 덮어 설치하고 다시 켠다(--force-run). 로그인·자료는 그대로.
+// 새 버전 설치: 브라우저와 같은 방식으로 최신 설치 파일을 받아(진행률 표시) 바로 실행 → 설치 창이 열린다(덮어 설치). 로그인·자료는 그대로.
 let updating = false;
-ipcMain.on('nine-update', async e => {
+ipcMain.on('nine-update', e => {
   if (!win || e.sender !== win.webContents || updating) return;
   updating = true;
   const send = (k, v) => { try { win.webContents.send('nine-upd', k, v); } catch (er) {} };
-  try {
-    const {net} = require('electron');
-    const r = await net.fetch(SETUP_URL);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const total = Number(r.headers.get('content-length')) || 0, chunks = []; let got = 0, last = -1;
-    const rd = r.body.getReader();
-    for (;;) { const {done, value} = await rd.read(); if (done) break; chunks.push(Buffer.from(value)); got += value.length; const pct = total ? Math.floor(got * 100 / total) : 0; if (pct !== last) { last = pct; send('progress', pct); } }
-    const exe = path.join(app.getPath('temp'), 'NineFamily-Setup-' + Date.now() + '.exe');
-    fs.writeFileSync(exe, Buffer.concat(chunks));
-    send('install', 0);
-    spawn(exe, ['/S', '--force-run'], {detached: true, stdio: 'ignore'}).unref(); // 설치 프로그램이 이 프로그램을 닫고 새로 깐 뒤 다시 켠다
-    setTimeout(quitAll, 800);
-  } catch (er) { updating = false; send('error', String(er && er.message || er)); }
+  const exe = path.join(app.getPath('temp'), 'NineFamily-Setup-' + Date.now() + '.exe');
+  session.defaultSession.once('will-download', (ev, item) => {
+    item.setSavePath(exe);
+    item.on('updated', () => { const t = item.getTotalBytes(); if (t) send('progress', Math.floor(item.getReceivedBytes() * 100 / t)); });
+    item.once('done', (ev2, state) => {
+      if (state !== 'completed') { updating = false; send('error', state === 'cancelled' ? '받기를 취소했어요' : '설치 파일을 받지 못했어요'); return; }
+      send('install', 0);
+      shell.openPath(exe).then(err => { if (err) { updating = false; send('error', err); } else setTimeout(quitAll, 1500); }); // 설치 창이 뜨면 이 프로그램은 꺼진다(파일을 바꿀 수 있게)
+    });
+  });
+  win.webContents.downloadURL(SETUP_URL);
 });
 ipcMain.handle('nine-win-state', e => ({full: !!(win && (win.isMaximized() || win.isFullScreen()))}));
 

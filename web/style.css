@@ -334,3 +334,10 @@ details.man[open]{padding-bottom:12px}
 .unreadline{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--deep);font-size:12px;font-weight:700}.unreadline::before,.unreadline::after{content:"";flex:1;height:1px;background:#e2c46e}
 /* PC 프로그램(제목줄 없는 창): 위쪽 검은 줄을 끌어 옮긴다. 버튼·메뉴는 눌리게 */
 .elec .pctop{-webkit-app-region:drag;user-select:none}.elec .pctop button,.elec .pctop .logo,.elec .pctop .pcnav,.elec .pctop .me{-webkit-app-region:no-drag}
+/* PC 오른쪽 채팅창 */
+.dockwrap{display:flex;flex:1;min-height:0;height:100%}.dockmain{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;height:100%}
+.chatdock{width:400px;flex:none;border-left:1px solid #e5e2da;background:#fff;display:flex;flex-direction:column;height:100%;min-height:0;box-shadow:-4px 0 12px rgba(0,0,0,.04)}
+.chatdock .chatlist{width:auto;border:0;padding:0 16px 20px;height:100%}.chatdock .chatroom{height:100%;min-height:0}
+.pctop .pcdock{position:relative;border:0;background:#3a3424;color:#fff;border-radius:10px;padding:0 14px;height:40px;font-size:14px;cursor:pointer;margin-right:4px;font-family:inherit}
+.pctop .pcdock.on{background:var(--gold);color:var(--dark);font-weight:700}.pctop .pcdock .badge{position:absolute;top:-6px;right:-6px;margin:0}
+.app.dockon~.fab{right:430px}
