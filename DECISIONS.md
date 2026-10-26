@@ -104,3 +104,4 @@
 - 2026-10-26: PC 창 옮기기 — 위쪽 줄 전체가 끌기 영역(버튼·로고만 제외), 겹쳐 뜨는 팝업(#updbar·⋮·모달·토스트·주소 검색)은 no-drag. 크게보기 = 지금 모니터에서 최대화.
 - 2026-10-26: PC 0.0.9 — 위쪽 줄 끌기를 JS(pointer)+ipc 'nine-move' 로: 버튼 위에서도 끌면 옮김(6px 이상 움직이면 클릭 취소), 전체 모드에서 끌면 작은 창이 되어 따라옴, 빈 곳 두 번 누르기 = 전체↔작은 창. 0.0.8 이하는 CSS 끌기 영역. 업데이트는 항상 최신(releases/latest)만 — 중간 버전 건너뛰어도 됨.
 - 2026-10-26: 수정 기간에는 배포마다 사용설명서(웹 WEB_MANUAL·앱 MANUAL)를 고치지 않는다. 변경 내역(CHANGELOG·WEB_CHANGES)·버전만 올리고, 설명서는 최종 정리 때 한꺼번에 ← 'MANUAL 매번 갱신' 규칙 일시 중지 (사용자 지시)
+- 2026-10-26: PC 설치 파일은 버전 붙은 이름(NineFamily-Setup-<버전>.exe)도 함께 올리고, 공유할 때는 그 링크(releases/download/pc-v<버전>/NineFamily-Setup-<버전>.exe)를 준다. 고정 이름(latest/download/NineFamily-Setup.exe)은 최신 받기·자동 업데이트용으로 유지.

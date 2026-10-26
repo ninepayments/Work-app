@@ -22,13 +22,17 @@ jobs:
           npm install --no-audit --no-fund
           npm run dist
           echo "VER=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+          V=$(node -p "require('./package.json').version")
+          cp dist/NineFamily-Setup.exe "dist/NineFamily-Setup-$V.exe" # 받는 사람이 버전을 알아보게 (고정 이름은 최신 받기·자동 업데이트용)
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: pc-v${{ env.VER }}
           target_commitish: ${{ github.sha }}
           name: 나인패밀리 PC 설치 파일 v${{ env.VER }}
-          files: pc/dist/NineFamily-Setup.exe
+          files: |
+            pc/dist/NineFamily-Setup.exe
+            pc/dist/NineFamily-Setup-${{ env.VER }}.exe
           make_latest: true
           body: |
             윈도우 PC용 나인패밀리 설치 파일입니다. 받아서 실행하면 바탕화면과 시작 메뉴에 '나인패밀리'가 생겨요.
