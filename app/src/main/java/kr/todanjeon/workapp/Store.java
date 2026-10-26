@@ -253,6 +253,14 @@ final class Store {
         return n;
     }
 
+    /** 메시지 id → 서버가 받은 시각. 없으면(예전 메시지) 보낸 기기 시각(ts) */
+    final Map<Integer, Long> serverTs = new java.util.concurrent.ConcurrentHashMap<>();
+
+    long msgOrder(JSONObject m) {
+        Long t = serverTs.get(m.optInt("id"));
+        return t != null ? t : m.optLong("ts");
+    }
+
     boolean isOnline() {
         return online;
     }
@@ -358,6 +366,17 @@ final class Store {
                         JSONObject o = new JSONObject(j);
                         int id = o.optInt("id");
                         String key = coll + "/" + id;
+                        if ("msgs".equals(coll)) { // 메시지 순서는 서버가 받은 시각으로 (기기 시계가 달라도 순서가 맞게)
+                            com.google.firebase.Timestamp sv = dc.getDocument().getTimestamp("s", com.google.firebase.firestore.DocumentSnapshot.ServerTimestampBehavior.ESTIMATE);
+                            if (sv != null) {
+                                long t = sv.toDate().getTime();
+                                Long old0 = serverTs.get(id);
+                                if (old0 == null || old0 != t) {
+                                    serverTs.put(id, t);
+                                    changed = true;
+                                }
+                            }
+                        }
                         if (j.equals(pushed.get(key))) continue;
                         pushed.put(key, j);
                         JSONObject old = byId(coll, id);
@@ -432,6 +451,7 @@ final class Store {
                     Map<String, Object> m = new HashMap<>();
                     m.put("j", s);
                     m.put("u", System.currentTimeMillis());
+                    if ("msgs".equals(coll) && pushed.get(key) == null) m.put("s", com.google.firebase.firestore.FieldValue.serverTimestamp());
                     String target = coll;
                     boolean priv = false;
                     if ("rooms".equals(coll) || "msgs".equals(coll)) { // 1:1 비공개: 참가자(mem)가 있으면 따로 보관
@@ -449,7 +469,8 @@ final class Store {
                         m.put("date", o.optString("date"));
                     }
                     if ("profiles".equals(coll)) m.put("who", (long) id); // 본인 문서만 고칠 수 있게 하는 표식
-                    Cloud.fs().collection(target).document(String.valueOf(id)).set(m);
+                    if ("msgs".equals(coll)) Cloud.fs().collection(target).document(String.valueOf(id)).set(m, com.google.firebase.firestore.SetOptions.merge()); // 반응·수정 때 서버 시각(s)을 지우지 않게
+                    else Cloud.fs().collection(target).document(String.valueOf(id)).set(m);
                     if (priv || "msgs".equals(coll) || "profiles".equals(coll)) { // 기록(audit)을 남기지 않는 컬렉션
                         pushed.put(key, s);
                         continue;

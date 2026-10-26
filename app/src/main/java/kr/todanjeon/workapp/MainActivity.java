@@ -5810,7 +5810,7 @@ public class MainActivity extends Activity {
             List<JSONObject> ms = new ArrayList<>();
             long clr = clearedAt(chatRoom);
             for (JSONObject m : store.list(store.arr("msgs"))) if (m.optInt("room") == chatRoom && m.optLong("ts") > clr) ms.add(m);
-            Collections.sort(ms, (a, b) -> Long.compare(a.optLong("ts"), b.optLong("ts")));
+            Collections.sort(ms, (a, b) -> Long.compare(store.msgOrder(a), store.msgOrder(b)));
             for (JSONObject m : ms) {
                 String t = msgText(m);
                 if (!t.isEmpty() && Kor.match(t, q)) roomHits.add(m.optInt("id"));
@@ -6314,6 +6314,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.26", "2026-10-26", "• 채팅 순서: 서버가 받은 순서대로 보여요 (폰·PC 시계가 조금 달라도 나중에 쓴 글이 아래로). 이번 버전부터 보내는 메시지에 적용돼요"},
             {"0.0.25", "2026-10-26", "• 상품 바코드: 상품 목록에 바코드 칸(상자에 찍힌 바코드, 스캔 가능). 입고 때 상품 바코드를 찍으면 그 상품이 골라지고, 재고 검색칸에 찍으면 그 상품이 걸러져요\n• 재고 업로드 양식에 '상품 바코드' 열 추가, 시리얼 열은 '시리얼(장비 바코드)'로 이름 정리"},
             {"0.0.24", "2026-10-26", "• 업무·일정 시간 고르기를 30분 단위로 (오전 9:00, 오전 9:30 …)"},
             {"0.0.23", "2026-10-25", "• 전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도)\n• 직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정·사진 바꾸기·권한 설정·완전 삭제가 따로\n• 권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기\n• 직책 목록(관리자가 추가·수정·삭제): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순\n• 직원 완전 삭제와 가맹점·재고·응대 기록·자료실 삭제에 삭제 비밀번호 (전체 → 관리자 → 삭제 비밀번호)"},
@@ -7044,7 +7045,7 @@ public class MainActivity extends Activity {
         List<JSONObject> ms = new ArrayList<>();
         long clr = clearedAt(chatRoom);
         for (JSONObject m : store.list(store.arr("msgs"))) if (m.optInt("room") == chatRoom && m.optLong("ts") > clr) ms.add(m);
-        Collections.sort(ms, (a, b) -> Long.compare(a.optLong("ts"), b.optLong("ts")));
+        Collections.sort(ms, (a, b) -> Long.compare(store.msgOrder(a), store.msgOrder(b)));
         msgViews.clear();
         if (ms.isEmpty()) {
             TextView e = Ui.text(this, "첫 메시지를 남겨 보세요.", 14, Ui.GRAY, false);

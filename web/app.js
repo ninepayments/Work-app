@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.36';
+const VERSION = '웹 0.0.37';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -74,13 +74,15 @@ function ser(o) { return JSON.stringify(o).replace(/\//g, '\\/'); } // 앱(org.j
 function put(coll, o) {
   S.data[coll].set(o.id, o);
   if (DEMO) return;
+  const isNew = !S.pushed[coll + '/' + o.id];
   const j = ser(o); S.pushed[coll + '/' + o.id] = j;
   const m = {j, u: Date.now()}; let target = coll, priv = false;
+  if (coll === 'msgs' && isNew) m.s = firebase.firestore.FieldValue.serverTimestamp(); // 메시지 순서는 서버가 받은 시각으로 (기기 시계가 달라도 순서가 맞게)
   if ((coll === 'rooms' || coll === 'msgs') && o.mem && o.mem.length) { m.mem = o.mem; target = coll === 'rooms' ? 'prooms' : 'pmsgs'; priv = true; }
   if (coll === 'profiles') m.who = o.id;
   if (coll === 'contracts' || coll === 'reports') { m.who = o.who; m.date = o.date || ''; } // 서버 규칙이 '내 것만'을 이걸로 판단
   S.pend = (S.pend || 0) + 1; syncBadge();
-  fs.collection(target).doc(String(o.id)).set(m).then(() => { S.pend--; syncBadge(); }).catch(e => { S.pend--; syncBadge(); toast('저장하지 못했어요: ' + (e.code || e.message)); });
+  fs.collection(target).doc(String(o.id)).set(m, coll === 'msgs' ? {merge: true} : {}).then(() => { S.pend--; syncBadge(); }).catch(e => { S.pend--; syncBadge(); toast('저장하지 못했어요: ' + (e.code || e.message)); });
   if (!(priv || coll === 'msgs' || coll === 'profiles')) fs.collection('audit').add({c: coll, id: o.id, by: S.uid, u: Date.now(), j}).catch(() => {});
 }
 // 화면 위쪽 작은 띠: 저장 중 / 인터넷 끊김(저장 대기) — 서버에 다 들어가면 사라진다
@@ -95,6 +97,8 @@ function create(coll, extra) { const o = Object.assign({id: nextId(), created: n
 
 // ---------- 서버 읽기 ----------
 let unsubs = [], renderT = 0;
+S.sts = {}; // 메시지 id → 서버가 받은 시각
+const msgOrder = m => S.sts[m.id] || m.ts || 0;
 function later() { clearTimeout(renderT); renderT = setTimeout(render, 200); }
 function attach() {
   const srvs = COLLS.map(c => [c, c]);
@@ -115,6 +119,7 @@ function attach() {
         const j = dc.doc.get('j'); if (!j) return;
         try {
           const o = JSON.parse(j);
+          if (coll === 'msgs') { const sv = dc.doc.get('s', {serverTimestamps: 'estimate'}); if (sv && sv.toMillis) { const t = sv.toMillis(); if (S.sts[o.id] !== t) { S.sts[o.id] = t; ch = true; } } }
           if (S.pushed[coll + '/' + o.id] === j) return;
           const prev = S.data[coll].get(o.id);
           S.pushed[coll + '/' + o.id] = j; S.data[coll].set(o.id, o); ch = true;
@@ -656,7 +661,7 @@ function viewChat() {
   const room = byId('rooms', S.room) || (S.dmDraft && S.dmDraft.id === S.room ? S.dmDraft : null);
   if (!room) { S.room = 0; return lst; }
   markRead(S.room);
-  const ms = list('msgs').filter(m => m.room === S.room).sort((a, b) => a.ts - b.ts);
+  const ms = list('msgs').filter(m => m.room === S.room).sort((a, b) => msgOrder(a) - msgOrder(b) || (a.ts || 0) - (b.ts || 0));
   const mem = roomMemberIds(room);
   let lastDay = '', html = '';
   ms.forEach(m => {
@@ -2514,6 +2519,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.37', '2026-10-26', ['채팅 순서: 서버가 받은 순서대로 보여요 (폰·PC 시계가 조금 달라도 나중에 쓴 글이 아래로). 이번 버전부터 보내는 메시지에 적용돼요']],
   ['웹 0.0.36', '2026-10-26', ['상품 바코드: 상품 목록에 바코드 칸(상자에 찍힌 바코드, 스캐너·카메라로 찍기). 입고 때 상품 바코드를 찍으면 그 상품이 골라지고, 재고 검색칸에 찍으면 그 상품이 걸러져요', '재고 업로드 양식에 ‘상품 바코드’ 열 추가, 시리얼 열은 ‘시리얼(장비 바코드)’로 이름 정리']],
   ['웹 0.0.35', '2026-10-26', ['업무·일정 시간 고르기를 30분 단위로 (오전 9:00, 오전 9:30 …)']],
   ['웹 0.0.34', '2026-10-25', ['전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도), 순서 정리', '직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정과 권한 설정 창이 따로', '권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기', '직책 목록(관리자가 추가·수정·삭제, 위에 있을수록 앞): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순 선택', '직원 완전 삭제(삭제 비밀번호 필요), 가맹점·재고·응대 기록·자료실 삭제도 삭제 비밀번호를 물어요 (☰ → 관리자 → 삭제 비밀번호)']],
