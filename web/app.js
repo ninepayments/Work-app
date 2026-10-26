@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.44';
+const VERSION = '웹 0.0.45';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -327,10 +327,10 @@ function render() {
   if (wide) {
     const top = '<header class="pctop"><button class="hamb" data-act="menu" aria-label="' + (S.menu ? '전체 메뉴 닫기' : '전체 메뉴 열기') + '">' + (S.menu ? '✕' : '☰') + (!S.menu && badges.all ? '<span class="badge">' + badges.all + '</span>' : '') + '</button>' +
       '<div class="logo" data-act="home" title="홈으로"><img src="icon-192.png" alt="">나인패밀리</div><nav class="pcnav">' + NAVPC.map(btn).join('') + '</nav>' +
-      '<button data-act="installApp" class="inst pcinst" style="display:none">PC에 설치하기</button><div class="me">' + esc(S.me.name) + ' · ' + (can('staff_manage') ? '관리자' : '직원') + '</div></header>';
-    root.innerHTML = '<div class="app pc">' + top + '<div class="main">' + body + '</div></div>' + (S.menu ? '' : fab());
+      '<button data-act="installApp" class="inst pcinst" style="display:none">PC에 설치하기</button><div class="me">' + esc(S.me.name) + ' · ' + (can('staff_manage') ? '관리자' : '직원') + '</div>' + (window.nineWin ? '<button class="pcwin" data-act="pcWin" aria-label="창 메뉴">⋮</button>' : '') + '</header>';
+    root.innerHTML = '<div class="app pc">' + top + chatBarHTML() + '<div class="main">' + body + '</div></div>' + (S.menu ? '' : fab());
   } else {
-    root.innerHTML = '<div class="app"><div class="main">' + body + '</div><nav class="nav">' + NAVPHONE.map(btn).join('') + '</nav></div>' + fab();
+    root.innerHTML = '<div class="app">' + chatBarHTML() + '<div class="main">' + body + '</div><nav class="nav">' + NAVPHONE.map(btn).join('') + '</nav></div>' + fab();
   }
   syncInstall();
   bind(root);
@@ -631,6 +631,29 @@ function flushRead() { // 서버에는 모아서 가끔만 쓴다
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) flushRead(); });
 function unreadMap() { const o = {}, since = {}; list('rooms').forEach(r => since[r.id] = readAt(r.id)); list('msgs').forEach(m => { if (since[m.room] != null && m.ts > since[m.room] && m.who !== S.uid) o[m.room] = (o[m.room] || 0) + 1; }); return o; }
+// 안 읽은 채팅 알림띠: 다른 화면을 보고 있어도 위쪽에 계속 떠 있고(읽을 때까지), 누르면 그 채팅방으로 간다. 알림 끈 방은 빼고 센다.
+function chatBarHTML() {
+  if (!S.me || S.tab === 'chat' || S.room) return '';
+  const mu = mutedRooms(), since = {}; list('rooms').forEach(r => { if (!mu.includes(r.id)) since[r.id] = readAt(r.id); });
+  let n = 0, last = null; list('msgs').forEach(m => { if (since[m.room] != null && m.ts > since[m.room] && m.who !== S.uid) { n++; if (!last || m.ts > last.ts) last = m; } });
+  if (!n) return '';
+  const r = byId('rooms', last.room);
+  return '<button class="chatbar" data-act="chatBar" data-arg="' + last.room + '"><span class="cb1">💬 안 읽은 채팅 <b>' + n + '</b></span><span class="cb2">' + esc((r ? roomTitle(r) + ' · ' : '') + uname(last.who) + ': ' + msgText(last)) + '</span><span class="cb3">보기 ›</span></button>';
+}
+// PC 프로그램(설치형)에서만: 오른쪽 위 ⋮ → 새로고침·다시시작·종료 / 창 최소화·창 줄이기(옮길 수 있는 작은 창)·크게보기(전체 모드) — 토스포스처럼
+ACT.pcWin = () => {
+  if (!window.nineWin) return; const old = $('.pcwinpop'); if (old) { old.remove(); return; }
+  const it = [['reload', '⟳', '새로고침', '#1a9e5a'], ['restart', '↻', '다시시작', '#2f6fde'], ['quit', '⏻', '종료', '#d33'], ['min', '—', '창 최소화', ''], ['shrink', '⤡', '창 줄이기', ''], ['full', '⤢', '크게보기', '']];
+  const p = document.createElement('div'); p.className = 'pcwinpop';
+  p.innerHTML = it.map(([k, ic, lb, c]) => '<button type="button" data-k="' + k + '"><span class="ic"' + (c ? ' style="color:' + c + '"' : '') + '>' + ic + '</span>' + lb + '</button>').join('');
+  document.body.appendChild(p);
+  const off = e => { if (!p.contains(e.target) && !e.target.closest('.pcwin')) { p.remove(); document.removeEventListener('mousedown', off, true); } };
+  document.addEventListener('mousedown', off, true);
+  p.onclick = e => { const b = e.target.closest('button'); if (!b) return; p.remove(); document.removeEventListener('mousedown', off, true);
+    if (b.dataset.k === 'quit') askConfirm('프로그램 종료', '나인패밀리를 완전히 종료할까요? (종료하면 새 업무·채팅 알림을 받을 수 없어요)', '종료', () => window.nineWin.act('quit'));
+    else window.nineWin.act(b.dataset.k); };
+};
+ACT.chatBar = id => { S.tab = 'chat'; S.sub = ''; S.menu = false; ACT.room(id); };
 function unreadTotal() { if (!S.me) return 0; return Object.values(unreadMap()).reduce((a, b) => a + b, 0); }
 function unreadNotices() { return list('notices').filter(n => !(n.readBy || []).includes(S.uid)).length; }
 // 읽음 표시(카톡처럼): 이 방 사람 중 아직 안 읽은 사람 수. 각자 프로필의 rd{방: 시각}(웹·앱 v0.0.4 이상이 씀)으로 센다.
@@ -937,7 +960,7 @@ function merchantForm(m) {
   m = m || {}; const nm = mNums(m);
   return mfield('f_n', '상호 (필수)', '예: 토스단말기 전문', m.name) + mfield('f_b', '사업자번호', '예: 123-45-67890', m.bizno) +
     mfield('f_p', '전화번호', '예: 062-123-4567', nm.phone, 'tel') + mfield('f_mo', '휴대폰번호', '예: 010-1234-5678', nm.mobile, 'tel') +
-    mfield('f_e', '이메일', '예: name@example.com', m.email, 'email') + mfield('f_a', '주소', '예: 광주 동구 …', m.addr) +
+    mfield('f_e', '이메일', '예: name@example.com', m.email, 'email') + '<label class="fl" for="f_a">주소</label><div class="addrrow"><input id="f_a" placeholder="🔍 눌러서 주소 검색" value="' + esc(m.addr || '') + '" autocomplete="off"><button type="button" class="btn tint" id="f_asr">주소 검색</button></div>' +
     '<label class="fl" for="f_v">VAN사</label><input id="f_v" list="vanlist" placeholder="목록에서 고르거나 직접 입력" value="' + esc(m.van || '') + '"><datalist id="vanlist">' + [...new Set(VANS.concat(list('merchants').map(x => (x.van || '').trim()).filter(Boolean)))].map(v => '<option value="' + esc(v) + '">').join('') + '</datalist>' +
     '<label class="fl" for="f_ct">계약구분</label><select id="f_ct">' + ['', '임대', '판매'].map(v => '<option value="' + v + '"' + ((m.ctype || '') === v ? ' selected' : '') + '>' + (v || '(선택 안 함)') + '</option>').join('') + '</select>' +
     '<label class="fl" for="f_ca" id="f_cal">' + amtLabel(m.ctype) + '</label><input id="f_ca" inputmode="numeric" placeholder="숫자만 (예: 30000)" value="' + esc(m.camt || '') + '">' +
@@ -946,7 +969,31 @@ function merchantForm(m) {
     '<label class="fl" for="f_g">등급 (0~3코드: 밴피 기준)</label><select id="f_g">' + GRADES.map((g, i) => g ? '<option value="' + i + '"' + (Number(m.grade == null ? 5 : m.grade) === i ? ' selected' : '') + '>' + gradeFull(i) + '</option>' : '').join('') + '</select>' +
     '<label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모">' + esc(m.memo || '') + '</textarea>';
 }
-function wireMerchantForm() { const ct = $('#f_ct'); if (ct) ct.onchange = () => { $('#f_cal').textContent = amtLabel(ct.value); }; }
+function wireMerchantForm() {
+  const ct = $('#f_ct'); if (ct) ct.onchange = () => { $('#f_cal').textContent = amtLabel(ct.value); };
+  const a = $('#f_a'), b = $('#f_asr'); if (!a || !b) return;
+  const go = () => addrSearch(v => { a.value = v + ' '; a.focus(); a.setSelectionRange(a.value.length, a.value.length); toast('동·호수 같은 상세 주소는 뒤에 이어 적어 주세요.'); });
+  b.onclick = go; a.onclick = () => { if (!a.value.trim()) go(); }; // 빈 칸을 누르면 바로 검색, 고른 뒤에는 상세 주소를 이어 적는다
+}
+// ---------- 주소 검색 (인터넷 주소 검색처럼: 도로명·지번·건물명으로 찾아 고르기 — 카카오 우편번호 서비스, 무료·키 없음) ----------
+let postcodeJs = null;
+function loadPostcode() {
+  if (window.daum && window.daum.Postcode) return Promise.resolve();
+  if (!postcodeJs) postcodeJs = new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js'; sc.onload = ok; sc.onerror = () => { postcodeJs = null; no(); }; document.head.appendChild(sc); });
+  return postcodeJs;
+}
+function addrOf(d) { const a = d.roadAddress || d.address || d.jibunAddress || ''; const x = []; if (d.bname && /[동로가]$/.test(d.bname)) x.push(d.bname); if (d.buildingName) x.push(d.buildingName); return a + (x.length ? ' (' + x.join(', ') + ')' : ''); }
+function addrSearch(onPick) { // 입력 팝업 위에 따로 띄운다(가맹점 등록 창은 그대로)
+  const ov = document.createElement('div'); ov.className = 'addrpop';
+  ov.innerHTML = '<div class="addrbox"><div class="row"><h3 class="grow" style="margin:0">주소 검색</h3><button type="button" class="btn" id="addrx" style="margin:0">닫기</button></div><div id="addrw"><div class="sub" style="padding:30px;text-align:center">주소 검색을 불러오는 중…</div></div></div>';
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.querySelector('#addrx').onclick = close; ov.onclick = e => { if (e.target === ov) close(); };
+  loadPostcode().then(() => {
+    const w = ov.querySelector('#addrw'); w.innerHTML = '';
+    new window.daum.Postcode({width: '100%', height: '100%', oncomplete: d => { close(); onPick(addrOf(d), d.zonecode || ''); }}).embed(w, {autoClose: false});
+  }).catch(() => { ov.querySelector('#addrw').innerHTML = '<div class="sub" style="padding:30px;text-align:center">주소 검색을 불러오지 못했어요. 인터넷 연결을 확인하거나 주소를 직접 적어 주세요.</div>'; });
+}
 function readMerchant(o) {
   o.name = $('#f_n').value.trim(); o.bizno = $('#f_b').value.trim(); o.phone = $('#f_p').value.trim(); o.mobile = $('#f_mo').value.trim(); o.email = $('#f_e').value.trim();
   o.addr = $('#f_a').value.trim(); o.van = $('#f_v').value.trim(); o.ctype = $('#f_ct').value; o.camt = $('#f_ca').value.replace(/[^0-9]/g, ''); o.terms = $('#f_t').value.trim(); o.grade = Number($('#f_g').value); o.memo = $('#f_m').value.trim(); o.cstart = $('#f_cs').value; o.cend = $('#f_ce').value; return o;
@@ -2559,6 +2606,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.45', '2026-10-26', ['안 읽은 채팅 알림띠: 다른 화면에서도 위쪽에 읽을 때까지 떠 있고, 누르면 그 채팅방으로', '가맹점 등록·수정의 주소 칸: 인터넷 주소 검색처럼 찾아서 고르기(도로명·지번·건물명), 상세 주소는 이어 적기', 'PC 프로그램(0.0.3): 오른쪽 위 ⋮ 메뉴(새로고침·다시시작·종료·창 최소화·창 줄이기·크게보기), X 를 누르면 트레이로 숨어 계속 실행']],
   ['웹 0.0.44', '2026-10-26', ['일일보고의 (자동 집계)는 쓰는 사람 화면에만 보여요. 대표님께 가는 보고(종합 보기)에는 직접 쓴 내용만 보여요']],
   ['웹 0.0.43', '2026-10-26', ['첫 화면(업무)에서 뒤로가기를 누르면 ‘종료할까요?’ 확인 창']],
   ['웹 0.0.42', '2026-10-26', ['휴대폰 화면 왼쪽 위 ‹ 뒤로 버튼: 하위 화면과 업무 외 탭에서 보이고, 아래로 내려도 위에 붙어 있어요. 누르면 한 단계씩 뒤로(하위 화면 → 전체 메뉴 → 업무)']],
@@ -2610,13 +2658,13 @@ function viewAbout() {
 }
 const WEB_MANUAL = [
   ['처음 시작하기 · 로그인', '1. 관리자가 등록해 둔 내 휴대폰 번호를 넣고 ‘인증번호 받기’를 눌러요.\n2. 문자로 온 인증번호 6자리를 넣으면 로그인돼요. 한 번 로그인하면 계속 유지돼요.\n※ ‘등록되지 않은 번호입니다’가 나오면 관리자에게 번호 등록을 요청하세요.\n※ 아이폰: Safari 로 열고 공유 버튼 → ‘홈 화면에 추가’ 하면 앱처럼 써요.\n※ 로그아웃: 전체(☰) → 계정 → 로그아웃.'],
-  ['PC 프로그램 (윈도우)', '전체(☰) → 계정 → ‘PC 프로그램 설치 파일 받기’로 설치 파일을 받아 실행하면 바탕화면·시작 메뉴에 ‘나인패밀리’가 생겨요.\n처음 실행할 때 ‘Windows의 PC 보호’ 창이 뜨면 ‘추가 정보’ → ‘실행’을 눌러 주세요.\n프로그램은 이 웹앱을 창으로 띄우는 방식이라, 업데이트가 나오면 다시 설치하지 않아도 다음에 켤 때(켜 둔 상태면 F5) 바로 바뀌어요.\n크롬·엣지에서 주소창 오른쪽 설치 버튼으로 설치해도 같아요.\n■ 왼쪽 칸: PC에서는 채팅처럼 화면 왼쪽에 바로가기 목록이 나와요. 업무는 기한 지난·내 업무, 프로젝트는 진행률, 일정은 오늘부터 일주일, 가맹점·응대 기록은 진행 중인 가맹점 업무와 최근 연 가맹점, ☰에서 연 화면은 같은 묶음 메뉴. 눌러서 바로 열어요.'],
+  ['PC 프로그램 (윈도우)', '■ 오른쪽 위 ⋮: 새로고침·다시시작·종료, 창 최소화·창 줄이기(작은 창 — 제목줄을 끌어 옮겨요)·크게보기(다시 전체 화면). ■ X 를 눌러도 꺼지지 않고 오른쪽 아래 트레이(시계 옆)에서 계속 실행돼 알림을 받아요. 트레이 아이콘을 누르면 다시 열리고, 완전히 끄려면 트레이 아이콘 오른쪽 클릭 → 종료 또는 ⋮ → 종료. (PC 설치 파일 0.0.3 이상)\n전체(☰) → 계정 → ‘PC 프로그램 설치 파일 받기’로 설치 파일을 받아 실행하면 바탕화면·시작 메뉴에 ‘나인패밀리’가 생겨요.\n처음 실행할 때 ‘Windows의 PC 보호’ 창이 뜨면 ‘추가 정보’ → ‘실행’을 눌러 주세요.\n프로그램은 이 웹앱을 창으로 띄우는 방식이라, 업데이트가 나오면 다시 설치하지 않아도 다음에 켤 때(켜 둔 상태면 F5) 바로 바뀌어요.\n크롬·엣지에서 주소창 오른쪽 설치 버튼으로 설치해도 같아요.\n■ 왼쪽 칸: PC에서는 채팅처럼 화면 왼쪽에 바로가기 목록이 나와요. 업무는 기한 지난·내 업무, 프로젝트는 진행률, 일정은 오늘부터 일주일, 가맹점·응대 기록은 진행 중인 가맹점 업무와 최근 연 가맹점, ☰에서 연 화면은 같은 묶음 메뉴. 눌러서 바로 열어요.'],
   ['화면 구성', '휴대폰(아이폰): 안드로이드 앱과 같은 화면이에요. 아래 탭 업무·프로젝트·채팅·일정·전체, 나머지 기능은 전체 탭에 계정 → 회사 → 일 → 관리자 순서로 있어요.\nPC: 위쪽 가로줄이 주 메뉴(업무·프로젝트·채팅·일정·가맹점·응대 기록)예요. 왼쪽 위 ☰ 를 누르면 전체 메뉴가 펼쳐지고, ‘나인패밀리’를 누르면 홈(오늘 현황)으로 가요.\n전체 메뉴 위 기능 검색에 단어나 초성(예: ㅈㄱ)을 치면 기능을 바로 찾아요.\n안드로이드 앱·아이폰·PC 는 같은 서버를 써서, 어디서 고쳐도 다른 기기에 바로 보여요.'],
   ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 요청: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 요청할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.\n■ 용지신청·새 가맹점: 요청사항 위 ‘＋ 용지신청’을 누르면 칸에 들어가요(다시 누르면 빠짐). 완료하면 응대 기록 종류가 ‘용지신청’. 가맹점 조회에서 못 찾으면 ‘새 가맹점 등록’ → 찾던 상호·사업자번호가 채워지고, 저장하면 업무 창으로 돌아와 자동 연결돼요(권한·암호 필요).'],
   ['프로젝트', '+ 로 이름·마감일·메모·체크리스트(한 줄에 하나)·담당자를 넣어 만들어요.\n프로젝트를 눌러 항목을 체크하면 진행률이 자동으로 올라가고, ‘항목 추가’로 늘려요. 100%가 되면 ‘완료 되돌리기’로 진행중으로 돌릴 수 있어요.\n목록 위 전체·진행중·완료로 걸러 봐요.'],
-  ['채팅', '■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 스크린샷: 대화방에서 Ctrl+V 로 붙여 넣으면 미리 보고 보내요(파일을 끌어다 놓아도 돼요).\n■ 줄바꿈: PC는 Shift+Enter, 휴대폰은 키보드 엔터(보내기는 버튼). 여러 줄이면 입력칸이 늘어나요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.\n■ 읽음 표시: 말풍선 시각 옆 노란 숫자 = 아직 안 읽은 사람 수. 모두 읽으면 숫자가 사라져요.'],
+  ['채팅', '■ 안 읽은 채팅 알림띠: 다른 화면을 보고 있어도 위쪽에 ‘💬 안 읽은 채팅’ 띠가 읽을 때까지 떠 있어요. 누르면 그 채팅방으로 바로 가요(알림 끈 방은 빼요).\n■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 스크린샷: 대화방에서 Ctrl+V 로 붙여 넣으면 미리 보고 보내요(파일을 끌어다 놓아도 돼요).\n■ 줄바꿈: PC는 Shift+Enter, 휴대폰은 키보드 엔터(보내기는 버튼). 여러 줄이면 입력칸이 늘어나요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.\n■ 읽음 표시: 말풍선 시각 옆 노란 숫자 = 아직 안 읽은 사람 수. 모두 읽으면 숫자가 사라져요.'],
   ['일정 (달력)', '■ 일요일·공휴일은 빨간색(공휴일 이름 표시, 2026~2028년), 토요일은 파란색이에요. ‹ › 로 달을 넘기고 ‘오늘’로 돌아와요.\n■ 날짜를 누르면 그날 일정과 기한이 있는 업무가 보이고, 아래 ‘다가오는 일정’에 앞으로의 일정이 날짜 순으로 나와요.\n■ 일정을 누르면 내용이 보이고, 가맹점이 연결된 일정은 ‘가맹점 정보 보기’로 바로 가요.\n■ 일정 추가·삭제는 최고관리자만 해요(+ 버튼). 가맹점을 고르면 장소에 주소가 들어가요. 일반 직원은 업무에 기한을 넣으면 달력에 표시돼요.'],
-  ['가맹점', '■ 검색: 상호, 초성(예: ㅅㅇㅍ), 사업자번호(- 없이도), 전화번호. 한글을 치는 중에도 바로 걸러져요. PC는 표로 보여요.\n■ 항목: 상호·사업자번호·전화번호·휴대폰번호·이메일·주소·VAN사·계약구분(임대면 월 CMS 금액, 판매면 판매 금액)·계약조건·등급 코드·메모. 칸마다 이름이 위에 있어요.\n■ 등급 코드(밴피 기준): 0 S·월 5만원 이상 / 1 A·3만원 이상 / 2 B·1만원 이상 / 3 C·1만원 미만 / 4 해지 / 5 신규 / 7 협력사.\n■ 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있어야 하고, 관리자가 수정 암호를 정해 두면 관리자도 암호를 넣어야 해요(한 번 넣으면 5분 동안 다시 묻지 않아요). 같은 사업자번호가 이미 있으면 등록할 때 알려 줘요.\n■ 삭제하면 목록에서만 사라지고 기록은 남아요(관리자가 복원 가능).\n■ 최고관리자는 가맹점 정보 창의 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.\n■ 계약기간·만료 예정: 등록·수정에 계약시작일·계약종료일. 목록 위 ‘계약 만료 예정’ 1·2·3개월 이내·만료됨을 누르면 그 가맹점만 종료일 빠른 순으로 보여요(검색과 같이 써요, 종료일이 빈 가맹점은 필터에서만 빠짐).\n■ VAN사: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG — 그 밖은 직접 입력하면 다음부터 목록에 같이 나와요.'],
+  ['가맹점', '■ 주소: 주소 칸(또는 ‘주소 검색’)을 누르면 인터넷 주소 검색처럼 도로명·지번·건물명으로 찾아 골라요. 고른 뒤 동·호수 같은 상세 주소를 이어 적어요.\n■ 검색: 상호, 초성(예: ㅅㅇㅍ), 사업자번호(- 없이도), 전화번호. 한글을 치는 중에도 바로 걸러져요. PC는 표로 보여요.\n■ 항목: 상호·사업자번호·전화번호·휴대폰번호·이메일·주소·VAN사·계약구분(임대면 월 CMS 금액, 판매면 판매 금액)·계약조건·등급 코드·메모. 칸마다 이름이 위에 있어요.\n■ 등급 코드(밴피 기준): 0 S·월 5만원 이상 / 1 A·3만원 이상 / 2 B·1만원 이상 / 3 C·1만원 미만 / 4 해지 / 5 신규 / 7 협력사.\n■ 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있어야 하고, 관리자가 수정 암호를 정해 두면 관리자도 암호를 넣어야 해요(한 번 넣으면 5분 동안 다시 묻지 않아요). 같은 사업자번호가 이미 있으면 등록할 때 알려 줘요.\n■ 삭제하면 목록에서만 사라지고 기록은 남아요(관리자가 복원 가능).\n■ 최고관리자는 가맹점 정보 창의 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.\n■ 계약기간·만료 예정: 등록·수정에 계약시작일·계약종료일. 목록 위 ‘계약 만료 예정’ 1·2·3개월 이내·만료됨을 누르면 그 가맹점만 종료일 빠른 순으로 보여요(검색과 같이 써요, 종료일이 빈 가맹점은 필터에서만 빠짐).\n■ VAN사: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG — 그 밖은 직접 입력하면 다음부터 목록에 같이 나와요.'],
   ['가맹점 응대 기록', '■ 가맹점을 열어 ‘+ 응대 기록 남기기’ → 날짜·종류(방문A/S·원격A/S·전화응대·기타)·요청사항·처리결과.\n■ 가맹점 창에서 종류 버튼과 날짜로 걸러 봐요.\n■ 전체 → 가맹점 응대 기록 조회: 상호·초성·사업자번호로 가맹점을 찾거나, 모든 가맹점의 최근 기록을 검색해요.\n■ 기록은 직원 누구나 고칠 수 있고 수정한 사람·시각이 남아요. 지우기는 쓴 사람과 최고관리자만 해요.'],
   ['재고 · 바코드', '■ 입고(＋ 입고 또는 오른쪽 아래 +): 모델명, 시리얼(한 줄에 하나 — 스캐너로 계속 찍으면 여러 대가 한 번에), 시리얼 없는 물품은 수량, 안전재고, 입고 단가(실적 권한자).\n■ 출고(− 출고): 계약 없이 나가는 장비 — 반품(공급처로)·불량·폐기·A/S 교체·분실·기타 중 사유를 고르고, 재고에서 찾거나 스캐너로 찍어 담아요. 시리얼 없는 물품은 수량을 적어요. A/S 교체는 가맹점을 연결할 수 있어요. 계약으로 나가는 장비는 지금처럼 ‘계약’에서 고릅니다.\n■ 수량 정정(재고 조사): 창고에서 센 실제 수량을 적고, 시리얼 장비는 없는 것만 체크를 꺼요(스캐너로 찍으면 ‘확인’ 표시). 사유를 적으면 차이만큼 바로잡고 이력에 남아요.\n■ 이력: 재고 화면의 ‘이력’ 또는 전체 → 일 → 재고 이력. 입고·출고·계약 출고·정정이 날짜·직원·메모와 함께 시간 순으로 나와요. 장비를 누르면 그 장비의 이력도 볼 수 있어요.\n■ 삭제는 잘못 넣은 것을 지울 때만 쓰세요(이력이 안 남음).\n■ 바코드: PC는 USB·블루투스 스캐너로 찍으면 바로 입력돼요. 검색칸에 시리얼을 찍으면 그 장비가 바로 열려요. 휴대폰은 📷 버튼으로 카메라 스캔(처음에 카메라 허용).\n■ 모델별로 재고·출고중 수량이 보이고, 안전재고보다 적으면 빨간색으로 알려요.\n■ 시리얼 줄을 눌러 수정·삭제, 실적 권한자는 입고·출고 단가와 보유 재고 자산을 봐요.\n■ 순서: 재고 → (계약에서 고르면) 출고중 → (설치 완료하면) 재고에서 빠짐.\n■ 보관지: 본사·광주지사. 입고할 때 보관지를 고르고, 위 ‘보관지’ 버튼으로 나눠 봐요. 장비를 눌러 보관지를 바꾸면 ‘이동’으로 이력에 남아요(예전 재고는 본사로 잡혀 있어요).\n■ 물품요청(지사 → 본사): 재고 화면 아래 또는 ☰ → 업무 → 물품요청. 품목·수량·받을 곳·본사 담당자를 적어 보내면 담당자 업무에 알림이 가요. 담당자가 ‘주문함’ → ‘발송(발주처리)’(송장 메모)을 누르면, 요청한 사람에게 ‘입고 확인’ 알림이 가요. 물건을 받고 ‘입고 확인’에서 받은 수량·시리얼을 적으면 받은 곳 재고에 바로 들어가요. 안 되면 담당자가 ‘반려’(사유).'],
   ['계약 · 입금', '■ 신규 계약 올리기: 가맹점 찾기 → 결제 연동(VAN/PG·업체명) → 구분(판매·CMS·렌탈)과 금액 → 나가는 장비(재고에서 고르기·스캔·직접 입력) → 장비 메모 → 계약일·만료일(+12/24/36개월 버튼).\n■ 계약 관리: 만료 3개월 이내 계약이 위에 빨간 D-day 로 나와요. 계약을 눌러 장비 추가, ‘설치 완료’(장비가 재고에서 빠짐). 실적 권한이 없으면 내가 올린 계약만 보여요.\n■ 입금 확인: + 로 종류·금액·가맹점·메모를 올리면 ‘입금확인’ 채팅방에 알림이 가고, 확인한 사람이 ‘확인 처리’를 눌러요.'],

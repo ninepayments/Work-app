@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>주소 검색</title>
+<style>html,body{margin:0;height:100%;font-family:sans-serif}#wrap{position:absolute;inset:0}#msg{padding:30px;text-align:center;color:#777}</style>
+</head><body><div id="wrap"><div id="msg">주소 검색을 불러오는 중…</div></div>
+<!-- 안드로이드 앱의 주소 검색 창(WebView)이 여는 페이지. 고르면 window.NineAddr.pick(주소, 우편번호) 로 앱에 돌려준다. -->
+<script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+<script>
+function addrOf(d) { var a = d.roadAddress || d.address || d.jibunAddress || ''; var x = []; if (d.bname && /[동로가]$/.test(d.bname)) x.push(d.bname); if (d.buildingName && d.apartment === 'Y') x.push(d.buildingName); else if (d.buildingName) x.push(d.buildingName); return a + (x.length ? ' (' + x.join(', ') + ')' : ''); }
+try {
+  document.getElementById('wrap').innerHTML = '';
+  new daum.Postcode({width: '100%', height: '100%', oncomplete: function (d) { if (window.NineAddr) window.NineAddr.pick(addrOf(d), d.zonecode || ''); }}).embed(document.getElementById('wrap'));
+} catch (e) { document.getElementById('wrap').innerHTML = '<div id="msg">주소 검색을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.</div>'; }
+</script></body></html>
