@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.47';
+const VERSION = '웹 0.0.48';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -332,7 +332,7 @@ function render() {
     const top = '<header class="pctop"><button class="hamb" data-act="menu" aria-label="' + (S.menu ? '전체 메뉴 닫기' : '전체 메뉴 열기') + '">' + (S.menu ? '✕' : '☰') + (!S.menu && badges.all ? '<span class="badge">' + badges.all + '</span>' : '') + '</button>' +
       '<div class="logo" data-act="home" title="홈으로"><img src="icon-192.png" alt="">나인패밀리</div><nav class="pcnav">' + NAVPC.map(btn).join('') + '</nav>' +
       '<button data-act="installApp" class="inst pcinst" style="display:none">PC에 설치하기</button><div class="me">' + esc(S.me.name) + ' · ' + (can('staff_manage') ? '관리자' : '직원') + '</div>' + (window.nineWin ? '<button class="pcwin" data-act="pcWin" aria-label="창 메뉴">⋮</button>' : '') + '</header>';
-    root.innerHTML = '<div class="app pc">' + top + chatBarHTML() + '<div class="main">' + body + '</div></div>' + (S.menu ? '' : fab());
+    root.innerHTML = '<div class="app pc">' + top + (S.pcNew ? '<button class="chatbar pcnew" data-act="pcUpdate"><span class="cb1">💻 PC 프로그램 새 버전 ' + esc(S.pcNew) + '</span><span class="cb2">창 모양·⋮ 메뉴·트레이·바로가기 아이콘은 설치 파일을 다시 깔아야 바뀌어요</span><span class="cb3">설치 파일 받기 ›</span></button>' : '') + chatBarHTML() + '<div class="main">' + body + '</div></div>' + (S.menu ? '' : fab());
   } else {
     root.innerHTML = '<div class="app">' + chatBarHTML() + '<div class="main">' + body + '</div><nav class="nav">' + NAVPHONE.map(btn).join('') + '</nav></div>' + fab();
   }
@@ -2622,6 +2622,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.48', '2026-10-26', ['PC 프로그램이 옛 버전이면 위쪽에 ‘PC 프로그램 새 버전’ 안내(눌러서 설치 파일 받기)', 'PC 프로그램(0.0.5): ⋮ → 창 최소화를 누르면 화면 구석에 바로가기 아이콘(위젯) — 끌어서 옮기고, 더블클릭하면 다시 열려요. 안 읽은 개수는 빨간 숫자']],
   ['웹 0.0.47', '2026-10-26', ['PC 프로그램(0.0.4): 윈도우 제목줄 없이 전체 모드로 실행, 창 조작은 오른쪽 위 ⋮ 메뉴로. 창 줄이기 때는 위쪽 검은 줄을 끌어 옮겨요']],
   ['웹 0.0.46', '2026-10-26', ['알림 및 소리 설정에 ‘업무 알림 받기’·‘채팅 알림 받기’ 켜기·끄기', '채팅 알림은 방마다 1개만(새 글이 오면 그 방 알림이 바뀌어요)', '대화방을 열면 안 읽은 첫 글부터 보여요(‘여기까지 읽었어요’ 줄), 위로 올려 읽는 중에는 새 글이 와도 아래로 끌려가지 않아요']],
   ['웹 0.0.45', '2026-10-26', ['안 읽은 채팅 알림띠: 다른 화면에서도 위쪽에 읽을 때까지 떠 있고, 누르면 그 채팅방으로', '가맹점 등록·수정의 주소 칸: 인터넷 주소 검색처럼 찾아서 고르기(도로명·지번·건물명), 상세 주소는 이어 적기', 'PC 프로그램(0.0.3): 오른쪽 위 ⋮ 메뉴(새로고침·다시시작·종료·창 최소화·창 줄이기·크게보기), X 를 누르면 트레이로 숨어 계속 실행']],
@@ -2676,7 +2677,7 @@ function viewAbout() {
 }
 const WEB_MANUAL = [
   ['처음 시작하기 · 로그인', '1. 관리자가 등록해 둔 내 휴대폰 번호를 넣고 ‘인증번호 받기’를 눌러요.\n2. 문자로 온 인증번호 6자리를 넣으면 로그인돼요. 한 번 로그인하면 계속 유지돼요.\n※ ‘등록되지 않은 번호입니다’가 나오면 관리자에게 번호 등록을 요청하세요.\n※ 아이폰: Safari 로 열고 공유 버튼 → ‘홈 화면에 추가’ 하면 앱처럼 써요.\n※ 로그아웃: 전체(☰) → 계정 → 로그아웃.'],
-  ['PC 프로그램 (윈도우)', '■ 윈도우 제목줄 없이 전체 모드로 실행돼요. 오른쪽 위 ⋮: 새로고침·다시시작·종료, 창 최소화·창 줄이기(작은 창 — 위쪽 검은 줄을 끌어 옮기고, 가장자리를 끌어 크기 조절)·크게보기(다시 전체 모드). ■ X 를 눌러도 꺼지지 않고 오른쪽 아래 트레이(시계 옆)에서 계속 실행돼 알림을 받아요. 트레이 아이콘을 누르면 다시 열리고, 완전히 끄려면 트레이 아이콘 오른쪽 클릭 → 종료 또는 ⋮ → 종료. (PC 설치 파일 0.0.4 이상)\n전체(☰) → 계정 → ‘PC 프로그램 설치 파일 받기’로 설치 파일을 받아 실행하면 바탕화면·시작 메뉴에 ‘나인패밀리’가 생겨요.\n처음 실행할 때 ‘Windows의 PC 보호’ 창이 뜨면 ‘추가 정보’ → ‘실행’을 눌러 주세요.\n프로그램은 이 웹앱을 창으로 띄우는 방식이라, 업데이트가 나오면 다시 설치하지 않아도 다음에 켤 때(켜 둔 상태면 F5) 바로 바뀌어요.\n크롬·엣지에서 주소창 오른쪽 설치 버튼으로 설치해도 같아요.\n■ 왼쪽 칸: PC에서는 채팅처럼 화면 왼쪽에 바로가기 목록이 나와요. 업무는 기한 지난·내 업무, 프로젝트는 진행률, 일정은 오늘부터 일주일, 가맹점·응대 기록은 진행 중인 가맹점 업무와 최근 연 가맹점, ☰에서 연 화면은 같은 묶음 메뉴. 눌러서 바로 열어요.'],
+  ['PC 프로그램 (윈도우)', '■ 윈도우 제목줄 없이 전체 모드로 실행돼요. 오른쪽 위 ⋮: 새로고침·다시시작·종료, 창 최소화(화면 구석에 바로가기 아이콘 — 끌어서 옮기고 더블클릭하면 다시 열려요, 안 읽은 개수는 빨간 숫자)·창 줄이기(작은 창 — 위쪽 검은 줄을 끌어 옮기고, 가장자리를 끌어 크기 조절)·크게보기(다시 전체 모드). ■ X 를 눌러도 꺼지지 않고 오른쪽 아래 트레이(시계 옆)에서 계속 실행돼 알림을 받아요. 트레이 아이콘을 누르면 다시 열리고, 완전히 끄려면 트레이 아이콘 오른쪽 클릭 → 종료 또는 ⋮ → 종료. (PC 설치 파일 0.0.5 이상 — 옛 버전이면 위쪽에 새 버전 안내가 떠요)\n전체(☰) → 계정 → ‘PC 프로그램 설치 파일 받기’로 설치 파일을 받아 실행하면 바탕화면·시작 메뉴에 ‘나인패밀리’가 생겨요.\n처음 실행할 때 ‘Windows의 PC 보호’ 창이 뜨면 ‘추가 정보’ → ‘실행’을 눌러 주세요.\n프로그램은 이 웹앱을 창으로 띄우는 방식이라, 업데이트가 나오면 다시 설치하지 않아도 다음에 켤 때(켜 둔 상태면 F5) 바로 바뀌어요.\n크롬·엣지에서 주소창 오른쪽 설치 버튼으로 설치해도 같아요.\n■ 왼쪽 칸: PC에서는 채팅처럼 화면 왼쪽에 바로가기 목록이 나와요. 업무는 기한 지난·내 업무, 프로젝트는 진행률, 일정은 오늘부터 일주일, 가맹점·응대 기록은 진행 중인 가맹점 업무와 최근 연 가맹점, ☰에서 연 화면은 같은 묶음 메뉴. 눌러서 바로 열어요.'],
   ['화면 구성', '휴대폰(아이폰): 안드로이드 앱과 같은 화면이에요. 아래 탭 업무·프로젝트·채팅·일정·전체, 나머지 기능은 전체 탭에 계정 → 회사 → 일 → 관리자 순서로 있어요.\nPC: 위쪽 가로줄이 주 메뉴(업무·프로젝트·채팅·일정·가맹점·응대 기록)예요. 왼쪽 위 ☰ 를 누르면 전체 메뉴가 펼쳐지고, ‘나인패밀리’를 누르면 홈(오늘 현황)으로 가요.\n전체 메뉴 위 기능 검색에 단어나 초성(예: ㅈㄱ)을 치면 기능을 바로 찾아요.\n안드로이드 앱·아이폰·PC 는 같은 서버를 써서, 어디서 고쳐도 다른 기기에 바로 보여요.'],
   ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 요청: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 요청할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.\n■ 용지신청·새 가맹점: 요청사항 위 ‘＋ 용지신청’을 누르면 칸에 들어가요(다시 누르면 빠짐). 완료하면 응대 기록 종류가 ‘용지신청’. 가맹점 조회에서 못 찾으면 ‘새 가맹점 등록’ → 찾던 상호·사업자번호가 채워지고, 저장하면 업무 창으로 돌아와 자동 연결돼요(권한·암호 필요).'],
   ['프로젝트', '+ 로 이름·마감일·메모·체크리스트(한 줄에 하나)·담당자를 넣어 만들어요.\n프로젝트를 눌러 항목을 체크하면 진행률이 자동으로 올라가고, ‘항목 추가’로 늘려요. 100%가 되면 ‘완료 되돌리기’로 진행중으로 돌릴 수 있어요.\n목록 위 전체·진행중·완료로 걸러 봐요.'],
@@ -2746,6 +2747,20 @@ function formModal(title, inner, onOk, okLabel) {
 let installEv = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEv = e; syncInstall(); });
 window.addEventListener('appinstalled', () => { installEv = null; syncInstall(); toast('설치했어요. 바탕화면·시작 메뉴에서 열 수 있어요.'); });
+// PC 프로그램이 옛 버전이면 위쪽에 '새 PC 버전 설치' 안내 (웹은 바로 바뀌지만 창 모양·⋮ 메뉴·트레이는 설치 파일을 다시 깔아야 바뀐다)
+const PC_LATEST_API = 'https://api.github.com/repos/ninepayments/Work-app/releases/latest';
+const verNum = v => String(v || '').replace(/^[^0-9]*/, '').split('.').map(Number).reduce((a, x) => a * 1000 + (x || 0), 0);
+async function checkPcVersion() {
+  if (!/Electron/.test(navigator.userAgent)) return;
+  const mine = window.nineWin && window.nineWin.ver || '0.0.2'; // ⋮ 메뉴가 없는 옛 프로그램(0.0.2 이하)
+  try {
+    const r = await (await fetch(PC_LATEST_API, {cache: 'no-store'})).json(); const t = String(r.tag_name || '');
+    if (!t.startsWith('pc-v') || verNum(t) <= verNum(mine)) return;
+    S.pcNew = t.slice(4); render();
+  } catch (e) {}
+}
+ACT.pcUpdate = () => askConfirm('PC 프로그램 새 버전 ' + S.pcNew, '설치 파일을 받아 실행하면 새 버전으로 바뀌어요(로그인·자료는 그대로).\n받은 뒤 이 프로그램을 끄고(⋮ → 종료 또는 오른쪽 아래 트레이 → 종료) 설치 파일을 실행해 주세요.', '설치 파일 받기', () => { location.href = 'https://github.com/ninepayments/Work-app/releases/latest/download/NineFamily-Setup.exe'; });
+setTimeout(checkPcVersion, 4000);
 function syncInstall() { document.querySelectorAll('.inst').forEach(b => b.style.display = installEv ? '' : 'none'); }
 ACT.installApp = async () => { if (!installEv) return toast('이미 설치됐거나 이 브라우저는 주소창 메뉴에서 설치해야 해요.'); installEv.prompt(); await installEv.userChoice; installEv = null; syncInstall(); };
 

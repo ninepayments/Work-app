@@ -6,12 +6,37 @@ const path = require('path');
 
 const HOME = 'https://ninepayments.github.io/Work-app/';
 const ORIGIN = new URL(HOME).origin;
-let win = null, tray = null, quitting = false, trayTipShown = false;
+let win = null, tray = null, quitting = false, trayTipShown = false, widget = null, badge = 0, widgetPos = null;
 
 if (!app.requestSingleInstanceLock()) app.quit(); // 이미 켜져 있으면 그 창을 앞으로
 app.on('second-instance', () => showWin());
 
-function showWin() { if (!win) return; if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+function showWin() { hideWidget(); if (!win) return; if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+
+// ---------- 창 최소화 때 바로가기 아이콘 (화면 위에 항상 떠 있음, 끌어서 옮기기, 더블클릭하면 다시 열기) ----------
+function showWidget() {
+  if (!widget) {
+    const wa = screen.getPrimaryDisplay().workArea;
+    const p = widgetPos || {x: wa.x + wa.width - 140, y: wa.y + wa.height - 150};
+    widget = new BrowserWindow({
+      x: p.x, y: p.y, width: 124, height: 124, frame: false, transparent: true, resizable: false, alwaysOnTop: true, skipTaskbar: true,
+      focusable: true, hasShadow: false, show: false, title: '나인패밀리',
+      webPreferences: {contextIsolation: true, sandbox: true, nodeIntegration: false, preload: path.join(__dirname, 'widget-preload.js')}
+    });
+    widget.setAlwaysOnTop(true, 'floating');
+    widget.loadFile(path.join(__dirname, 'widget.html'));
+    widget.webContents.on('did-finish-load', () => { if (widget) widget.webContents.send('nine-badge', badge); });
+    widget.on('moved', () => { if (widget) { const [x, y] = widget.getPosition(); widgetPos = {x, y}; } });
+    widget.on('closed', () => { widget = null; });
+  }
+  widget.showInactive();
+}
+function hideWidget() { if (widget) widget.hide(); }
+ipcMain.on('nine-widget', (e, k, dx, dy) => {
+  if (!widget || e.sender !== widget.webContents) return;
+  if (k === 'open') showWin();
+  else if (k === 'move') { const [x, y] = widget.getPosition(); widget.setPosition(x + Math.round(dx), y + Math.round(dy)); widgetPos = {x: x + Math.round(dx), y: y + Math.round(dy)}; }
+});
 function quitAll() { quitting = true; app.quit(); }
 
 function inApp(url) { // 우리 웹앱과 로그인(문자 인증·reCAPTCHA) 화면만 창 안에서, 나머지 링크는 기본 브라우저로
@@ -26,13 +51,17 @@ function createWindow() {
     width: 1280, height: 860, minWidth: 900, minHeight: 600, title: '나인패밀리', backgroundColor: '#ffffff', autoHideMenuBar: true, show: false,
     frame: false, // 토스포스처럼 윈도우 제목줄 없이: 창 조작은 웹앱 오른쪽 위 ⋮ 메뉴로, 작은 창일 때는 위쪽 검은 줄을 끌어 옮긴다
     icon: path.join(__dirname, 'res', 'icon.png'),
-    webPreferences: {contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, preload: path.join(__dirname, 'preload.js')}
+    webPreferences: {contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, preload: path.join(__dirname, 'preload.js'), additionalArguments: ['--nine-ver=' + app.getVersion()]}
   });
   win.once('ready-to-show', () => { win.maximize(); win.show(); }); // 처음엔 전체 모드(토스포스처럼)
   win.on('close', e => { // X 를 눌러도 꺼지지 않고 오른쪽 아래 트레이로 숨는다 (알림을 계속 받게)
     if (quitting) return;
     e.preventDefault(); win.hide();
     if (!trayTipShown && tray) { trayTipShown = true; try { tray.displayBalloon({title: '나인패밀리', content: '오른쪽 아래 트레이에서 계속 실행 중이에요. 끄려면 트레이 아이콘 → 종료.', iconType: 'info'}); } catch (er) {} }
+  });
+  win.on('page-title-updated', (e, t) => { // 웹앱 제목 '(3) 나인패밀리' 의 숫자 = 안 읽은 개수 → 아이콘 빨간 숫자
+    const m = /^\((\d+)\)/.exec(t || ''); badge = m ? Number(m[1]) : 0;
+    if (widget) widget.webContents.send('nine-badge', badge);
   });
   win.on('session-end', () => { quitting = true; }); // 윈도우 끄기·로그아웃 때는 막지 않는다
   win.loadURL(HOME);
@@ -53,7 +82,7 @@ ipcMain.on('nine-win', (e, k) => {
   if (k === 'reload') win.webContents.reloadIgnoringCache();
   else if (k === 'restart') { quitting = true; app.relaunch(); app.exit(0); }
   else if (k === 'quit') quitAll();
-  else if (k === 'min') win.minimize();
+  else if (k === 'min') { win.hide(); showWidget(); } // 최소화 = 화면 구석의 바로가기 아이콘으로
   else if (k === 'shrink') {
     if (win.isFullScreen()) win.setFullScreen(false);
     win.unmaximize();
