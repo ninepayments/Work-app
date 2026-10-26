@@ -2,10 +2,10 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.39';
+const VERSION = '웹 0.0.40';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
-const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
+const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
 const KINDS = ['방문A/S', '원격A/S', '전화응대', '용지신청', '기타'];
 // 업무 요청 '가맹점 요청사항' 빠른 선택 버튼 — 관리자가 ☰ → 관리자 → 빠른 선택 버튼에서 바꾼다 (config key 'req_quick')
 const reqQuickDoc = () => list('config').find(c => c.key === 'req_quick');
@@ -505,7 +505,7 @@ ACT.newTask = draft => {
     '<label class="fl" for="f_d">기한 날짜 (선택 — 고르면 일정 달력에도 표시돼요)</label><input id="f_d" type="date"><label class="fl" for="f_tm">기한 시간 (선택)</label>' + timeSel('f_tm') + '<label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모"></textarea><label class="fl" for="f_w">담당 직원</label><select id="f_w">' + staff.map(u => '<option value="' + u.id + '"' + (u.id === S.uid ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('') + '</select>', () => {
     const ti = $('#f_t1').value.trim(); if (!ti) return warn('업무 제목을 입력해 주세요.');
     const d = $('#f_d').value, tm = $('#f_tm').value; const as = Number($('#f_w').value);
-    const t = create('tasks', {title: ti, type: $('#f_ty').value, client: $('#f_c').value.trim(), phone: $('#f_p').value.trim(), addr: $('#f_a').value.trim(), due: d ? d + (tm ? ' ' + tm : '') : '', memo: $('#f_m').value.trim(), req: $('#f_rq').value.trim(), merchant: pickedMer && pickedMer.name === $('#f_c').value.trim() ? pickedMer.id : 0, assignee: as, creator: S.uid, status: '지시됨', history: []});
+    const t = create('tasks', {title: ti, type: $('#f_ty').value, client: $('#f_c').value.trim(), phone: $('#f_p').value.trim(), addr: $('#f_a').value.trim(), due: d ? d + (tm ? ' ' + tm : '') : '', memo: $('#f_m').value.trim(), req: reqClean($('#f_rq').value), merchant: pickedMer && pickedMer.name === $('#f_c').value.trim() ? pickedMer.id : 0, assignee: as, creator: S.uid, status: '지시됨', history: []});
     tlog(t, '업무 요청 → ' + uname(as)); put('tasks', t);
     if (t.type.includes('서류')) postToRoom('서류접수', '📄 서류 업무 · ' + ti + (t.client ? ' · ' + t.client : '') + '\n담당 ' + uname(as) + ' · 요청 ' + uname(S.uid) + (t.due ? ' · 기한 ' + t.due : '')); // 앱과 같은 자동 알림
     if (d) { const p = d.split('-'); S.calY = +p[0]; S.calM = +p[1]; S.calSel = d; }
@@ -513,7 +513,7 @@ ACT.newTask = draft => {
   }, '요청하기');
   let pickedMer = null;
   const syncQ = () => { const v = $('#f_rq').value; document.querySelectorAll('#modal .rqq').forEach(b => b.classList.toggle('on', v.includes(b.dataset.w))); };
-  document.querySelectorAll('#modal .rqq').forEach(b => b.onclick = () => { const el = $('#f_rq'); el.value = toggleWord(el.value, b.dataset.w); syncQ(); });
+  document.querySelectorAll('#modal .rqq').forEach(b => b.onclick = () => { const el = $('#f_rq'); el.value = toggleWord(el.value, b.dataset.w); syncQ(); el.focus(); el.setSelectionRange(el.value.length, el.value.length); });
   $('#f_rq').addEventListener('input', syncQ);
   const pick = wireMerchantPicker(m => { pickedMer = m; const n = mNums(m); $('#f_c').value = m.name || ''; $('#f_p').value = n.phone || n.mobile || ''; $('#f_a').value = m.addr || ''; });
   const ids = ['f_t1', 'f_ty', 'f_c', 'f_p', 'f_a', 'f_rq', 'f_d', 'f_tm', 'f_m', 'f_w'];
@@ -997,7 +997,12 @@ function newMerchantThen(q, done, back) {
     const o = readMerchant(create('merchants', {grade: 5})); put('merchants', o); toast('가맹점을 등록하고 업무에 연결했어요.'); setTimeout(() => done(o), 0); return true;
   }, '저장'); wireMerchantForm(); $('#m_cancel').onclick = () => { closeModal(); back(); }; });
 }
-function toggleWord(s, w) { s = s || ''; if (s.includes(w)) return s.replace(w + ', ', '').replace(', ' + w, '').replace(w, '').trim(); return s.trim() ? w + ', ' + s.trim() : w; }
+function toggleWord(s, w) { // 빠른 선택: 누르면 넣고 뒤에 ', ' 를 붙여 바로 이어 쓸 수 있게, 다시 누르면 뺀다
+  const parts = String(s || '').split(',').map(x => x.trim()).filter(Boolean);
+  const k = parts.indexOf(w); if (k >= 0) parts.splice(k, 1); else parts.push(w);
+  return parts.length ? parts.join(', ') + ', ' : '';
+}
+const reqClean = v => String(v || '').replace(/[\s,]+$/, '').trim(); // 끝에 남은 쉼표는 빼고 저장
 ACT.delMerchant = id => needLock(() => {
   const m = byId('merchants', id); if (!m) return; needDelPw('‘' + m.name + '’ 가맹점 삭제', () => {
   const c = list('mlogs').filter(g => g.merchant === m.id).length;
@@ -2540,6 +2545,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.40', '2026-10-26', ['업무 종류: AS 를 방문AS · 원격AS 로 나눔 (완료하면 응대 기록 종류도 방문A/S · 원격A/S 로)', '가맹점 요청사항 빠른 버튼: 누르면 뒤에 쉼표가 자동으로 붙고 커서가 끝으로 가서 바로 이어 쓸 수 있어요']],
   ['웹 0.0.39', '2026-10-26', ['채팅에 스크린샷 붙여넣기: 대화방에서 Ctrl+V 하면 사진을 미리 보여 주고 보내요. 파일을 대화방에 끌어다 놓아도 돼요']],
   ['웹 0.0.38', '2026-10-26', ['채팅 줄바꿈: PC는 Shift+Enter 로 줄을 바꾸고 Enter 로 보내요. 휴대폰은 Enter 가 줄바꿈, 보내기 버튼으로 보내요. 입력칸은 여러 줄이면 늘어나요']],
   ['웹 0.0.37', '2026-10-26', ['채팅 순서: 서버가 받은 순서대로 보여요 (폰·PC 시계가 조금 달라도 나중에 쓴 글이 아래로). 이번 버전부터 보내는 메시지에 적용돼요']],

@@ -41,7 +41,7 @@ import java.util.Comparator;
 import java.util.List;
 
 public class MainActivity extends Activity {
-    static final String[] TYPES = {"신규 설치", "AS", "영업 방문", "서류 접수", "카드사 서류", "기타"};
+    static final String[] TYPES = {"신규 설치", "방문AS", "원격AS", "영업 방문", "서류 접수", "카드사 서류", "기타"}; // 예전 업무의 'AS' 는 그대로 보여요
     static final String[] STATUS_ACTIONS = {"진행중", "보류"};
 
     private Store store;
@@ -1052,7 +1052,7 @@ public class MainActivity extends Activity {
                             dueStr, memo.getText().toString().trim(), assignee, myId());
                     if (nt != null) {
                         try {
-                            nt.put("req", req.getText().toString().trim());
+                            nt.put("req", req.getText().toString().replaceAll("[\\s,]+$", "").trim()); // 끝에 남은 쉼표는 빼고
                             boolean same = picked[0] != null && picked[0].optString("name").trim().equals(client.getText().toString().trim());
                             nt.put("merchant", same ? picked[0].optInt("id") : 0);
                         } catch (Exception ignored) {
@@ -1265,10 +1265,14 @@ public class MainActivity extends Activity {
     }
 
     private void toggleReq(EditText req, String word) {
-        String s = req.getText().toString();
-        if (s.contains(word)) s = s.replace(word + ", ", "").replace(", " + word, "").replace(word, "").trim();
-        else s = s.trim().isEmpty() ? word : word + ", " + s.trim();
+        // 누르면 넣고 뒤에 ', ' 를 붙여 바로 이어 쓸 수 있게, 다시 누르면 뺀다
+        List<String> parts = new ArrayList<>();
+        for (String x : req.getText().toString().split(",")) if (!x.trim().isEmpty()) parts.add(x.trim());
+        if (parts.contains(word)) parts.remove(word);
+        else parts.add(word);
+        String s = parts.isEmpty() ? "" : android.text.TextUtils.join(", ", parts) + ", ";
         req.setText(s);
+        req.requestFocus();
         req.setSelection(s.length());
     }
 
@@ -6314,6 +6318,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.27", "2026-10-26", "• 업무 종류: AS 를 방문AS · 원격AS 로 나눔 (완료하면 응대 기록 종류도 방문A/S · 원격A/S 로)\n• 가맹점 요청사항 빠른 버튼: 누르면 뒤에 쉼표가 자동으로 붙고 커서가 끝으로 가서 바로 이어 쓸 수 있어요"},
             {"0.0.26", "2026-10-26", "• 채팅 순서: 서버가 받은 순서대로 보여요 (폰·PC 시계가 조금 달라도 나중에 쓴 글이 아래로). 이번 버전부터 보내는 메시지에 적용돼요"},
             {"0.0.25", "2026-10-26", "• 상품 바코드: 상품 목록에 바코드 칸(상자에 찍힌 바코드, 스캔 가능). 입고 때 상품 바코드를 찍으면 그 상품이 골라지고, 재고 검색칸에 찍으면 그 상품이 걸러져요\n• 재고 업로드 양식에 '상품 바코드' 열 추가, 시리얼 열은 '시리얼(장비 바코드)'로 이름 정리"},
             {"0.0.24", "2026-10-26", "• 업무·일정 시간 고르기를 30분 단위로 (오전 9:00, 오전 9:30 …)"},

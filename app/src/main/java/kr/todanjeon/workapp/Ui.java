@@ -133,6 +133,10 @@ final class Ui {
                 return tile(c, "설치", TINT, DEEP);
             case "AS":
                 return tile(c, "AS", Color.rgb(227, 246, 238), GREEN);
+            case "방문AS":
+                return tile(c, "방문", Color.rgb(227, 246, 238), GREEN);
+            case "원격AS":
+                return tile(c, "원격", Color.rgb(227, 240, 252), Color.rgb(30, 100, 180));
             case "영업 방문":
                 return tile(c, "영업", Color.rgb(241, 236, 251), Color.rgb(106, 63, 196));
             case "서류 접수":
