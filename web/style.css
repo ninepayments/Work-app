@@ -348,3 +348,7 @@ details.man[open]{padding-bottom:12px}
 .dtile .av{width:42px;height:42px;border-radius:50%;background:#f3ead2;color:var(--deep);font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .dtile .av img,.dtile .av>*{max-width:42px;max-height:42px}.dtile .nm{font-size:11px;color:#555;white-space:nowrap;overflow:hidden;max-width:64px}
 .dtile.on{background:#f1e2b5}.dtile.dlist .av{background:#e9e6df;color:#555}.dtile .badge{position:absolute;top:4px;right:8px;margin:0}
+/* 오른쪽 채팅창: 입력칸을 한 줄 전체로 넓게, + ☺ 보내기는 아래 줄 */
+.chatdock .send{flex-wrap:wrap;align-items:center;gap:6px 8px}
+.chatdock .send textarea{order:-1;flex:1 1 100%;min-height:64px;max-height:200px}
+.chatdock .send>button{min-height:36px}.chatdock .send>button[data-act=send]{margin-left:auto;padding:0 22px}
