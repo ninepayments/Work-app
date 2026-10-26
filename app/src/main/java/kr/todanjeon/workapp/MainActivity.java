@@ -7624,8 +7624,8 @@ public class MainActivity extends Activity {
                     String k0 = logKind(MerchantImport.cell(r, map, "lkind").replaceAll("\\s", ""));
                     String lk = java.util.Arrays.asList(LOG_KINDS).contains(k0) ? k0 : lq.contains("용지") ? "용지신청" : "기타";
                     boolean dup = false;
-                    for (JSONObject g : store.list(store.arr("mlogs")))
-                        if (g.optInt("merchant") == m.optInt("id") && ld.equals(g.optString("date")) && lq.equals(logReq(g)) && ls.equals(logRes(g))) dup = true;
+                    for (JSONObject lg : store.list(store.arr("mlogs")))
+                        if (lg.optInt("merchant") == m.optInt("id") && ld.equals(lg.optString("date")) && lq.equals(logReq(lg)) && ls.equals(logRes(lg))) dup = true;
                     if (dup) logSkip++;
                     else {
                         JSONObject o = store.create("mlogs");
