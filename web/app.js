@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.57';
+const VERSION = '웹 0.0.58';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -65,6 +65,7 @@ const list = c => [...S.data[c].values()].filter(o => !o.deleted);
 const byId = (c, id) => S.data[c].get(Number(id));
 const user = id => byId('users', id);
 const uname = id => { const u = user(id); return u ? u.name : (id ? '직원' + id : ''); };
+const wname = m => m.wname || uname(m.who); // 글쓴이 이름 (홈페이지 접수처럼 직원이 아닌 글은 wname)
 const can = p => !!(S.me && (S.me.perms || []).includes(p));
 function nextId() { for (;;) { const n = 1 + Math.floor(Math.random() * 2e9); if (!COLLS.some(c => S.data[c].has(n))) return n; } }
 function wonFmt(n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; }
@@ -190,7 +191,7 @@ function notify(title, body, go, say) {
 function watchNew(coll, o, prev) {
   if (!S.me || o.deleted) return;
   if (coll === 'msgs' && pushChatOn() && !prev && o.who !== S.uid && o.ts > Date.now() - 5 * 60000 && !(S.room === o.room && !document.hidden)) {
-    const r = byId('rooms', o.room); notify('💬 ' + (r ? roomTitle(r) : '채팅'), uname(o.who) + ': ' + msgText(o), () => { S.tab = 'chat'; S.sub = ''; S.room = o.room; render(); }, roomMuted(o.room) ? '' : '나인톡');
+    const r = byId('rooms', o.room); notify('💬 ' + (r ? roomTitle(r) : '채팅'), wname(o) + ': ' + msgText(o), () => { S.tab = 'chat'; S.sub = ''; S.room = o.room; render(); }, roomMuted(o.room) ? '' : '나인톡');
   }
   if (!pushTaskOn()) return; // 아래는 업무 쪽 알림
   if (coll === 'tasks' && o.assignee === S.uid && o.status === '지시됨' && o.creator !== S.uid && (!prev || prev.assignee !== S.uid)) {
@@ -679,7 +680,7 @@ function chatBarHTML() {
   let n = 0, last = null; list('msgs').forEach(m => { if (since[m.room] != null && m.ts > since[m.room] && m.who !== S.uid) { n++; if (!last || m.ts > last.ts) last = m; } });
   if (!n) return '';
   const r = byId('rooms', last.room);
-  return '<button class="chatbar" data-act="chatBar" data-arg="' + last.room + '"><span class="cb1">💬 안 읽은 채팅 <b>' + n + '</b></span><span class="cb2">' + esc((r ? roomTitle(r) + ' · ' : '') + uname(last.who) + ': ' + msgText(last)) + '</span><span class="cb3">보기 ›</span></button>';
+  return '<button class="chatbar" data-act="chatBar" data-arg="' + last.room + '"><span class="cb1">💬 안 읽은 채팅 <b>' + n + '</b></span><span class="cb2">' + esc((r ? roomTitle(r) + ' · ' : '') + wname(last) + ': ' + msgText(last)) + '</span><span class="cb3">보기 ›</span></button>';
 }
 // PC 프로그램(설치형)에서만: 오른쪽 위 ⋮ → 새로고침·다시시작·종료 / 창 최소화·창 줄이기(옮길 수 있는 작은 창)·크게보기(전체 모드) — 토스포스처럼
 // 창 줄이기: 두 화살표가 가운데로 마주봄 / 크게보기: 바깥으로 (토스포스와 같은 모양)
@@ -725,7 +726,7 @@ function viewChat(dock) { // dock: PC 오른쪽 채팅창(좁은 한 줄 모양)
     '<input id="chq" data-q="chatQ" placeholder="🔍 대화방 검색 (초성 가능)" value="' + esc(S.chatQ) + '">' +
     '<div class="qres" data-for="chatQ">' + rooms.filter(x => kmatch(roomTitle(x.r), S.chatQ)).map(x => {
       const l = x.last; const c = un[x.r.id] || 0;
-      return '<div class="card" data-act="room" data-arg="' + x.r.id + '"><div class="row"><div class="tile">' + esc((roomTitle(x.r) || '?').slice(0, 1)) + '</div><div class="grow"><div class="t1">' + esc(roomTitle(x.r)) + '</div><div class="t2">' + esc(l ? (l.who === S.uid ? '나' : uname(l.who)) + ': ' + msgText(l) : '아직 대화가 없어요') + '</div></div><div style="text-align:right;font-size:11px;color:var(--gray)">' + (l ? new Date(l.ts).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false}) : '') + (c ? '<br><span class="badge">' + c + '</span>' : '') + '</div></div></div>';
+      return '<div class="card" data-act="room" data-arg="' + x.r.id + '"><div class="row"><div class="tile">' + esc((roomTitle(x.r) || '?').slice(0, 1)) + '</div><div class="grow"><div class="t1">' + esc(roomTitle(x.r)) + '</div><div class="t2">' + esc(l ? (l.who === S.uid ? '나' : wname(l)) + ': ' + msgText(l) : '아직 대화가 없어요') + '</div></div><div style="text-align:right;font-size:11px;color:var(--gray)">' + (l ? new Date(l.ts).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false}) : '') + (c ? '<br><span class="badge">' + c + '</span>' : '') + '</div></div></div>';
     }).join('') + '</div>' + (rooms.length ? '' : '<div class="empty">아직 채팅방이 없어요.</div>') + '<div style="height:90px"></div></div>';
   const wide = !dock && isWide();
   if (!S.room) { S.openRoom = 0; return wide ? '<div class="chatwrap">' + lst + '<div class="chatroom"><div class="empty" style="margin:auto">대화방을 골라 주세요.</div></div></div>' : lst; }
@@ -741,7 +742,7 @@ function viewChat(dock) { // dock: PC 오른쪽 채팅창(좁은 한 줄 모양)
     const d = new Date(m.ts); const day = d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
     if (day !== lastDay) { lastDay = day; html += '<div class="day"><span>' + day + '</span></div>'; }
     const me = m.who === S.uid; const un = unreadOf(m, mem);
-    html += '<div class="m ' + (me ? 'me' : '') + '"><div>' + (me || room.dm ? '' : '<div class="who">' + esc(uname(m.who)) + '</div>') + '<div class="bub' + (m.kind === 'img' ? ' pic' : m.kind === 'stk' ? ' pic' : '') + '" data-mid="' + m.id + '">' + (m.rto ? '<div class="rto">' + esc((uname(m.rto.who)) + ': ' + (m.rto.text || '')) + '</div>' : '') + msgBody(m) + '</div>' + reactLine(m) + '<div class="who" style="' + (me ? 'text-align:right' : '') + '">' + (un && me ? '<b class="unr">' + un + '</b> ' : '') + pad(d.getHours()) + ':' + pad(d.getMinutes()) + (un && !me ? ' <b class="unr">' + un + '</b>' : '') + '</div></div></div>';
+    html += '<div class="m ' + (me ? 'me' : '') + '"><div>' + (me || room.dm ? '' : '<div class="who">' + esc(wname(m)) + '</div>') + '<div class="bub' + (m.kind === 'img' ? ' pic' : m.kind === 'stk' ? ' pic' : '') + '" data-mid="' + m.id + '">' + (m.rto ? '<div class="rto">' + esc((uname(m.rto.who)) + ': ' + (m.rto.text || '')) + '</div>' : '') + msgBody(m) + '</div>' + reactLine(m) + '<div class="who" style="' + (me ? 'text-align:right' : '') + '">' + (un && me ? '<b class="unr">' + un + '</b> ' : '') + pad(d.getHours()) + ':' + pad(d.getMinutes()) + (un && !me ? ' <b class="unr">' + un + '</b>' : '') + '</div></div></div>';
   });
   const roomView = '<div class="chatroom"><div class="hdr"><button data-act="leave">‹</button><div class="grow t1">' + esc(roomTitle(room)) + (room.grp ? ' <span class="sub">(' + (room.members || []).length + '명)</span>' : '') + '</div><button data-act="roomMute" title="이 채팅방 알림 소리" aria-label="이 채팅방 알림 소리 ' + (roomMuted(room.id) ? '켜기' : '끄기') + '">' + (roomMuted(room.id) ? '🔕' : '🔔') + '</button></div><div class="msgs" id="msgbox">' + (html || '<div class="empty">첫 메시지를 남겨 보세요.</div>') + '</div>' + (S.replyTo ? '<div class="replybar"><span>↩ ' + esc(uname(S.replyTo.who)) + '에게 답장: ' + esc(S.replyTo.text) + '</span><button data-act="replyOff" aria-label="답장 취소">✕</button></div>' : '') + stkPanelHTML() + '<div class="send"><button class="plus" data-act="attach" aria-label="사진·파일 보내기">+</button><textarea id="msgin" rows="1" placeholder="' + (coarse() ? '메시지 입력' : '메시지 입력 (Shift+Enter 줄바꿈)') + '" autocomplete="off"></textarea><button class="plus" data-act="stkPanel" aria-label="이모지·스티커">☺</button><button data-act="send">보내기</button></div><input type="file" id="fpick" hidden></div>';
   if (dock) { // PC 오른쪽 채팅창: 텔레그램 PC처럼 왼쪽 세로줄에 대화방들, 오른쪽에 대화. 세로줄을 누르면 그 방으로 바뀐다
@@ -2663,6 +2664,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.58', '2026-10-26', ['홈페이지 서류접수·상담신청을 앱 ‘서류접수’·‘상담신청’ 채팅방으로 받을 준비(글쓴이 ‘📮 홈페이지 접수’, 사진 함께)']],
   ['웹 0.0.57', '2026-10-26', ['PC 오른쪽 채팅창에서 스크린샷 붙여넣기(Ctrl+V)·파일 끌어 놓기가 안 되던 것 고침']],
   ['웹 0.0.56', '2026-10-26', ['대화방에서 위쪽(안 읽은 글 등)을 읽는 중에 새 글이 오면 아래에 ‘새 메시지 ↓’ 버튼 — 누르면 맨 아래로. 맨 아래를 보고 있으면 새 글을 따라 내려가요']],
   ['웹 0.0.55', '2026-10-26', ['PC 오른쪽 채팅창: 글 쓰는 칸을 한 줄 전체로 넓게(여러 줄 보임), + ☺ 보내기는 그 아래 줄로']],

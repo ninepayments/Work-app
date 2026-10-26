@@ -106,3 +106,4 @@
 - 2026-10-26: 수정 기간에는 배포마다 사용설명서(웹 WEB_MANUAL·앱 MANUAL)를 고치지 않는다. 변경 내역(CHANGELOG·WEB_CHANGES)·버전만 올리고, 설명서는 최종 정리 때 한꺼번에 ← 'MANUAL 매번 갱신' 규칙 일시 중지 (사용자 지시)
 - 2026-10-26: PC 설치 파일은 버전 붙은 이름(NineFamily-Setup-<버전>.exe)도 함께 올리고, 공유할 때는 그 링크(releases/download/pc-v<버전>/NineFamily-Setup-<버전>.exe)를 준다. 고정 이름(latest/download/NineFamily-Setup.exe)은 최신 받기·자동 업데이트용으로 유지.
 - 2026-10-26: 대화방 스크롤 — 처음 열 때만 안 읽은 첫 글로, 그 뒤엔 맨 아래를 보고 있으면 새 글 따라 내려감, 위쪽을 읽는 중이면 '새 메시지 N ↓' 버튼(누르면 맨 아래), 내 글은 항상 맨 아래. 웹·앱 같음.
+- 2026-10-26: 홈페이지 서류접수·상담신청 → 기존 Apps Script(doPost)가 텔레그램 전송 뒤 tools/intake/nine-forward.gs 의 nineForward(e) 로 Firestore 에 서비스 계정(스크립트 속성 NINE_SA, 사용자가 직접 입력)으로 직접 씀. Blaze·규칙 예외 불필요. 서류 → '서류접수' 방(글 + 첨부마다 img/file 메시지, blobs 600KB 조각), 상담 → '상담신청' 방. 메시지 who:0 + wname '📮 홈페이지 접수'(웹 wname(), 앱 Store.whoName). 보관 기간·비공개 방은 추후 결정.

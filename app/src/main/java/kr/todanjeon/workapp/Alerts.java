@@ -79,7 +79,7 @@ final class Alerts {
             say = "물품이 발송되었습니다";
         } else if ("msgs".equals(coll) && o.optInt("who") != me && o.optInt("ts", 1) != 0 && System.currentTimeMillis() - o.optLong("ts") < 120000
                 && !c.getSharedPreferences("chatprefs", Context.MODE_PRIVATE).getBoolean("mute_" + me + "_" + o.optInt("room"), false)) {
-            title = "나인톡 · " + store.userName(o.optInt("who"));
+            title = "나인톡 · " + store.whoName(o);
             body = snippet(o);
             say = "나인톡";
         } else if ("library".equals(coll) && o.optInt("who") != me) {
@@ -104,8 +104,8 @@ final class Alerts {
             roomCnt.put(room, n);
             JSONObject r = store.byId("rooms", room);
             String rn = r == null ? "" : r.optBoolean("dm") ? "" : r.optString("name");
-            title = "나인톡 · " + (rn.isEmpty() ? store.userName(o.optInt("who")) : rn) + (n > 1 ? " (" + n + ")" : "");
-            body = (rn.isEmpty() ? "" : store.userName(o.optInt("who")) + ": ") + snippet(o);
+            title = "나인톡 · " + (rn.isEmpty() ? store.whoName(o) : rn) + (n > 1 ? " (" + n + ")" : "");
+            body = (rn.isEmpty() ? "" : store.whoName(o) + ": ") + snippet(o);
             nid = ROOM_BASE + room;
         }
         speak(c, say);

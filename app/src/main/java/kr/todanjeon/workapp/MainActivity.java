@@ -335,7 +335,7 @@ public class MainActivity extends Activity {
         dl.leftMargin = Ui.dp(this, 6);
         dl.rightMargin = Ui.dp(this, 10);
         chatBar.addView(d, dl);
-        TextView t = Ui.text(this, (r != null ? roomTitle(r) + " · " : "") + store.userName(last.optInt("who")) + ": " + snippet(last), 13, Ui.GRAY, false);
+        TextView t = Ui.text(this, (r != null ? roomTitle(r) + " · " : "") + store.whoName(last) + ": " + snippet(last), 13, Ui.GRAY, false);
         t.setSingleLine(true);
         t.setEllipsize(android.text.TextUtils.TruncateAt.END);
         chatBar.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -5570,7 +5570,7 @@ public class MainActivity extends Activity {
             if (lt > 0) {
                 for (JSONObject m : store.list(store.arr("msgs"))) {
                     if (m.optInt("room") == r.optInt("id") && m.optLong("ts") == lt) {
-                        String who = m.optInt("who") == myId() ? "나" : store.userName(m.optInt("who"));
+                        String who = m.optInt("who") == myId() ? "나" : store.whoName(m);
                         prev = (r.optBoolean("dm") && m.optInt("who") != myId() ? "" : who + ": ") + snippet(m);
                         break;
                     }
@@ -5620,7 +5620,7 @@ public class MainActivity extends Activity {
             JSONObject r = byRoom.get(m.optInt("room"));
             LinearLayout c = Ui.card(this);
             c.addView(Ui.text(this, roomTitle(r) + "   " + new SimpleDateFormat("yyyy.M.d HH:mm", Locale.KOREA).format(new Date(m.optLong("ts"))), 12, Ui.DEEP, true));
-            TextView body = Ui.text(this, store.userName(m.optInt("who")) + ": " + snippet(m), 14, Ui.INK, false);
+            TextView body = Ui.text(this, store.whoName(m) + ": " + snippet(m), 14, Ui.INK, false);
             body.setMaxLines(2);
             body.setEllipsize(android.text.TextUtils.TruncateAt.END);
             c.addView(body, Ui.lp(this, 3));
@@ -6480,6 +6480,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.36", "2026-10-26", "• 홈페이지 서류접수·상담신청을 '서류접수'·'상담신청' 채팅방으로 받을 준비(글쓴이 '📮 홈페이지 접수', 사진 함께)"},
             {"0.0.35", "2026-10-26", "• 대화방: 맨 아래를 보고 있으면 새 글을 따라 내려가고, 위쪽(안 읽은 글 등)을 읽는 중에 새 글이 오면 아래에 '새 메시지 ↓' 버튼 — 누르면 맨 아래로. 내가 보낸 글은 항상 맨 아래로"},
             {"0.0.34", "2026-10-26", "• 전체 메뉴에 '채팅' 묶음: 채팅 알림 및 소리 설정 / 업무 묶음: 업무 알림 및 소리 설정 (따로 분리)\n• 가맹점 찾기: 대표자명·전화번호·핸드폰번호(하이픈 없이도)로도 찾아요"},
             {"0.0.33", "2026-10-26", "• 알림 및 소리 설정에 '업무 알림 받기'·'채팅 알림 받기' 켜기·끄기\n• 채팅 알림은 방마다 1개만(새 글이 오면 그 방 알림이 바뀌고 개수 표시), 누르면 그 채팅방이 바로 열려요\n• 대화방을 열면 안 읽은 첫 글부터 보여요('여기까지 읽었어요' 줄)"},
@@ -6899,7 +6900,7 @@ public class MainActivity extends Activity {
     private void setReply(JSONObject m) {
         replyTo = m;
         if (replyBar == null) return;
-        replyTv.setText(store.userName(m.optInt("who")) + "에게 답장  ·  " + snippet(m));
+        replyTv.setText(store.whoName(m) + "에게 답장  ·  " + snippet(m));
         replyBar.setVisibility(View.VISIBLE);
         if (roomInput != null) {
             roomInput.requestFocus();
@@ -7329,11 +7330,11 @@ public class MainActivity extends Activity {
                     row.setGravity(Gravity.TOP);
                     final int who = m.optInt("who");
                     View av = avatarView(who, 40);
-                    av.setOnClickListener(v -> showProfile(who));
+                    if (who != 0) av.setOnClickListener(v -> showProfile(who)); // 0 = 홈페이지 접수 같은 직원 아닌 글
                     row.addView(av);
                     LinearLayout col = new LinearLayout(this);
                     col.setOrientation(LinearLayout.VERTICAL);
-                    col.addView(Ui.text(this, store.userName(who), 12, Ui.GRAY, false));
+                    col.addView(Ui.text(this, store.whoName(m), 12, Ui.GRAY, false));
                     LinearLayout bt = new LinearLayout(this);
                     bt.setGravity(Gravity.BOTTOM);
                     bt.addView(bubble);

@@ -568,6 +568,12 @@ final class Store {
         return null;
     }
 
+    /** 글쓴이 이름: 홈페이지 접수처럼 직원이 아닌 글은 wname(예: '📮 홈페이지 접수') */
+    String whoName(JSONObject m) {
+        String w = m.optString("wname");
+        return !w.isEmpty() ? w : userName(m.optInt("who"));
+    }
+
     String userName(int id) {
         JSONObject u = user(id);
         return u == null ? "(알 수 없음)" : u.optString("name");
