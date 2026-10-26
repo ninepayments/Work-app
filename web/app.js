@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.56';
+const VERSION = '웹 0.0.57';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -863,14 +863,15 @@ function offerFile(file) {
   askConfirm(isImg ? '이 사진을 보낼까요?' : '‘' + (file.name || '파일') + '’을(를) 보낼까요?', '', '보내기', () => { if (url) URL.revokeObjectURL(url); sendFile(file); });
   if (url) { const b = document.querySelector('#modal .sub, #modal p'); const img = '<img src="' + url + '" alt="붙여 넣은 사진" style="max-width:100%;max-height:50vh;border-radius:12px;display:block;margin:8px 0">'; if (b) b.insertAdjacentHTML('afterend', img); else { const h = document.querySelector('#modal h3'); if (h) h.insertAdjacentHTML('afterend', img); } }
 }
+const chatOpen = () => !!(S.room && (S.tab === 'chat' || dockOn())); // 채팅방이 화면에 열려 있음 (휴대폰 채팅 탭 · PC 오른쪽 채팅창)
 document.addEventListener('paste', e => {
-  if (!S.room || S.tab !== 'chat' || $('#modal')) return;
+  if (!chatOpen() || $('#modal')) return;
   const it = [...((e.clipboardData && e.clipboardData.items) || [])].find(x => x.kind === 'file');
   const f = it && it.getAsFile(); if (!f) return;
   e.preventDefault(); offerFile(f);
 });
-document.addEventListener('dragover', e => { if (S.room && S.tab === 'chat' && e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
-document.addEventListener('drop', e => { if (!S.room || S.tab !== 'chat' || !e.dataTransfer || !e.dataTransfer.files.length) return; e.preventDefault(); offerFile(e.dataTransfer.files[0]); });
+document.addEventListener('dragover', e => { if (chatOpen() && e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+document.addEventListener('drop', e => { if (!chatOpen() || !e.dataTransfer || !e.dataTransfer.files.length) return; e.preventDefault(); offerFile(e.dataTransfer.files[0]); });
 ACT.room = id => { S.room = Number(id); S.dmDraft = null; render(); };
 ACT.leave = () => { markRead(S.room); S.room = 0; S.dmDraft = null; render(); };
 ACT.dm = uid => {
@@ -2662,6 +2663,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.57', '2026-10-26', ['PC 오른쪽 채팅창에서 스크린샷 붙여넣기(Ctrl+V)·파일 끌어 놓기가 안 되던 것 고침']],
   ['웹 0.0.56', '2026-10-26', ['대화방에서 위쪽(안 읽은 글 등)을 읽는 중에 새 글이 오면 아래에 ‘새 메시지 ↓’ 버튼 — 누르면 맨 아래로. 맨 아래를 보고 있으면 새 글을 따라 내려가요']],
   ['웹 0.0.55', '2026-10-26', ['PC 오른쪽 채팅창: 글 쓰는 칸을 한 줄 전체로 넓게(여러 줄 보임), + ☺ 보내기는 그 아래 줄로']],
   ['웹 0.0.54', '2026-10-26', ['PC 프로그램(0.0.9): 위쪽 검은 줄 어디든(메뉴 버튼 위라도) 잡고 끌면 창이 옮겨져요(다른 모니터로도). 전체 모드에서 끌면 작은 창이 되어 따라와요. 빈 곳을 두 번 누르면 전체 ↔ 작은 창']],
