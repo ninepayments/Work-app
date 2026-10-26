@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.43';
+const VERSION = '웹 0.0.44';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -1776,7 +1776,7 @@ function viewDaily() {
   if (!S.dailyDate) S.dailyDate = todayStr();
   const old = findReport('daily', S.uid, S.dailyDate), k = 'daily_' + S.dailyDate;
   const mine = list('reports').filter(r => r.kind === 'daily' && r.who === S.uid).sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 14);
-  return '<h1>일일보고 쓰기</h1><div class="sub">오늘 한 일과 특이사항을 적어 제출해요. 완료한 업무와 올린 계약은 자동으로 같이 들어갑니다.</div>' + dateNavHTML() +
+  return '<h1>일일보고 쓰기</h1><div class="sub">오늘 한 일과 특이사항을 적어 제출해요. 위 (자동 집계)는 참고용으로 나에게만 보여요(보고에는 직접 쓴 내용만 올라가요).</div>' + dateNavHTML() +
     '<div class="card flat mtext">' + esc(dailyAuto(S.dailyDate, S.uid)) + '</div>' +
     '<label class="fl" for="f_daily">오늘 한 일 · 특이사항 · 내일 계획</label><textarea id="f_daily" data-keep="' + k + '" style="min-height:150px">' + esc(keepVal(k, old ? old.text : '')) + '</textarea>' +
     '<button class="btn gold full" data-act="dailySave">' + (old ? '수정해서 다시 제출' : '제출하기') + '</button>' +
@@ -1786,7 +1786,7 @@ ACT.ddGo = d => { S.dailyDate = d; render(); };
 ACT.dailySave = () => {
   const t = $('#f_daily').value.trim(); if (!t) return toast('내용을 적어 주세요.');
   const r = findReport('daily', S.uid, S.dailyDate) || create('reports', {kind: 'daily', date: S.dailyDate, who: S.uid});
-  r.text = t; r.auto = dailyAuto(S.dailyDate, S.uid); r.ts = Date.now(); put('reports', r);
+  r.text = t; delete r.auto; r.ts = Date.now(); put('reports', r); // 자동 집계는 쓰는 사람 화면에만 (대표님께 가는 보고에는 넣지 않음)
   if (S.keep) delete S.keep['daily_' + S.dailyDate]; render(); toast('일일보고를 제출했어요.');
 };
 function viewReportView() {
@@ -1795,7 +1795,7 @@ function viewReportView() {
   const staff = activeStaff().filter(u => !u.noReport).sort(byPos); const done = staff.filter(u => findReport('daily', u.id, S.dailyDate)).length;
   return '<h1>일일보고 종합</h1><div class="sub">직원별 일일보고를 한 화면에 모아 봐요.</div>' + dateNavHTML() + '<div class="t1" style="color:var(--deep);margin-top:12px">제출 ' + done + ' / ' + staff.length + '명</div>' +
     staff.map(u => { const r = findReport('daily', u.id, S.dailyDate);
-      return '<div class="card flat"><div class="row"><div class="grow t1">' + esc(u.name) + '</div><span class="chip"' + (r ? '' : ' style="background:#fdecea;color:var(--red)"') + '>' + (r ? '제출' : '미제출') + '</span></div>' + (r ? (r.auto ? '<div class="sub mtext">' + esc(r.auto) + '</div>' : '') + '<div class="mtext">' + esc(r.text) + '</div>' : '') + '</div>'; }).join('');
+      return '<div class="card flat"><div class="row"><div class="grow t1">' + esc(u.name) + '</div><span class="chip"' + (r ? '' : ' style="background:#fdecea;color:var(--red)"') + '>' + (r ? '제출' : '미제출') + '</span></div>' + (r ? '<div class="mtext">' + esc(r.text) + '</div>' : '') + '</div>'; }).join('');
 }
 function perfSnapshot(ym) {
   const st = perfStats(ym, false); const total = Object.values(st).reduce((s, a) => s + a[0], 0);
@@ -2559,6 +2559,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.44', '2026-10-26', ['일일보고의 (자동 집계)는 쓰는 사람 화면에만 보여요. 대표님께 가는 보고(종합 보기)에는 직접 쓴 내용만 보여요']],
   ['웹 0.0.43', '2026-10-26', ['첫 화면(업무)에서 뒤로가기를 누르면 ‘종료할까요?’ 확인 창']],
   ['웹 0.0.42', '2026-10-26', ['휴대폰 화면 왼쪽 위 ‹ 뒤로 버튼: 하위 화면과 업무 외 탭에서 보이고, 아래로 내려도 위에 붙어 있어요. 누르면 한 단계씩 뒤로(하위 화면 → 전체 메뉴 → 업무)']],
   ['웹 0.0.41', '2026-10-26', ['가맹점 업로드 양식에 응대 기록 열(응대일자·응대종류·요청사항·처리결과): 이카운트의 요청사항·처리완료를 가맹점 응대 기록으로 한꺼번에 올려요. 한 가맹점 여러 건은 줄을 여러 개, 같은 날 같은 내용은 두 번 안 올라가요']],
@@ -2620,7 +2621,7 @@ const WEB_MANUAL = [
   ['재고 · 바코드', '■ 입고(＋ 입고 또는 오른쪽 아래 +): 모델명, 시리얼(한 줄에 하나 — 스캐너로 계속 찍으면 여러 대가 한 번에), 시리얼 없는 물품은 수량, 안전재고, 입고 단가(실적 권한자).\n■ 출고(− 출고): 계약 없이 나가는 장비 — 반품(공급처로)·불량·폐기·A/S 교체·분실·기타 중 사유를 고르고, 재고에서 찾거나 스캐너로 찍어 담아요. 시리얼 없는 물품은 수량을 적어요. A/S 교체는 가맹점을 연결할 수 있어요. 계약으로 나가는 장비는 지금처럼 ‘계약’에서 고릅니다.\n■ 수량 정정(재고 조사): 창고에서 센 실제 수량을 적고, 시리얼 장비는 없는 것만 체크를 꺼요(스캐너로 찍으면 ‘확인’ 표시). 사유를 적으면 차이만큼 바로잡고 이력에 남아요.\n■ 이력: 재고 화면의 ‘이력’ 또는 전체 → 일 → 재고 이력. 입고·출고·계약 출고·정정이 날짜·직원·메모와 함께 시간 순으로 나와요. 장비를 누르면 그 장비의 이력도 볼 수 있어요.\n■ 삭제는 잘못 넣은 것을 지울 때만 쓰세요(이력이 안 남음).\n■ 바코드: PC는 USB·블루투스 스캐너로 찍으면 바로 입력돼요. 검색칸에 시리얼을 찍으면 그 장비가 바로 열려요. 휴대폰은 📷 버튼으로 카메라 스캔(처음에 카메라 허용).\n■ 모델별로 재고·출고중 수량이 보이고, 안전재고보다 적으면 빨간색으로 알려요.\n■ 시리얼 줄을 눌러 수정·삭제, 실적 권한자는 입고·출고 단가와 보유 재고 자산을 봐요.\n■ 순서: 재고 → (계약에서 고르면) 출고중 → (설치 완료하면) 재고에서 빠짐.\n■ 보관지: 본사·광주지사. 입고할 때 보관지를 고르고, 위 ‘보관지’ 버튼으로 나눠 봐요. 장비를 눌러 보관지를 바꾸면 ‘이동’으로 이력에 남아요(예전 재고는 본사로 잡혀 있어요).\n■ 물품요청(지사 → 본사): 재고 화면 아래 또는 ☰ → 업무 → 물품요청. 품목·수량·받을 곳·본사 담당자를 적어 보내면 담당자 업무에 알림이 가요. 담당자가 ‘주문함’ → ‘발송(발주처리)’(송장 메모)을 누르면, 요청한 사람에게 ‘입고 확인’ 알림이 가요. 물건을 받고 ‘입고 확인’에서 받은 수량·시리얼을 적으면 받은 곳 재고에 바로 들어가요. 안 되면 담당자가 ‘반려’(사유).'],
   ['계약 · 입금', '■ 신규 계약 올리기: 가맹점 찾기 → 결제 연동(VAN/PG·업체명) → 구분(판매·CMS·렌탈)과 금액 → 나가는 장비(재고에서 고르기·스캔·직접 입력) → 장비 메모 → 계약일·만료일(+12/24/36개월 버튼).\n■ 계약 관리: 만료 3개월 이내 계약이 위에 빨간 D-day 로 나와요. 계약을 눌러 장비 추가, ‘설치 완료’(장비가 재고에서 빠짐). 실적 권한이 없으면 내가 올린 계약만 보여요.\n■ 입금 확인: + 로 종류·금액·가맹점·메모를 올리면 ‘입금확인’ 채팅방에 알림이 가고, 확인한 사람이 ‘확인 처리’를 눌러요.'],
   ['실적 · 수익 · 지난 업무', '■ 내 실적: 이번 달 내 신규 계약·판매금액, 지난달과 비교(성장률), 최근 6개월. ‹ › 로 달을 바꿔요.\n■ 전체 실적·직원별 순위(실적 권한자): 신규 계약 대수 순(같으면 판매금액 순), 직원별 지난달 → 이번 달 막대.\n■ 수익 현황(실적 권한자): 출고된 장비의 출고 단가 − 입고 단가. 단가를 안 적은 장비는 아래 목록에서 눌러 적으면 바로 반영돼요.\n■ 지난 업무 기록: 완료된 업무를 제목·거래처·담당자·완료 메시지로 찾아요(전체 이력 권한이 없으면 내 것만).'],
-  ['일일보고 · 실적 보고서', '■ 일일보고 쓰기: ‹ › 로 날짜를 고르고 오늘 한 일·특이사항·내일 계획을 적어 제출해요. 그날 완료한 업무와 올린 계약은 자동으로 같이 들어가요. 같은 날 다시 내면 수정본으로 바뀌어요.\n■ 일일보고 종합 보기(보고 열람 권한자): 날짜별로 직원별 보고와 미제출자를 봐요.\n■ 실적 보고서: 실적 권한자는 자동 집계된 이달 실적을 고쳐 ‘대표님께 보고하기’, 보고 열람 권한자는 올라온 보고서를 봐요.'],
+  ['일일보고 · 실적 보고서', '■ 일일보고 쓰기: ‹ › 로 날짜를 고르고 오늘 한 일·특이사항·내일 계획을 적어 제출해요. 그날 완료한 업무와 올린 계약은 (자동 집계)로 나에게만 보여요(보고에는 직접 쓴 내용만 올라가요). 같은 날 다시 내면 수정본으로 바뀌어요.\n■ 일일보고 종합 보기(보고 열람 권한자): 날짜별로 직원별 보고와 미제출자를 봐요.\n■ 실적 보고서: 실적 권한자는 자동 집계된 이달 실적을 고쳐 ‘대표님께 보고하기’, 보고 열람 권한자는 올라온 보고서를 봐요.'],
   ['자료실 · 비상연락망', '■ 자료실: 분류 버튼과 검색으로 찾고, 눌러서 첨부 파일을 받아요. + 로 제목·설명·분류와 파일(5개, 3MB까지, 사진은 자동으로 줄여서)을 올려요. 올린 사람과 관리자만 고치고 지워요. 개인정보 파일은 올리지 마세요.\n■ 비상연락망: 구분별로 모아 보이고, 번호를 누르면 전화가 걸려요. + 로 추가, ‘수정’으로 고치거나 지워요.'],
   ['내 프로필 · 공지사항', '■ 내 프로필: 전체 탭 맨 위 내 카드(또는 전체 → 계정 → 내 프로필)에서 사진과 상태 메시지(예: 외근 중)를 바꿔요. 다른 직원 프로필에서는 1:1 대화·전화하기.\n■ 공지사항: 읽지 않은 공지는 숫자로 표시돼요. ‘공지 작성’ 권한이 있으면 + 로 올리고 ‘맨 위에 고정’할 수 있어요. 작성 권한자·관리자는 공지 창에서 읽은 사람 목록을 봐요.'],
   ['알림 · 저장 상태 · 뒤로가기', '■ 화면 왼쪽 위 ‹ 뒤로: 하위 화면·다른 탭에서 누르면 한 단계씩 돌아가요(하위 화면 → 전체 메뉴 → 업무). 업무 화면에서 뒤로가기를 누르면 종료할지 물어봐요.\n■ 알림: 웹앱을 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·안내로 알려요. PC는 전체 → 계정 → 알림 받기를 허용하면 다른 창을 보고 있어도 알림이 떠요. 탭 제목에 안 본 개수가 보여요. (웹앱을 닫았을 때 오는 알림은 서버 연동 후 가능)\n■ 저장 상태: 저장하면 화면 위에 ‘저장 중’이 잠깐 보여요. 인터넷이 끊기면 ‘저장 대기’로 바뀌고, 연결되면 저절로 저장돼요. 이 띠가 있는 동안에는 닫지 마세요.\n■ 가맹점 수정 창을 연 사이 다른 직원이 같은 가맹점을 고치면, 저장할 때 바뀐 항목을 보여 주고 덮어쓸지 한 번 더 물어요.\n■ 뒤로가기: 폰 뒤로가기·브라우저 뒤로 버튼으로 팝업 → 대화방 → 메뉴 → 하위 화면 → 첫 화면 순서로 닫혀요. 첫 화면에서 한 번 더 누르면 나가요.\n■ 알림 소리·음성: 새 업무가 배정되면 ‘띵동’ 소리와 함께 “업무가 배정되었습니다”, 채팅이 오면 카톡처럼 “나인톡!”, 공지는 “새 공지가 있습니다”라고 말해 줘요. ☰ → 내 계정·설정 → ‘알림 및 소리 설정’에서 업무 소리·채팅 소리를 따로 끄고 켜고, ‘들어 보기’로 미리 들어 봐요. 채팅방 위 🔔 를 누르면 그 방만 소리를 꺼요(🔕).'],

@@ -10,8 +10,8 @@ android {
         applicationId 'kr.todanjeon.workapp'
         minSdk 26
         targetSdk 34
-        versionCode 62
-        versionName '0.0.30'
+        versionCode 63
+        versionName '0.0.31'
     }
 
     signingConfigs {
