@@ -6480,6 +6480,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.35", "2026-10-26", "• 대화방: 맨 아래를 보고 있으면 새 글을 따라 내려가고, 위쪽(안 읽은 글 등)을 읽는 중에 새 글이 오면 아래에 '새 메시지 ↓' 버튼 — 누르면 맨 아래로. 내가 보낸 글은 항상 맨 아래로"},
             {"0.0.34", "2026-10-26", "• 전체 메뉴에 '채팅' 묶음: 채팅 알림 및 소리 설정 / 업무 묶음: 업무 알림 및 소리 설정 (따로 분리)\n• 가맹점 찾기: 대표자명·전화번호·핸드폰번호(하이픈 없이도)로도 찾아요"},
             {"0.0.33", "2026-10-26", "• 알림 및 소리 설정에 '업무 알림 받기'·'채팅 알림 받기' 켜기·끄기\n• 채팅 알림은 방마다 1개만(새 글이 오면 그 방 알림이 바뀌고 개수 표시), 누르면 그 채팅방이 바로 열려요\n• 대화방을 열면 안 읽은 첫 글부터 보여요('여기까지 읽었어요' 줄)"},
             {"0.0.32", "2026-10-26", "• 안 읽은 채팅 알림띠: 다른 화면에서도 위쪽에 읽을 때까지 떠 있고, 누르면 그 채팅방으로 바로 가요\n• 가맹점 등록·수정의 주소: 인터넷 주소 검색처럼 찾아서 고르기(도로명·지번·건물명), 상세 주소는 이어 적기"},
@@ -6556,6 +6557,8 @@ public class MainActivity extends Activity {
         replyTo = null;
         lastMsgCount = -1;
         openReadAt = -1;
+        newMsgBtn = null;
+        newMsgCount = 0;
         resetRoomSearch();
         pendingSearch = null;
         pendingJump = 0;
@@ -6659,7 +6662,26 @@ public class MainActivity extends Activity {
         msgBox.setOrientation(LinearLayout.VERTICAL);
         msgBox.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 12));
         roomScroll.addView(msgBox);
-        root.addView(roomScroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        // 위쪽(안 읽은 글 등)을 보고 있을 때 새 글이 오면 아래에 '새 메시지 ↓' 버튼 — 누르면 맨 아래로
+        FrameLayout scrollBox = new FrameLayout(this);
+        scrollBox.addView(roomScroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        newMsgBtn = Ui.chip(this, "", Ui.DARK, Color.WHITE);
+        newMsgBtn.setPadding(Ui.dp(this, 16), Ui.dp(this, 9), Ui.dp(this, 16), Ui.dp(this, 9));
+        newMsgBtn.setElevation(Ui.dp(this, 4));
+        newMsgBtn.setVisibility(View.GONE);
+        newMsgBtn.setOnClickListener(v -> {
+            hideNewMsgBtn();
+            roomScroll.post(() -> roomScroll.fullScroll(View.FOCUS_DOWN));
+        });
+        FrameLayout.LayoutParams nbp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nbp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        nbp.bottomMargin = Ui.dp(this, 12);
+        scrollBox.addView(newMsgBtn, nbp);
+        roomScroll.getViewTreeObserver().addOnScrollChangedListener(() -> { // 맨 아래까지 내려오면 버튼을 숨긴다
+            if (roomScroll != null && newMsgBtn != null && newMsgBtn.getVisibility() == View.VISIBLE && roomScroll.getChildCount() > 0
+                    && roomScroll.getChildAt(0).getBottom() - (roomScroll.getHeight() + roomScroll.getScrollY()) < Ui.dp(this, 40)) hideNewMsgBtn();
+        });
+        root.addView(scrollBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         emojiPanel = buildEmojiPanel();
         emojiPanel.setVisibility(View.GONE);
@@ -7214,6 +7236,13 @@ public class MainActivity extends Activity {
 
     /** 방을 열 때 읽었던 시각 — 그 뒤의 남이 쓴 글부터 '여기까지 읽었어요' 줄을 긋고 거기로 보여 준다(카톡처럼) */
     private long openReadAt = -1;
+    private TextView newMsgBtn;
+    private int newMsgCount = 0;
+
+    private void hideNewMsgBtn() {
+        newMsgCount = 0;
+        if (newMsgBtn != null) newMsgBtn.setVisibility(View.GONE);
+    }
 
     private void fillMsgs() {
         if (msgBox == null || roomScroll == null) return;
@@ -7324,7 +7353,18 @@ public class MainActivity extends Activity {
             if (roomHits.contains(m.optInt("id"))) row.setBackgroundColor(m.optInt("id") == scrollToId ? Color.rgb(255, 226, 140) : Color.rgb(255, 242, 200));
             prev = m;
         }
+        final int prevCount = lastMsgCount;
         lastMsgCount = ms.size();
+        boolean mineLast = !ms.isEmpty() && ms.get(ms.size() - 1).optInt("who") == myId();
+        if (!firstFill && prevCount >= 0 && ms.size() > prevCount && !roomSearchOpen()) {
+            if (mineLast) atBottom = true; // 내가 보낸 글은 항상 맨 아래로
+            else if (!atBottom && newMsgBtn != null) { // 위쪽을 읽는 중 → 끌어내리지 않고 버튼만
+                newMsgCount += ms.size() - prevCount;
+                newMsgBtn.setText("새 메시지 " + newMsgCount + "  ↓");
+                newMsgBtn.setVisibility(View.VISIBLE);
+            }
+        }
+        if (atBottom) hideNewMsgBtn();
         final View target = scrollToId == 0 ? null : msgViews.get(scrollToId);
         final View ulv = unreadLine;
         if (target != null) {

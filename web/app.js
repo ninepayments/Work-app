@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.55';
+const VERSION = '웹 0.0.56';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -360,8 +360,15 @@ function render() {
   const ms = $('#msgbox'); S.mbRoom = ms ? S.room : 0;
   if (ms) { // 처음 열면 안 읽은 첫 글부터, 그 뒤엔 맨 아래를 보고 있을 때만 새 글 따라 내려간다
     const ul = S.jumpUnread && $('#unreadline'); S.jumpUnread = false;
+    const mm = ms.querySelectorAll('.m'), cnt = mm.length, lastMine = cnt > 0 && mm[cnt - 1].classList.contains('me');
+    const grew = mbKeep && S.mbCnt && cnt > S.mbCnt;
     if (ul) ms.scrollTop += ul.getBoundingClientRect().top - ms.getBoundingClientRect().top - 40;
-    else if (!mbKeep || mbKeep.bottom) ms.scrollTop = ms.scrollHeight; else ms.scrollTop = mbKeep.top;
+    else if (!mbKeep || mbKeep.bottom || (grew && lastMine)) { ms.scrollTop = ms.scrollHeight; S.newMsg = 0; } // 맨 아래를 보고 있거나 내가 보낸 글이면 따라 내려간다
+    else { ms.scrollTop = mbKeep.top; if (grew) S.newMsg = (S.newMsg || 0) + cnt - S.mbCnt; } // 위쪽을 읽는 중 → 끌어내리지 않고 '새 메시지 ↓' 버튼
+    if (!mbKeep) S.newMsg = 0;
+    S.mbCnt = cnt;
+    if (S.newMsg) { const nb = document.createElement('button'); nb.className = 'newmsg'; nb.textContent = '새 메시지 ' + S.newMsg + '  ↓'; nb.onclick = () => { S.newMsg = 0; nb.remove(); ms.scrollTop = ms.scrollHeight; }; ms.parentElement.appendChild(nb);
+      ms.addEventListener('scroll', () => { if (ms.scrollHeight - ms.scrollTop - ms.clientHeight < 40) { S.newMsg = 0; nb.remove(); } }); }
     loadImages();
   }
   if ($('#msgin')) setTimeout(() => { const mi = $('#msgin'); if (mi && mi.value) growMsg(mi); }, 0);
@@ -2655,6 +2662,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.56', '2026-10-26', ['대화방에서 위쪽(안 읽은 글 등)을 읽는 중에 새 글이 오면 아래에 ‘새 메시지 ↓’ 버튼 — 누르면 맨 아래로. 맨 아래를 보고 있으면 새 글을 따라 내려가요']],
   ['웹 0.0.55', '2026-10-26', ['PC 오른쪽 채팅창: 글 쓰는 칸을 한 줄 전체로 넓게(여러 줄 보임), + ☺ 보내기는 그 아래 줄로']],
   ['웹 0.0.54', '2026-10-26', ['PC 프로그램(0.0.9): 위쪽 검은 줄 어디든(메뉴 버튼 위라도) 잡고 끌면 창이 옮겨져요(다른 모니터로도). 전체 모드에서 끌면 작은 창이 되어 따라와요. 빈 곳을 두 번 누르면 전체 ↔ 작은 창']],
   ['웹 0.0.53', '2026-10-26', ['PC 프로그램 창 줄이기 때 위쪽 검은 줄(메뉴 사이 빈 곳·이름 쪽)을 끌어 다른 모니터로 옮길 수 있게 — 옮긴 뒤 ⋮ → 크게보기를 누르면 그 모니터에서 전체 모드']],
