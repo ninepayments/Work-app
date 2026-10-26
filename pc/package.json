@@ -1,7 +1,7 @@
 {
   "name": "nine-family-pc",
   "productName": "나인패밀리",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "나인패밀리 PC 프로그램 (웹앱을 PC 창으로 띄움)",
   "main": "main.js",
   "author": "(주)나인페이먼츠",

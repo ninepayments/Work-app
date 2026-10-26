@@ -3,6 +3,9 @@
  * 화면과 기능은 웹앱 그대로라서, 웹을 고치면 이 프로그램도 다시 설치할 필요 없이 바로 바뀐다. 자료는 서버(Firebase)에 있다. */
 const {app, BrowserWindow, shell, session, Menu, Tray, ipcMain, nativeImage, screen} = require('electron');
 const path = require('path');
+const fs = require('fs');
+const {spawn} = require('child_process');
+const SETUP_URL = 'https://github.com/ninepayments/Work-app/releases/latest/download/NineFamily-Setup.exe';
 
 const HOME = 'https://ninepayments.github.io/Work-app/';
 const ORIGIN = new URL(HOME).origin;
@@ -89,6 +92,26 @@ ipcMain.on('nine-win', (e, k) => {
     const wa = screen.getDisplayMatching(win.getBounds()).workArea, w = Math.min(1100, wa.width - 80), h = Math.min(760, wa.height - 80);
     win.setBounds({x: wa.x + Math.round((wa.width - w) / 2), y: wa.y + Math.round((wa.height - h) / 2), width: w, height: h});
   } else if (k === 'full') win.maximize();
+});
+// 새 버전 자동 설치: 최신 설치 파일을 받아 조용히(/S) 덮어 설치하고 다시 켠다(--force-run). 로그인·자료는 그대로.
+let updating = false;
+ipcMain.on('nine-update', async e => {
+  if (!win || e.sender !== win.webContents || updating) return;
+  updating = true;
+  const send = (k, v) => { try { win.webContents.send('nine-upd', k, v); } catch (er) {} };
+  try {
+    const {net} = require('electron');
+    const r = await net.fetch(SETUP_URL);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const total = Number(r.headers.get('content-length')) || 0, chunks = []; let got = 0, last = -1;
+    const rd = r.body.getReader();
+    for (;;) { const {done, value} = await rd.read(); if (done) break; chunks.push(Buffer.from(value)); got += value.length; const pct = total ? Math.floor(got * 100 / total) : 0; if (pct !== last) { last = pct; send('progress', pct); } }
+    const exe = path.join(app.getPath('temp'), 'NineFamily-Setup-' + Date.now() + '.exe');
+    fs.writeFileSync(exe, Buffer.concat(chunks));
+    send('install', 0);
+    spawn(exe, ['/S', '--force-run'], {detached: true, stdio: 'ignore'}).unref(); // 설치 프로그램이 이 프로그램을 닫고 새로 깐 뒤 다시 켠다
+    setTimeout(quitAll, 800);
+  } catch (er) { updating = false; send('error', String(er && er.message || er)); }
 });
 ipcMain.handle('nine-win-state', e => ({full: !!(win && (win.isMaximized() || win.isFullScreen()))}));
 
