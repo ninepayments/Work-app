@@ -434,7 +434,7 @@ final class Store {
     }
 
     private static String phoneSig(JSONObject u) {
-        return u.optString("phone") + "|" + has(u, Perm.STAFF_MANAGE) + "|" + has(u, Perm.PERF_VIEW) + "|" + has(u, Perm.REPORT_VIEW) + "|"
+        return u.optString("phone") + "|" + has(u, Perm.STAFF_MANAGE) + "|" + has(u, Perm.PERF_VIEW) + "|" + has(u, Perm.REPORT_VIEW) + "|" + has(u, Perm.MERCHANT_EDIT) + "|"
                 + u.optBoolean("active", true) + "|" + u.optString("name") + "|" + u.optInt("id");
     }
 
@@ -492,6 +492,7 @@ final class Store {
                         p.put("admin", has(o, Perm.STAFF_MANAGE));
                         p.put("perf", has(o, Perm.PERF_VIEW));
                         p.put("report", has(o, Perm.REPORT_VIEW));
+                        p.put("medit", has(o, Perm.MERCHANT_EDIT) || has(o, Perm.STAFF_MANAGE)); // 서버 규칙: 가맹점 쓰기 권한
                         p.put("active", o.optBoolean("active", true));
                         p.put("name", o.optString("name"));
                         Cloud.fs().collection("phones").document(o.optString("phone")).set(p);
@@ -499,6 +500,41 @@ final class Store {
                     }
                 }
             }
+        }
+    }
+
+    /** 관리자: 모든 직원의 로그인 허용 번호(phones)와 서버 규칙용 권한 표시를 한 번 다시 맞춘다 */
+    void syncAllPhones() {
+        JSONArray a = users();
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject o = a.optJSONObject(i);
+            if (o == null || o.optString("phone").isEmpty()) continue;
+            Map<String, Object> p = new HashMap<>();
+            p.put("uid", (long) o.optInt("id"));
+            p.put("admin", has(o, Perm.STAFF_MANAGE));
+            p.put("perf", has(o, Perm.PERF_VIEW));
+            p.put("report", has(o, Perm.REPORT_VIEW));
+            p.put("medit", has(o, Perm.MERCHANT_EDIT) || has(o, Perm.STAFF_MANAGE));
+            p.put("active", o.optBoolean("active", true));
+            p.put("name", o.optString("name"));
+            Cloud.fs().collection("phones").document(o.optString("phone")).set(p);
+        }
+    }
+
+    /** 가맹점 감사 로그(auditLogs): 누가·언제·무엇을 — 관리자만 읽는다 */
+    void alog(int who, String a, JSONObject m, String n) {
+        if (who == 0) return;
+        Map<String, Object> d = new HashMap<>();
+        d.put("who", (long) who);
+        d.put("a", a);
+        d.put("c", "merchants");
+        d.put("id", (long) (m == null ? 0 : m.optInt("id")));
+        d.put("name", m == null ? "" : m.optString("name"));
+        d.put("n", n == null ? "" : n);
+        d.put("u", System.currentTimeMillis());
+        try {
+            Cloud.fs().collection("auditLogs").add(d);
+        } catch (Exception ignored) {
         }
     }
 

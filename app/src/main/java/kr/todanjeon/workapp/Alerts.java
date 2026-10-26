@@ -125,6 +125,19 @@ final class Alerts {
         wake(c);
     }
 
+    /** 단순 알림 한 건 (관리자 경고 등) */
+    static void simple(Context c, String title, String body) {
+        try {
+            channels(c);
+            Intent it = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent pi = PendingIntent.getActivity(c, 7, it, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            Notification.Builder nb = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(c, CH) : new Notification.Builder(c);
+            nb.setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setContentIntent(pi).setAutoCancel(true);
+            ((NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE)).notify(seq++, nb.build());
+        } catch (Exception ignored) {
+        }
+    }
+
     /** 화면이 꺼져 있으면 잠깐 켠다(알림이 보이게). */
     private static void wake(Context c) {
         try {

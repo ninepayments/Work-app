@@ -354,3 +354,6 @@ details.man[open]{padding-bottom:12px}
 .chatdock .send>button{min-height:36px}.chatdock .send>button[data-act=send]{margin-left:auto;padding:0 22px}
 .chatroom{position:relative}.newmsg{position:absolute;left:50%;transform:translateX(-50%);bottom:84px;z-index:5;border:0;border-radius:20px;background:var(--dark);color:#fff;padding:9px 16px;font-size:13px;font-weight:700;box-shadow:0 3px 10px rgba(0,0,0,.25);cursor:pointer;font-family:inherit}
 .chatdock .newmsg{bottom:130px}
+#lockov{position:fixed;inset:0;z-index:5000;background:#1f1a12;display:flex;align-items:center;justify-content:center;padding:20px;-webkit-app-region:no-drag}.lockbox{background:#fff;border-radius:20px;padding:24px;width:min(360px,100%);text-align:center}.lockbox input{text-align:center;font-size:22px;letter-spacing:6px}
+/* 업무 요청 빠른 선택 버튼: 작게, 버튼 안 글자는 한 줄 (버튼이 많으면 다음 줄로) */
+.pill.rqq{font-size:12px;padding:5px 10px;white-space:nowrap}

@@ -24,7 +24,7 @@
 ## 데이터 구조 (Firestore)
 - 문서 형식: `{j: JSON 문자열, u: 시각}` (+ 서버 규칙용 필드: 비공개 대화 `mem`, 계약·보고 `who`, 프로필 `who`). 웹은 `ser()` 로 같은 모양을 쓴다.
 - 일반 컬렉션(앱 `Store.COLLS` = 웹 `COLLS`): `users, tasks, notices, projects, contracts, events, merchants, stock, rooms, msgs, reports, profiles, costs, contacts, deposits, library, mlogs, config`
-- 그 밖: `phones/{+8210…}`(로그인 허용·권한: uid, active, admin, perf, report), `prooms`·`pmsgs`(1:1 비공개, 참가자 번호 `mem`), `blobs`(사진·파일 600KB 조각), `audit`(모든 변경 기록, 관리자만 읽기).
+- 그 밖: `phones/{+8210…}`(로그인 허용·권한: uid, active, admin, perf, report, medit=가맹점 쓰기), `auditLogs`(가맹점 열람·수정·내보내기 기록, 관리자만 읽기), `prooms`·`pmsgs`(1:1 비공개, 참가자 번호 `mem`), `blobs`(사진·파일 600KB 조각), `audit`(모든 변경 기록, 관리자만 읽기).
 - **삭제는 항상 소프트 삭제**(`deleted: true`). 서버 규칙이 실제 삭제를 막는다.
 - 저장된 값은 화면 글을 바꿔도 그대로 둔다: 업무 status `지시됨`(화면엔 '미확인'), stock status `설치완료`+`gone`(엑셀로 올린 가맹점 설치 장비는 gone `기존 설치`+merchant), profiles `memos`(PC 메모), users `dept`·`pos`·`birth`·`tel`·`addr`·`photo`·`noPerf`·`noReport`·`deleted`(완전 삭제), config key `merchant_lock`·`req_quick`·`products`·`positions`(직책 순서)·`delete_lock`(삭제 비밀번호)(상품 목록 {items:[{code,name,barcode}]}), 재고·요청 품목의 `model`(상품명)+`code`(상품코드).
 - 기기 설정 키 — 앱 prefs `workapp`: `voice`(업무 소리), `voiceChat`(채팅 소리), `bgNotify`(화면 꺼짐 알림), `session`. 채팅방 음소거 prefs `chatprefs` `mute_<내id>_<방id>`. 웹 localStorage: `snd_<uid>`, `sndc_<uid>`, `mute_<uid>`.

@@ -108,3 +108,11 @@
 - 2026-10-26: 대화방 스크롤 — 처음 열 때만 안 읽은 첫 글로, 그 뒤엔 맨 아래를 보고 있으면 새 글 따라 내려감, 위쪽을 읽는 중이면 '새 메시지 N ↓' 버튼(누르면 맨 아래), 내 글은 항상 맨 아래. 웹·앱 같음.
 - 2026-10-26: 홈페이지 서류접수·상담신청 → 기존 Apps Script(doPost)가 텔레그램 전송 뒤 tools/intake/nine-forward.gs 의 nineForward(e) 로 Firestore 에 서비스 계정(스크립트 속성 NINE_SA, 사용자가 직접 입력)으로 직접 씀. Blaze·규칙 예외 불필요. 서류 → '서류접수' 방(글 + 첨부마다 img/file 메시지, blobs 600KB 조각), 상담 → '상담신청' 방. 메시지 who:0 + wname '📮 홈페이지 접수'(웹 wname(), 앱 Store.whoName). 보관 기간·비공개 방은 추후 결정.
 - 2026-10-26: '⏳ 서버에 저장 중' 띠는 저장이 10초 넘게 안 될 때만 표시(인터넷 끊김 표시는 바로).
+- 2026-10-26: 보안 강화 — merchants 쓰기는 서버 규칙으로 phones.medit(=가맹점 등록·수정 권한) 또는 admin 만, 문서는 {j,u} 만·크기 제한·삭제 금지. phones 에 medit 추가(웹 syncPhone·앱 Store, 관리자 기기에서 한 번 전체 다시 맞춤 phsync3).
+- 2026-10-26: 감사 로그 컬렉션 auditLogs {who,a(view·new·edit·delete·import·export·over),c,id,name,n,u} — 본인 who 로만 쓰기, 관리자만 읽기. 관리자 화면 '가맹점 조회 기록'(조회량 많은 계정: 오늘·7일·한도 초과).
+- 2026-10-26: 가맹점 상세 조회 하루 한도 config key 'view_limit' {n}(기본 100, 관리자 제외), 같은 날 같은 가맹점은 1번만 셈 — profiles.vc {d, ids, over} 에 기록. 넘으면 막고 auditLogs 'over' → 관리자 알림.
+- 2026-10-26: 가맹점 목록(웹 표·카드, 앱 목록·조회 창)은 전화 010-****-1234 · 주소 앞 두 단어까지만, 상세에서 전체. 목록 50곳씩(더 보기). 엑셀 가져오기·양식은 관리자 전용.
+- 2026-10-26: 앱 잠금 — 앱 prefs workapp lockPin_<id>(salt:sha256)·lockBio_<id>(지문, API 29+), 웹 localStorage lockpin_<uid>. 새로 켜거나 1분 넘게 밖에 있다 오면 잠금. 잊으면 로그아웃 후 재인증.
+- 2026-10-26: 채팅 임시 저장 — 웹 localStorage draft_<uid>_<방>, 앱 chatprefs ck("draft", 방). 보내면 지움.
+- 2026-10-26: 최고관리자 = 양문희·가태현(users.super, 이름으로도 인정) — 관리자 기기에서 모든 권한 자동 부여, 최고관리자가 아닌 관리자는 권한 변경·사용 중지·삭제 불가.
+- 2026-10-26: App Check — 웹은 APPCHECK_KEY(reCAPTCHA v3 사이트 키) 넣으면 켜짐(지금 비어 있음). 안드로이드는 Play 스토어 배포가 아니라 Play Integrity 를 못 써서 보류. 콘솔에서 '적용(enforce)'은 켜지 않는다.

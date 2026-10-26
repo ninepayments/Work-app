@@ -178,4 +178,58 @@ final class Ui {
 
     private Ui() {
     }
+
+    /** 칸이 모자라면 다음 줄로 넘기는 줄(빠른 선택 버튼용). 버튼 안 글자는 한 줄로 */
+    static final class Flow extends ViewGroup {
+        private final int gap;
+
+        Flow(Context c, int gapDp) {
+            super(c);
+            gap = dp(c, gapDp);
+        }
+
+        @Override
+        protected void onMeasure(int ws, int hs) {
+            int w = MeasureSpec.getSize(ws), x = 0, y = 0, lineH = 0;
+            for (int i = 0; i < getChildCount(); i++) {
+                View v = getChildAt(i);
+                if (v.getVisibility() == GONE) continue;
+                v.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+                if (x > 0 && x + v.getMeasuredWidth() > w) {
+                    x = 0;
+                    y += lineH + gap;
+                    lineH = 0;
+                }
+                x += v.getMeasuredWidth() + gap;
+                lineH = Math.max(lineH, v.getMeasuredHeight());
+            }
+            setMeasuredDimension(w, y + lineH);
+        }
+
+        @Override
+        protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            int w = r - l, x = 0, y = 0, lineH = 0;
+            for (int i = 0; i < getChildCount(); i++) {
+                View v = getChildAt(i);
+                if (v.getVisibility() == GONE) continue;
+                if (x > 0 && x + v.getMeasuredWidth() > w) {
+                    x = 0;
+                    y += lineH + gap;
+                    lineH = 0;
+                }
+                v.layout(x, y, x + v.getMeasuredWidth(), y + v.getMeasuredHeight());
+                x += v.getMeasuredWidth() + gap;
+                lineH = Math.max(lineH, v.getMeasuredHeight());
+            }
+        }
+    }
+
+    /** 작은 빠른 선택 버튼 (글자 한 줄) */
+    static TextView smallBtn(Context c, String s, int bg, int fg) {
+        TextView t = text(c, s, 12, fg, true);
+        t.setSingleLine(true);
+        t.setBackground(round(bg, 14, c));
+        t.setPadding(dp(c, 10), dp(c, 6), dp(c, 10), dp(c, 6));
+        return t;
+    }
 }

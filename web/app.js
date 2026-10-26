@@ -2,7 +2,8 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.60';
+const VERSION = '웹 0.0.61';
+const APPCHECK_KEY = ''; // App Check (reCAPTCHA v3) 사이트 키 — 콘솔에서 만든 뒤 넣는다
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -296,6 +297,27 @@ function noProfile() { // 서버에서 받은 직원 목록에 내가 없을 때
   S.noProfile = true;
   $('#root').innerHTML = '<div class="login"><h1>처음 오셨나요?</h1><div class="sub">직원 정보가 아직 없어요. 앱에서 한 번 로그인한 뒤 다시 열어 주세요.</div><button class="btn full" id="lo">로그아웃</button></div>'; $('#lo').onclick = logout;
 }
+// ---------- 앱 잠금 (PIN) — 이 기기에서만. 새로 열거나 1분 넘게 다른 창에 있다 돌아오면 잠근다 (안드로이드 앱은 지문도) ----------
+const lockOn = () => !!(S.uid && LS('lockpin_' + S.uid));
+let hiddenAt = 0;
+document.addEventListener('visibilitychange', () => { if (document.hidden) hiddenAt = Date.now(); else if (hiddenAt && Date.now() - hiddenAt > 60000) showLock(); });
+function showLock() {
+  if (!lockOn() || DEMO || $('#lockov')) return;
+  const ov = document.createElement('div'); ov.id = 'lockov';
+  ov.innerHTML = '<div class="lockbox"><div style="font-size:40px">🔒</div><h3>나인패밀리 잠금</h3><div class="sub">' + esc(S.me ? S.me.name : '') + '님, PIN을 입력해 주세요.</div><input id="lockpin" type="password" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="PIN"><button class="btn gold full" id="lockgo">열기</button><button class="btn full" id="lockforgot">PIN을 잊었어요</button></div>';
+  document.body.appendChild(ov); const inp = ov.querySelector('#lockpin'); setTimeout(() => inp.focus(), 50); let wrong = 0;
+  const go = async () => { const [salt, h] = String(LS('lockpin_' + S.uid)).split(':'); if (await sha(salt + inp.value.trim()) === h) { ov.remove(); return; } inp.value = ''; toast(++wrong >= 5 ? '5번 틀렸어요. 잊었다면 ‘PIN을 잊었어요’로 다시 로그인해 주세요.' : 'PIN이 맞지 않아요.'); };
+  ov.querySelector('#lockgo').onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  ov.querySelector('#lockforgot').onclick = () => { if (confirm('로그아웃한 뒤 휴대폰 문자 인증으로 다시 로그인하면 잠금이 풀려요. 로그아웃할까요?')) { try { localStorage.removeItem('lockpin_' + S.uid); } catch (e) {} ov.remove(); logout(); } };
+}
+function lockSetAct() {
+  const on = lockOn();
+  formModal('앱 잠금 (PIN)', '<div class="sub">' + (on ? '잠금이 켜져 있어요. 새 PIN을 적으면 바뀌어요.' : 'PIN을 정하면 이 기기에서 웹앱(PC 프로그램)을 새로 열거나 1분 넘게 다른 창에 있다 돌아올 때 잠금을 물어요.') + '</div><input id="f_p1" type="password" inputmode="numeric" maxlength="6" placeholder="새 PIN (숫자 4~6자리)"><input id="f_p2" type="password" inputmode="numeric" maxlength="6" placeholder="새 PIN 한 번 더">' + (on ? '<button type="button" class="btn red full" id="f_off">잠금 끄기</button>' : ''), () => {
+    const a = $('#f_p1').value.trim(); if (!/^\d{4,6}$/.test(a)) return warn('PIN은 숫자 4~6자리로 적어 주세요.'); if (a !== $('#f_p2').value.trim()) return warn('두 PIN이 서로 달라요.');
+    const salt = Math.random().toString(36).slice(2) + Date.now().toString(36); sha(salt + a).then(h => { LS('lockpin_' + S.uid, salt + ':' + h); closeModal(); render(); toast('앱 잠금을 켰어요.'); }); return false;
+  }, '저장');
+  const off = $('#f_off'); if (off) off.onclick = () => { try { localStorage.removeItem('lockpin_' + S.uid); } catch (e) {} closeModal(); render(); toast('앱 잠금을 껐어요.'); };
+}
 async function logout() {
   unsubs.forEach(u => u()); unsubs = [];
   COLLS.forEach(c => S.data[c].clear()); S.pushed = {}; S.me = null; S.uid = 0;
@@ -343,7 +365,9 @@ function render() {
   const keepScroll = $('.scroll') ? $('.scroll').scrollTop : 0;
   const mb0 = $('#msgbox'), mbKeep = mb0 && S.mbRoom === S.room ? {top: mb0.scrollTop, bottom: mb0.scrollHeight - mb0.scrollTop - mb0.clientHeight < 120} : null;
   const act = document.activeElement; const focusId = act && act.id; const selPos = act && act.selectionStart; const focusVal = act && act.value;
-  if (S.room && S.me) markRead(S.room); // 보고 있는 방은 읽은 것으로 먼저 (숫자가 남지 않게)
+  if (S.room && S.me) markRead(S.room);
+  if (!S.lockChecked && S.me && !DEMO) { S.lockChecked = true; showLock(); } // 새로 열면 잠금 (켜 둔 경우)
+  if (!S.phSynced && S.me && can('staff_manage') && !DEMO) { S.phSynced = true; watchOver(); ensureSupers(); if (LS('phsync3_' + S.uid) !== '1') { list('users').forEach(syncPhone); LS('phsync3_' + S.uid, '1'); } } // 서버 규칙용 권한 표시(medit 등)를 한 번 모두 맞춘다 // 보고 있는 방은 읽은 것으로 먼저 (숫자가 남지 않게)
   const badges = {task: newTaskCount(), all: unreadNotices(), chat: unreadTotal()};
   syncTitle(badges.task + badges.all + badges.chat); armBack();
   const k = S.sub || S.tab;
@@ -375,6 +399,7 @@ function render() {
       ms.addEventListener('scroll', () => { if (ms.scrollHeight - ms.scrollTop - ms.clientHeight < 40) { S.newMsg = 0; nb.remove(); } }); }
     loadImages();
   }
+  const mi0 = $('#msgin'); if (mi0 && !mi0.value && S.room) { const dr = LS('draft_' + S.uid + '_' + S.room); if (dr) mi0.value = dr; } // 쓰던 메시지 이어서 (방마다 이 기기에 임시 저장)
   if ($('#msgin')) setTimeout(() => { const mi = $('#msgin'); if (mi && mi.value) growMsg(mi); }, 0);
   if (focusId && $('#' + focusId) && $('#' + focusId).closest('#root')) { const el = $('#' + focusId); if (focusVal != null && el.tagName !== 'SELECT') el.value = focusVal; el.focus(); try { el.setSelectionRange(selPos, selPos); } catch (e) {} }
 }
@@ -412,6 +437,7 @@ function viewBody(k) {
     case 'staffinfo': return viewStaffInfo();
     case 'sound': return viewSound('task');
     case 'soundchat': return viewSound('chat');
+    case 'auditlog': return viewAudit();
     case 'sms': return viewSms();
     case 'manual': return viewManual();
     case 'about': return viewAbout();
@@ -441,6 +467,7 @@ function bind(root) {
   root.addEventListener('compositionend', ev => { S.comp = false; apply(ev.target); });
 }
 const ACT = {};
+ACT.lockSet = () => lockSetAct();
 // 알림 및 소리 설정: 업무 소리 · 채팅 소리를 각각 켜고 끄고 들어 본다
 function viewSound(kind) { // kind: 'task' 업무 알림 및 소리 / 'chat' 채팅 알림 및 소리
   const chat = kind === 'chat';
@@ -890,6 +917,7 @@ ACT.dm = uid => {
 };
 ACT.send = () => {
   const inp = $('#msgin'); const text = inp.value.trim(); if (!text) return;
+  try { localStorage.removeItem('draft_' + S.uid + '_' + S.room); } catch (e) {}
   const room = ensureRoom(); if (!room) return;
   const m = create('msgs', {room: room.id, who: S.uid, text, ts: Date.now()});
   if (room.mem && room.mem.length) m.mem = room.mem.slice();
@@ -900,7 +928,7 @@ ACT.send = () => {
 const coarse = () => matchMedia('(pointer: coarse)').matches;
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.target.id === 'msgin' && !coarse()) { e.preventDefault(); ACT.send(); } });
 const growMsg = el => { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; };
-document.addEventListener('input', e => { if (e.target && e.target.id === 'msgin') growMsg(e.target); });
+document.addEventListener('input', e => { if (e.target && e.target.id === 'msgin') { growMsg(e.target); if (S.room) LS('draft_' + S.uid + '_' + S.room, e.target.value); } });
 ACT.avScroll = d => { const el = $('#avs'); if (el) el.scrollBy({left: Number(d) * Math.max(160, el.clientWidth - 60), behavior: 'smooth'}); };
 // 새 채팅: 앱과 같이 '그룹 채팅방'과 '1:1 대화' 중에서 고른다
 ACT.newChat = () => modal('<h3>새 채팅</h3><div class="sub" style="margin-top:0">어떤 대화를 시작할까요?</div>' +
@@ -930,6 +958,55 @@ ACT.newGroup = () => {
 // 예전 앱은 연락처가 한 칸(phone)이었다 → 휴대폰 번호(010…)만 들어 있으면 휴대폰번호로 보여 준다 (수정해서 저장하면 그 칸으로 옮겨진다)
 function mNums(m) { const p = m.phone || ''; return !m.mobile && /^01[016789]/.test(p.replace(/\D/g, '')) ? {phone: '', mobile: p} : {phone: p, mobile: m.mobile || ''}; }
 function mHay(m) { const b = m.bizno || '', d = v => String(v || '').replace(/\D/g, ''); return [m.name, m.owner, b, d(b), m.phone, d(m.phone), m.mobile, d(m.mobile), m.addr, m.van].filter(Boolean).join(' '); } // 상호·대표자·사업자번호·전화·핸드폰(하이픈 없이도)·주소·VAN
+// ---------- 보안: 감사 로그(auditLogs — 누가·언제·무엇을, 관리자만 열람) · 상세 조회 일일 한도 · 목록 마스킹 ----------
+function alog(a, m, n) { // a: view·new·edit·delete·import·export·over
+  if (DEMO || !S.uid) return;
+  fs.collection('auditLogs').add({who: S.uid, a, c: 'merchants', id: m ? Number(m.id) : 0, name: m ? String(m.name || '') : '', n: String(n || ''), u: Date.now()}).catch(() => {});
+}
+const viewLimit = () => { const c = list('config').find(x => x.key === 'view_limit'); return c && Number(c.n) > 0 ? Number(c.n) : 100; };
+function mViewOk(m) { // 같은 날 같은 가맹점은 한 번만 센다. 관리자는 한도 없음(기록은 남김)
+  const today = todayStr(), pr = myProf() || {id: S.uid};
+  const vc = pr.vc && pr.vc.d === today ? Object.assign({}, pr.vc, {ids: (pr.vc.ids || []).slice()}) : {d: today, ids: []};
+  if (vc.ids.includes(m.id)) return true;
+  if (!can('staff_manage') && vc.ids.length >= viewLimit()) {
+    if (!vc.over) { vc.over = true; pr.vc = vc; put('profiles', pr); alog('over', m, '한도 ' + viewLimit()); }
+    toast('오늘 가맹점 상세 조회 한도(' + viewLimit() + '곳)를 넘었어요. 관리자에게 문의해 주세요.'); return false;
+  }
+  vc.ids.push(m.id); pr.vc = vc; put('profiles', pr); alog('view', m); return true;
+}
+const maskPhone = p => String(p || '').replace(/(\d{2,4})([-\s.]?)(\d{3,4})([-\s.]?)(\d{4})/, (x, a, s1, b, s2, c) => a + (s1 || '-') + '*'.repeat(b.length) + (s2 || '-') + c);
+const maskAddr = a => { const t = String(a || '').trim().split(/\s+/); return t.length > 2 ? t.slice(0, 2).join(' ') + ' …' : t.join(' '); };
+const ALOG = {view: '상세 조회', new: '등록', edit: '수정', delete: '삭제', import: '엑셀 가져오기', export: '내보내기', over: '⚠ 조회 한도 초과'};
+ACT.auditOpen = async () => {
+  if (!can('staff_manage')) return toast('관리자만 볼 수 있어요.');
+  S.tab = 'all'; S.sub = 'auditlog'; S.menu = false; S.audit = null; render();
+  if (DEMO) { S.audit = []; render(); return; }
+  try { const sn = await fs.collection('auditLogs').orderBy('u', 'desc').limit(800).get(); S.audit = sn.docs.map(d => d.data()); } catch (e) { S.audit = []; toast('기록을 불러오지 못했어요: ' + (e.code || e.message)); }
+  render();
+};
+function viewAudit() {
+  if (!can('staff_manage')) return '<h1>가맹점 조회 기록</h1><div class="empty">관리자만 볼 수 있어요.</div>';
+  const L = S.audit; const head = '<h1>가맹점 조회 기록 (감사 로그)</h1><div class="sub">누가 · 언제 · 어떤 가맹점을 보거나 고쳤는지 남아요(최근 800건). 하루 상세 조회 한도: ' + viewLimit() + '곳 (관리자 제외) <button class="btn" style="margin:0 0 0 6px;padding:4px 10px" data-act="viewLimitSet">한도 바꾸기</button> <button class="btn" style="margin:0;padding:4px 10px" data-act="auditOpen">새로고침</button></div>';
+  if (!L) return head + '<div class="empty">불러오는 중…</div>';
+  const today = todayStr(), wk = Date.now() - 7 * 864e5, day = u => { const d = new Date(u); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  const cnt = {}; L.forEach(x => { if (x.a !== 'view' && x.a !== 'over') return; const c = cnt[x.who] || (cnt[x.who] = {t: 0, w: 0, over: 0}); if (day(x.u) === today && x.a === 'view') c.t++; if (x.u >= wk && x.a === 'view') c.w++; if (x.a === 'over' && x.u >= wk) c.over++; });
+  const top = Object.entries(cnt).sort((a, b) => b[1].t - a[1].t || b[1].w - a[1].w);
+  const q = S.audq || '';
+  const rows = L.filter(x => kmatch(uname(x.who) + ' ' + (x.name || '') + ' ' + (ALOG[x.a] || x.a) + ' ' + (x.n || ''), q)).slice(0, 300);
+  return head + '<h2>조회량 많은 계정</h2>' + (top.length ? '<div class="tbl"><table><thead><tr><th>직원</th><th>오늘 상세 조회</th><th>최근 7일</th><th>한도 초과(7일)</th></tr></thead><tbody>' + top.map(([w, c]) => '<tr><td class="b">' + esc(uname(Number(w))) + '</td><td' + (c.t >= viewLimit() * 0.8 ? ' style="color:var(--red);font-weight:700"' : '') + '>' + c.t + '</td><td>' + c.w + '</td><td' + (c.over ? ' style="color:var(--red);font-weight:700"' : '') + '>' + c.over + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="sub">아직 기록이 없어요.</div>') +
+    '<h2>기록</h2><input id="audq" data-q="audq" placeholder="🔍 직원·가맹점·종류" value="' + esc(q) + '"><div class="qres" data-for="audq">' + (rows.map(x => '<div class="card flat"><div class="row"><div class="grow"><div class="t1">' + esc(ALOG[x.a] || x.a) + (x.name ? ' · ' + esc(x.name) : '') + '</div><div class="t2">' + esc(uname(x.who)) + ' · ' + esc(new Date(x.u).toLocaleString('ko-KR')) + (x.n ? ' · ' + esc(x.n) : '') + '</div></div></div></div>').join('') || '<div class="empty">기록이 없어요.</div>') + '</div>';
+}
+ACT.viewLimitSet = () => {
+  if (!can('staff_manage')) return;
+  formModal('가맹점 상세 조회 한도 (하루)', '<div class="sub">직원 한 명이 하루에 열어 볼 수 있는 가맹점 상세 수예요(같은 가맹점은 하루 한 번만 셈, 관리자 제외). 넘으면 막히고 관리자에게 알림이 가요.</div><input id="f_vl" inputmode="numeric" value="' + viewLimit() + '">', () => {
+    const n = Math.round(Number($('#f_vl').value)); if (!(n >= 5 && n <= 5000)) return warn('5 ~ 5000 사이로 적어 주세요.');
+    const c = list('config').find(x => x.key === 'view_limit') || create('config', {key: 'view_limit'}); c.n = n; c.changedBy = S.uid; put('config', c); render(); toast('하루 한도를 ' + n + '곳으로 정했어요.'); return true;
+  }, '저장');
+};
+function watchOver() { // 관리자: 누가 조회 한도를 넘으면 바로 알림
+  const t0 = Date.now();
+  try { fs.collection('auditLogs').orderBy('u', 'desc').limit(10).onSnapshot(sn => sn.docChanges().forEach(ch => { const d = ch.doc.data(); if (ch.type === 'added' && d.a === 'over' && d.u > t0) notify('⚠ 가맹점 조회 한도 초과', uname(d.who) + '님이 오늘 상세 조회 한도를 넘었어요.', () => ACT.auditOpen(), '새 공지가 있습니다'); }), () => {}); } catch (e) {}
+}
 function termsShort(m) { return m.ctype === '임대' ? '임대' + (m.camt ? ' · 월 ' + won(m.camt) : '') : m.ctype === '판매' ? '판매' + (m.camt ? ' · ' + won(m.camt) : '') : ''; }
 function viewMerchants() {
   const all = list('merchants').sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -942,11 +1019,11 @@ function viewMerchants() {
   const rows = !shown.length ? '' : isWide()
     ? '<div class="tbl"><table><thead><tr><th>상호</th><th>사업자번호</th><th>전화 / 휴대폰</th><th>VAN사</th><th>계약</th><th>계약종료</th><th>주소</th></tr></thead><tbody>' + shown.map(m => {
       const n = mNums(m), t = termsShort(m);
-      return '<tr data-act="merchant" data-arg="' + m.id + '"><td class="b">' + esc(m.name) + '</td><td>' + esc(m.bizno || '') + '</td><td>' + esc([n.phone, n.mobile].filter(Boolean).join(' / ')) + '</td><td>' + esc(m.van || '') + '</td><td>' + (t ? '<span class="chip">' + esc(t) + '</span>' : '') + '</td><td>' + cendHTML(m) + '</td><td class="g">' + esc(m.addr || '') + '</td></tr>';
+      return '<tr data-act="merchant" data-arg="' + m.id + '"><td class="b">' + esc(m.name) + '</td><td>' + esc(m.bizno || '') + '</td><td>' + esc([n.phone, n.mobile].filter(Boolean).map(maskPhone).join(' / ')) + '</td><td>' + esc(m.van || '') + '</td><td>' + (t ? '<span class="chip">' + esc(t) + '</span>' : '') + '</td><td>' + cendHTML(m) + '</td><td class="g">' + esc(maskAddr(m.addr)) + '</td></tr>';
     }).join('') + '</tbody></table></div>'
     : shown.map(m => {
       const n = mNums(m), t = termsShort(m);
-      return '<div class="card" data-act="merchant" data-arg="' + m.id + '"><div class="row"><div class="grow"><div class="t1">' + esc(m.name) + '</div><div class="t2">' + esc([m.bizno, n.phone || n.mobile, m.van].filter(Boolean).join(' · ') || '연락처 없음') + '</div>' + (m.addr ? '<div class="t2">' + esc(m.addr) + '</div>' : '') + (m.cend ? '<div class="t2">계약종료 ' + cendHTML(m) + '</div>' : '') + '</div>' + (t ? '<span class="chip">' + esc(t) + '</span>' : '') + '</div></div>';
+      return '<div class="card" data-act="merchant" data-arg="' + m.id + '"><div class="row"><div class="grow"><div class="t1">' + esc(m.name) + '</div><div class="t2">' + esc([m.bizno, maskPhone(n.phone || n.mobile), m.van].filter(Boolean).join(' · ') || '연락처 없음') + '</div>' + (m.addr ? '<div class="t2">' + esc(maskAddr(m.addr)) + '</div>' : '') + (m.cend ? '<div class="t2">계약종료 ' + cendHTML(m) + '</div>' : '') + '</div>' + (t ? '<span class="chip">' + esc(t) + '</span>' : '') + '</div></div>';
     }).join('');
   return '<h1>가맹점</h1><div class="sub">눌러서 보고' + (canEditMerchant() ? ', 오른쪽 아래 + 로 새로 등록해요.' : '요.') + '</div><input id="mq" data-q="mq" placeholder="🔍 상호·대표자·초성·사업자번호·전화·핸드폰" value="' + esc(S.mq) + '">' +
     '<div class="pills"><span class="sub" style="align-self:center;margin:0">계약 만료 예정</span>' + [[0, '전체'], [1, '1개월 이내'], [2, '2개월 이내'], [3, '3개월 이내'], [9, '만료됨']].map(([v, lb]) => '<button class="pill ' + (ef === v ? 'on' : '') + '" data-act="mExp" data-arg="' + v + '">' + lb + '</button>').join('') + '</div>' +
@@ -959,6 +1036,7 @@ ACT.mExp = v => { S.mExp = Number(v); S.mlimit = 50; render(); };
 function cendHTML(m) { if (!m.cend) return ''; const d = daysLeft(m.cend); return '<span style="' + (d <= 30 ? 'color:var(--red);font-weight:700' : '') + '">' + esc(m.cend) + (d === 99999 ? '' : ' · ' + esc(dday(d))) + '</span>'; }
 ACT.merchant = id => {
   const m = byId('merchants', id); if (!m) return;
+  if (!mViewOk(m)) return; // 상세 조회 기록·일일 한도
   rememberMerchant(m.id);
   if (S.logMid !== m.id) { S.logMid = m.id; S.logLimit = 30; }
   if (S.logMidF !== m.id) { S.logMidF = m.id; S.logKindF = ''; S.logDateF = ''; }
@@ -1091,7 +1169,7 @@ ACT.newMerchant = () => needLock(() => { let dupOk = false; formModal('가맹점
   if (!$('#f_n').value.trim()) return warn('상호를 입력해 주세요.');
   const bd = $('#f_b').value.replace(/\D/g, ''); const dup = bd.length >= 10 && list('merchants').find(m => (m.bizno || '').replace(/\D/g, '') === bd);
   if (dup && !dupOk) { dupOk = true; return warn('같은 사업자번호의 가맹점 ‘' + dup.name + '’이(가) 이미 있어요. 그래도 등록하려면 저장을 한 번 더 누르세요.'); }
-  const o = readMerchant(create('merchants', {grade: 5})); put('merchants', o); render(); toast('저장했어요.'); return true;
+  const o = readMerchant(create('merchants', {grade: 5})); put('merchants', o); alog('new', o); render(); toast('저장했어요.'); return true;
 }, '저장'); wireMerchantForm(); });
 // 다른 창(업무 요청)에서 가맹점을 새로 등록하고 돌아간다 — 권한·암호 규칙은 그대로
 function newMerchantThen(q, done, back) {
@@ -1101,7 +1179,7 @@ function newMerchantThen(q, done, back) {
     if (!$('#f_n').value.trim()) return warn('상호를 입력해 주세요.');
     const bd = $('#f_b').value.replace(/\D/g, ''); const dup = bd.length >= 10 && list('merchants').find(m => (m.bizno || '').replace(/\D/g, '') === bd);
     if (dup && !dupOk) { dupOk = true; return warn('같은 사업자번호의 가맹점 ‘' + dup.name + '’이(가) 이미 있어요. 그래도 등록하려면 저장을 한 번 더 누르세요.'); }
-    const o = readMerchant(create('merchants', {grade: 5})); put('merchants', o); toast('가맹점을 등록하고 업무에 연결했어요.'); setTimeout(() => done(o), 0); return true;
+    const o = readMerchant(create('merchants', {grade: 5})); put('merchants', o); alog('new', o); toast('가맹점을 등록하고 업무에 연결했어요.'); setTimeout(() => done(o), 0); return true;
   }, '저장'); wireMerchantForm(); $('#m_cancel').onclick = () => { closeModal(); back(); }; });
 }
 function toggleWord(s, w) { // 빠른 선택: 누르면 넣고 뒤에 ', ' 를 붙여 바로 이어 쓸 수 있게, 다시 누르면 뺀다
@@ -1113,7 +1191,7 @@ const reqClean = v => String(v || '').replace(/[\s,]+$/, '').trim(); // 끝에 �
 ACT.delMerchant = id => needLock(() => {
   const m = byId('merchants', id); if (!m) return; needDelPw('‘' + m.name + '’ 가맹점 삭제', () => {
   const c = list('mlogs').filter(g => g.merchant === m.id).length;
-  askConfirm('‘' + m.name + '’ 가맹점을 삭제할까요?', '목록에서만 지워지고, 응대 기록 ' + c + '건과 서버의 기록은 그대로 남아요. (앱의 가맹점 보호·복원에서 되살릴 수 있어요)', '삭제', () => { m.deleted = true; put('merchants', m); render(); toast('삭제했어요.'); }, true);
+  askConfirm('‘' + m.name + '’ 가맹점을 삭제할까요?', '목록에서만 지워지고, 응대 기록 ' + c + '건과 서버의 기록은 그대로 남아요. (앱의 가맹점 보호·복원에서 되살릴 수 있어요)', '삭제', () => { m.deleted = true; put('merchants', m); alog('delete', m); render(); toast('삭제했어요.'); }, true);
   });
 });
 const MF = {grade: '등급', name: '상호', bizno: '사업자번호', phone: '전화번호', mobile: '휴대폰번호', email: '이메일', addr: '주소', van: 'VAN사', ctype: '계약구분', camt: '금액', terms: '계약조건', cstart: '계약시작일', cend: '계약종료일', memo: '메모', deleted: '삭제'};
@@ -1127,7 +1205,7 @@ ACT.editMerchant = id => needLock(() => {
       $('#f_conf').innerHTML = '<div class="conf">⚠ 이 창을 연 뒤 다른 직원이 이 가맹점을 고쳤어요' + (ch.length ? ' (' + ch.join(', ') + ')' : '') + '.<br>지금 저장하면 그 내용을 내 입력으로 덮어써요. 그래도 저장하려면 <b>저장</b>을 한 번 더 누르고, 아니면 취소 후 다시 열어 최신 내용을 확인하세요.</div>';
       forced = true; return warn('다른 직원이 방금 고쳤어요. 아래 안내를 확인해 주세요.');
     }
-    const o = readMerchant(now); put('merchants', o); render(); toast('저장했어요.'); return true;
+    const o = readMerchant(now); put('merchants', o); alog('edit', o); render(); toast('저장했어요.'); return true;
   }, '저장'); wireMerchantForm();
 });
 function viewAllLogs() {
@@ -1668,8 +1746,8 @@ function wireMerchantPicker(onPick) {
   const fill = () => { // 검색칸은 그대로 두고 목록만 바꾼다 → 한글을 치는 중에도 바로 걸러진다
     const v = q.value.trim(); if (!v) { l.innerHTML = ''; return; }
     const hits = list('merchants').filter(m => kmatch(mHay(m), v)).sort((a, b) => (a.name || '').localeCompare(b.name || '')).slice(0, 8);
-    l.innerHTML = hits.map(m => { const n = mNums(m); return '<button type="button" class="pick" data-id="' + m.id + '"><b>' + esc(m.name) + '</b><span>' + esc([m.bizno, n.phone || n.mobile].filter(Boolean).join(' · ')) + '</span></button>'; }).join('') ||
-      ('<div class="sub">찾는 가맹점이 없어요.</div>' + (S.mpNew ? '<button type="button" class="btn gold full" id="mpnew">＋ 새 가맹점 등록 (‘' + esc(v) + '’)</button>' : ''));
+    l.innerHTML = hits.map(m => { const n = mNums(m); return '<button type="button" class="pick" data-id="' + m.id + '"><b>' + esc(m.name) + '</b><span>' + esc([m.bizno, maskPhone(n.phone || n.mobile)].filter(Boolean).join(' · ')) + '</span></button>'; }).join('') ||
+      ('<div class="sub">찾는 가맹점이 없어요.' + (S.mpNew && !canEditMerchant() ? ' 상호는 아래 거래처 칸에 직접 적어도 돼요.' : '') + '</div>' + (S.mpNew && canEditMerchant() ? '<button type="button" class="btn gold full" id="mpnew">＋ 새 가맹점 등록 (‘' + esc(v) + '’)</button>' : ''));
     const nb = $('#mpnew'); if (nb) nb.onclick = () => { const f = S.mpNew; S.mpNew = null; f(v); };
   };
   q.addEventListener('input', fill);
@@ -2018,6 +2096,12 @@ ACT.picPick = () => {
 };
 
 // ---------- 직원과 권한 (최고관리자) — users 문서 + 로그인용 phones 문서를 같이 맞춘다 (앱 Store.push 와 같음) ----------
+// 최고관리자(양문희·가태현): 모든 권한(모든 메뉴의 등록·수정·삭제)이 항상 켜져 있고, 다른 관리자가 끄거나 사용 중지할 수 없다
+const SUPER_NAMES = ['양문희', '가태현'];
+const isSuper = u => !!(u && (u.super || SUPER_NAMES.includes(String(u.name || '').trim())) && !u.deleted);
+function ensureSupers() { // 관리자 기기에서 한 번: 최고관리자에게 모든 권한
+  list('users').filter(isSuper).forEach(u => { const all = PERMS.map(p => p[0]); if (!u.super || all.some(k => !hasP(u, k)) || u.active === false) { u.super = true; u.perms = all; u.active = true; put('users', u); syncPhone(u); } });
+}
 const PERMS = [['task_create', '업무 만들기'], ['task_assign', '다른 직원에게 업무 배정'], ['task_view_all', '전체 업무 보기'], ['history_all', '전체 이력 보기'], ['notice_write', '공지 작성'],
   ['perf_view', '실적 보기 (본부장·대표님)'], ['report_view', '일일보고·실적보고 종합 보기 (대표님)'], ['merchant_edit', '가맹점 등록·수정 (암호 필요)'], ['staff_view', '직원 정보 보기 (부서·직책·생년월일·연락처·주소)'], ['staff_manage', '직원 관리 (관리자 전용)']];
 const PRESETS = {'영업직': ['task_create', 'task_assign', 'task_view_all', 'history_all'], '사무직': ['task_create', 'task_assign', 'task_view_all', 'history_all', 'merchant_edit'], '관리자': PERMS.map(x => x[0])};
@@ -2025,7 +2109,7 @@ const hasP = (u, k) => (u.perms || []).includes(k);
 const adminCount = () => list('users').filter(u => u.active !== false && hasP(u, 'staff_manage')).length;
 function syncPhone(u) { // 로그인 허용 번호와 서버 규칙용 권한 표시
   if (DEMO || !u.phone) return;
-  fs.collection('phones').doc(u.phone).set({uid: u.id, admin: hasP(u, 'staff_manage'), perf: hasP(u, 'perf_view'), report: hasP(u, 'report_view'), active: u.active !== false, name: u.name})
+  fs.collection('phones').doc(u.phone).set({uid: u.id, admin: hasP(u, 'staff_manage'), perf: hasP(u, 'perf_view'), report: hasP(u, 'report_view'), medit: hasP(u, 'merchant_edit') || hasP(u, 'staff_manage'), active: u.active !== false, name: u.name})
     .catch(e => toast('로그인 번호를 저장하지 못했어요: ' + (e.code || e.message)));
 }
 // ---------- 직책 목록 (정렬 순서) — config key 'positions' {items}. 위에 있을수록 먼저 (부장급: 본부장·지사장) ----------
@@ -2110,6 +2194,7 @@ ACT.staffInfoEdit = id => {
 };
 ACT.staffDel = id => { // 완전 삭제: 목록·명단·선택지에서 모두 빠지고 로그인도 막힌다. 서버 규칙상 기록(업무·채팅의 이름)은 남는다
   const u = byId('users', id); if (!u || !can('staff_manage')) return;
+  if (isSuper(u)) return toast('최고관리자는 삭제할 수 없어요.');
   if (u.id === S.uid) return toast('내 계정은 지울 수 없어요.');
   if (hasP(u, 'staff_manage') && adminCount() <= 1) return toast('마지막 관리자는 지울 수 없어요.');
   needDelPw(u.name + '님 완전 삭제', () => askConfirm(u.name + '님을 완전 삭제할까요?', '직원 목록·명단·담당자 고르기에서 모두 사라지고 이 번호로 로그인할 수 없어요. 되돌릴 수 없어요.\n(지난 업무·채팅에 남은 이름 기록은 그대로 보여요)', '완전 삭제', () => {
@@ -2130,12 +2215,14 @@ ACT.newStaff = () => formModal('직원 추가', '<label class="fl" for="f_n">직
 }, '추가');
 ACT.staffEdit = id => {
   const u = byId('users', id); if (!u) return; const active = u.active !== false;
+  if (isSuper(u) && !isSuper(S.me)) return toast(u.name + '님은 최고관리자라 모든 권한이 항상 켜져 있어요(최고관리자만 바꿀 수 있어요).');
   formModal(u.name + ' 권한 설정', PERMS.map(([k, lb]) => '<label class="chk"><input type="checkbox" class="pm" value="' + k + '"' + (hasP(u, k) ? ' checked' : '') + '><span>' + lb + '</span></label>').join('') +
     '<label class="chk" style="margin-top:8px"><input type="checkbox" id="f_np"' + (u.noPerf ? ' checked' : '') + '><span>영업 실적·순위에서 빼기 (대표님 등)</span></label>' +
     '<label class="chk"><input type="checkbox" id="f_nr"' + (u.noReport ? '' : ' checked') + '><span>일일보고·실적보고 명단에 넣기</span></label>' +
     '<button class="btn ' + (active ? 'red' : 'tint') + ' full" id="f_act">' + (active ? '사용 중지 (퇴사 등)' : '다시 사용') + '</button>', () => {
     const np = [...document.querySelectorAll('.pm:checked')].map(c => c.value);
     if (hasP(u, 'staff_manage') && !np.includes('staff_manage') && adminCount() <= 1) return warn('마지막 관리자의 직원 관리 권한은 끌 수 없습니다.');
+    if (isSuper(u)) np.splice(0, np.length, ...PERMS.map(p => p[0])); // 최고관리자는 모든 권한 고정
     u.perms = np; u.noPerf = $('#f_np').checked; u.noReport = !$('#f_nr').checked; put('users', u); syncPhone(u); if (u.id === S.uid) refreshMe(); render(); toast('저장했어요.'); return true;
   }, '저장');
   $('#f_act').onclick = () => {
@@ -2338,7 +2425,7 @@ function findMerchant(ec, bd, nm) {
   return (ec && all.find(m => m.ecode === ec)) || (bd.length === 10 && all.find(m => (m.bizno || '').replace(/\D/g, '') === bd)) || (nm && all.find(m => (m.name || '').trim() === nm)) || null;
 }
 ACT.importM = () => {
-  if (!canEditMerchant()) return toast('가맹점 등록·수정 권한이 있어야 가져올 수 있어요.');
+  if (!can('staff_manage')) return toast('엑셀 가져오기는 관리자만 할 수 있어요.');
   needLock(() => {
     modal('<h3>가맹점 일괄 가져오기</h3><div class="sub">이카운트 ‘거래처등록’ 목록을 엑셀(.xlsx) 또는 CSV로 내려받아 골라 주세요. 머리글에 ‘거래처명’(또는 상호·가맹점명)이 있어야 해요. 사업자등록번호, 거래처코드, 대표자, 전화, 핸드폰, 주소, 등급, 업태, 종목, VAN사, 계약시작일·종료일, 메모 열이 있으면 함께 가져와요. 직접 만들 때는 양식을 받아서 채워 주세요.</div><button class="btn tint full" data-act="mTemplate">📄 업로드 양식 받기 (.xlsx)</button><button class="btn gold full" id="f_pick">파일 고르기</button><input type="file" id="f_imp" accept=".xlsx,.csv,.txt" hidden><button class="btn full" data-act="close">닫기</button>');
     $('#f_pick').onclick = () => $('#f_imp').click();
@@ -2368,7 +2455,7 @@ ACT.importM = () => {
             else { put('mlogs', create('mlogs', {merchant: m.id, mname: m.name, date: ld, kind: lk, req: lq, res: ls, text: lq + (ls ? (lq ? '\n' : '') + '→ 처리: ' + ls : ''), who: S.uid, src: '엑셀 가져오기'})); logAdd++; }
           }
         });
-        render(); toast('가맹점 ' + add + '곳 등록, ' + upd + '곳 갱신' + (logAdd || logSkip ? ', 응대 기록 ' + logAdd + '건 추가' + (logSkip ? '(중복 ' + logSkip + '건 건너뜀)' : '') : '') + '했어요. 잘못되면 관리자 → 가맹점 보호·복원에서 되돌릴 수 있어요.');
+        alog('import', null, '등록 ' + add + ' · 갱신 ' + upd + ' · 응대 기록 ' + logAdd); render(); toast('가맹점 ' + add + '곳 등록, ' + upd + '곳 갱신' + (logAdd || logSkip ? ', 응대 기록 ' + logAdd + '건 추가' + (logSkip ? '(중복 ' + logSkip + '건 건너뜀)' : '') : '') + '했어요. 잘못되면 관리자 → 가맹점 보호·복원에서 되돌릴 수 있어요.');
       });
     };
   });
@@ -2477,6 +2564,7 @@ const bkName = () => 'ninefamily_backup_' + nowStr().replace(/[-: ]/g, '').repla
 function saveFile(name, text) { const u = URL.createObjectURL(new Blob([text], {type: 'application/json'})); const a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 5000); }
 ACT.backupDownload = async () => {
   if (!can('staff_manage')) return toast('관리자만 내려받을 수 있어요.');
+  alog('export', null, '데이터 백업 내려받기');
   toast('백업 파일을 만드는 중…');
   try {
     const b = await buildBackup(); saveFile(bkName(), JSON.stringify(b, null, 1));
@@ -2538,7 +2626,7 @@ function menuItems() {
   add('가맹점', '가맹점', '가맹점 거래처 상호 사업자 삭제 계약 만료', 'nav:all:merchants');
   add('가맹점', '응대 기록 조회', '응대 기록 AS 전화 응대 방문 메모 이력 날짜 가맹점', 'nav:all:logs');
   add('가맹점', '단체 문자 보내기', '단체 문자 sms 발송 가맹점 문자 안내', 'nav:all:sms');
-  add('가맹점', '가맹점 일괄 가져오기 (엑셀·이카운트)', '가맹점 일괄 가져오기 업로드 엑셀 csv 이카운트', 'act:importM');
+  if (A) add('가맹점', '가맹점 일괄 가져오기 (엑셀·이카운트)', '가맹점 일괄 가져오기 업로드 엑셀 csv 이카운트', 'act:importM');
   const ex = expiringContracts().length;
   add('계약', '신규 계약 올리기', '신규 계약 올리기 CMS 판매 렌탈', 'act:newContract');
   add('계약', '계약 관리 (설치 완료·만료 알림)', '계약 설치 완료 만료 알림 장비', 'nav:all:contracts', ex ? '만료 ' + ex : '');
@@ -2563,6 +2651,7 @@ function menuItems() {
   add('내 계정·설정', '업데이트 확인 (새 버전 받기)', '업데이트 확인 새 버전 새로고침 최신', 'act:checkUpdate');
   add('내 계정·설정', '사용설명서', '사용설명서 매뉴얼 도움말 사용법 설치', 'nav:all:manual'); add('내 계정·설정', '버전·업데이트 내역', '버전 업데이트 내역 변경 이력', 'nav:all:about');
   if (!/Electron/.test(navigator.userAgent)) add('내 계정·설정', 'PC 프로그램 설치 파일 받기 (윈도우)', 'PC 설치 파일 다운로드 윈도우 exe 프로그램', 'act:pcSetup');
+  add('내 계정·설정', '앱 잠금 (PIN)', '앱 잠금 PIN 비밀번호 보안 잠그기', 'act:lockSet', lockOn() ? '켜짐' : '');
   add('내 계정·설정', '로그아웃', '로그아웃 나가기', 'act:logout');
   if (A) {
     add('관리자', '직원과 권한', '직원 권한 등록 사용 중지 관리자', 'nav:all:staff');
@@ -2571,6 +2660,8 @@ function menuItems() {
     add('관리자', '데이터 백업 내려받기', '데이터 백업 내려받기 저장 내보내기 json', 'act:backupDownload'); add('관리자', 'PC에 보관된 자동 백업', '자동 백업 보관 PC 복원', 'act:pcBackups'); add('관리자', '가맹점 보호·복원', '가맹점 보호 복원 되돌리기 삭제 복구 휴지통', 'act:safety');
     add('관리자', '가맹점 수정 암호', '가맹점 수정 암호 잠금 비밀번호 설정 변경', 'act:mlockSet', lk ? '설정됨' : '아직 없음');
     if (lk) add('관리자', '가맹점 수정 암호 끄기', '가맹점 수정 암호 끄기 잠금 해제', 'act:mlockOff');
+    add('관리자', '가맹점 조회 기록 (감사 로그)', '감사 로그 조회 기록 누가 언제 열람 수정 내보내기 한도 초과 스크래핑', 'act:auditOpen');
+    add('관리자', '가맹점 상세 조회 한도 (하루)', '조회 한도 하루 일일 제한 스크래핑', 'act:viewLimitSet', viewLimit() + '곳');
     add('관리자', '삭제 비밀번호 (중요한 삭제)', '삭제 비밀번호 암호 직원 삭제 가맹점 재고 응대 기록 자료실', 'act:dlockSet', dlockDoc() ? '설정됨' : '아직 없음');
   }
   return it;
@@ -2667,6 +2758,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.61', '2026-10-26', ['보안: 가맹점 정보 쓰기는 ‘가맹점 등록·수정’ 권한자·관리자만(서버 규칙), 가맹점 목록의 전화·주소는 가려서 보이고 상세에서만 전체', '보안: 가맹점 상세 열람·등록·수정·삭제·엑셀 가져오기·백업 내려받기를 감사 로그로 남김(관리자 → 가맹점 조회 기록), 조회량 많은 계정 확인', '보안: 가맹점 상세 조회 하루 한도(기본 100곳, 관리자 → 한도 설정) — 넘으면 막히고 관리자에게 알림', '보안: 앱 잠금(PIN) — 내 계정·설정 → 앱 잠금. 새로 열거나 1분 넘게 다른 창에 있다 오면 PIN', '엑셀 가져오기는 관리자 전용', '채팅: 쓰던 메시지 임시 저장 — 다른 화면에 갔다 와도 이어서 쓰기(방마다)', '가맹점 조회 창: ‘새 가맹점 등록’은 등록 권한이 있는 직원에게만(조회·검색·선택·상세·응대 기록은 누구나 암호 없이)', '업무 요청 빠른 선택 버튼을 작게, 버튼 안 글자는 한 줄로', '최고관리자(양문희·가태현): 모든 권한이 항상 켜짐, 다른 관리자가 끄거나 삭제할 수 없음']],
   ['웹 0.0.60', '2026-10-26', ['채팅을 보낼 때 위쪽에 ‘서버에 저장 중’이 잠깐씩 깜빡이던 것: 저장이 10초 넘게 안 될 때만 보이게 (인터넷 끊김은 바로 표시)']],
   ['웹 0.0.58', '2026-10-26', ['홈페이지 서류접수·상담신청을 앱 ‘서류접수’·‘상담신청’ 채팅방으로 받을 준비(글쓴이 ‘📮 홈페이지 접수’, 사진 함께)']],
   ['웹 0.0.57', '2026-10-26', ['PC 오른쪽 채팅창에서 스크린샷 붙여넣기(Ctrl+V)·파일 끌어 놓기가 안 되던 것 고침']],
@@ -2737,9 +2829,9 @@ const WEB_MANUAL = [
   ['화면 구성', '휴대폰(아이폰): 안드로이드 앱과 같은 화면이에요. 아래 탭 업무·프로젝트·채팅·일정·전체, 나머지 기능은 전체 탭에 계정 → 회사 → 일 → 관리자 순서로 있어요.\nPC: 위쪽 가로줄이 주 메뉴(업무·프로젝트·채팅·일정·가맹점·응대 기록)예요. 왼쪽 위 ☰ 를 누르면 전체 메뉴가 펼쳐지고, ‘나인패밀리’를 누르면 홈(오늘 현황)으로 가요.\n전체 메뉴 위 기능 검색에 단어나 초성(예: ㅈㄱ)을 치면 기능을 바로 찾아요.\n안드로이드 앱·아이폰·PC 는 같은 서버를 써서, 어디서 고쳐도 다른 기기에 바로 보여요.'],
   ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 요청: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 요청할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.\n■ 용지신청·새 가맹점: 요청사항 위 ‘＋ 용지신청’을 누르면 칸에 들어가요(다시 누르면 빠짐). 완료하면 응대 기록 종류가 ‘용지신청’. 가맹점 조회에서 못 찾으면 ‘새 가맹점 등록’ → 찾던 상호·사업자번호가 채워지고, 저장하면 업무 창으로 돌아와 자동 연결돼요(권한·암호 필요).'],
   ['프로젝트', '+ 로 이름·마감일·메모·체크리스트(한 줄에 하나)·담당자를 넣어 만들어요.\n프로젝트를 눌러 항목을 체크하면 진행률이 자동으로 올라가고, ‘항목 추가’로 늘려요. 100%가 되면 ‘완료 되돌리기’로 진행중으로 돌릴 수 있어요.\n목록 위 전체·진행중·완료로 걸러 봐요.'],
-  ['채팅', '■ PC 오른쪽 채팅창: 위쪽 ‘💬 채팅창’ 버튼을 누르면 화면 오른쪽에 대화방 목록이 열려요. 방에 들어가면 왼쪽 세로줄에 대화방들, 오른쪽에 대화가 보이고, 세로줄을 누르면 그 방으로 바뀌어요(☰ 목록으로 돌아가기). 가맹점 조회 같은 다른 화면을 보면서 대화하고, 다시 누르면 닫혀요. (PC에는 위쪽 ‘채팅’ 메뉴가 없어요)\n■ 대화방을 열면 안 읽은 첫 글부터 보여요(‘여기까지 읽었어요’ 줄).\n■ 알림 받기: 전체 → 채팅 → ‘채팅 알림 및 소리 설정’에서 켜고 꺼요(업무 알림은 전체 → 업무 → ‘업무 알림 및 소리 설정’). 채팅 알림은 방마다 1개만 떠요.\n■ 안 읽은 채팅 알림띠: 다른 화면을 보고 있어도 위쪽에 ‘💬 안 읽은 채팅’ 띠가 읽을 때까지 떠 있어요. 누르면 그 채팅방으로 바로 가요(알림 끈 방은 빼요).\n■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 스크린샷: 대화방에서 Ctrl+V 로 붙여 넣으면 미리 보고 보내요(파일을 끌어다 놓아도 돼요).\n■ 줄바꿈: PC는 Shift+Enter, 휴대폰은 키보드 엔터(보내기는 버튼). 여러 줄이면 입력칸이 늘어나요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.\n■ 읽음 표시: 말풍선 시각 옆 노란 숫자 = 아직 안 읽은 사람 수. 모두 읽으면 숫자가 사라져요.'],
+  ['채팅', '■ 쓰던 메시지는 방마다 이 기기에 임시 저장돼서, 다른 화면에 갔다 와도 이어서 쓸 수 있어요(보내면 지워져요).\n■ PC 오른쪽 채팅창: 위쪽 ‘💬 채팅창’ 버튼을 누르면 화면 오른쪽에 대화방 목록이 열려요. 방에 들어가면 왼쪽 세로줄에 대화방들, 오른쪽에 대화가 보이고, 세로줄을 누르면 그 방으로 바뀌어요(☰ 목록으로 돌아가기). 가맹점 조회 같은 다른 화면을 보면서 대화하고, 다시 누르면 닫혀요. (PC에는 위쪽 ‘채팅’ 메뉴가 없어요)\n■ 대화방을 열면 안 읽은 첫 글부터 보여요(‘여기까지 읽었어요’ 줄).\n■ 알림 받기: 전체 → 채팅 → ‘채팅 알림 및 소리 설정’에서 켜고 꺼요(업무 알림은 전체 → 업무 → ‘업무 알림 및 소리 설정’). 채팅 알림은 방마다 1개만 떠요.\n■ 안 읽은 채팅 알림띠: 다른 화면을 보고 있어도 위쪽에 ‘💬 안 읽은 채팅’ 띠가 읽을 때까지 떠 있어요. 누르면 그 채팅방으로 바로 가요(알림 끈 방은 빼요).\n■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 스크린샷: 대화방에서 Ctrl+V 로 붙여 넣으면 미리 보고 보내요(파일을 끌어다 놓아도 돼요).\n■ 줄바꿈: PC는 Shift+Enter, 휴대폰은 키보드 엔터(보내기는 버튼). 여러 줄이면 입력칸이 늘어나요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.\n■ 읽음 표시: 말풍선 시각 옆 노란 숫자 = 아직 안 읽은 사람 수. 모두 읽으면 숫자가 사라져요.'],
   ['일정 (달력)', '■ 일요일·공휴일은 빨간색(공휴일 이름 표시, 2026~2028년), 토요일은 파란색이에요. ‹ › 로 달을 넘기고 ‘오늘’로 돌아와요.\n■ 날짜를 누르면 그날 일정과 기한이 있는 업무가 보이고, 아래 ‘다가오는 일정’에 앞으로의 일정이 날짜 순으로 나와요.\n■ 일정을 누르면 내용이 보이고, 가맹점이 연결된 일정은 ‘가맹점 정보 보기’로 바로 가요.\n■ 일정 추가·삭제는 최고관리자만 해요(+ 버튼). 가맹점을 고르면 장소에 주소가 들어가요. 일반 직원은 업무에 기한을 넣으면 달력에 표시돼요.'],
-  ['가맹점', '■ 주소: 주소 칸(또는 ‘주소 검색’)을 누르면 인터넷 주소 검색처럼 도로명·지번·건물명으로 찾아 골라요. 고른 뒤 동·호수 같은 상세 주소를 이어 적어요.\n■ 검색: 상호, 초성(예: ㅅㅇㅍ), 사업자번호(- 없이도), 전화번호. 한글을 치는 중에도 바로 걸러져요. PC는 표로 보여요.\n■ 항목: 상호·사업자번호·전화번호·휴대폰번호·이메일·주소·VAN사·계약구분(임대면 월 CMS 금액, 판매면 판매 금액)·계약조건·등급 코드·메모. 칸마다 이름이 위에 있어요.\n■ 등급 코드(밴피 기준): 0 S·월 5만원 이상 / 1 A·3만원 이상 / 2 B·1만원 이상 / 3 C·1만원 미만 / 4 해지 / 5 신규 / 7 협력사.\n■ 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있어야 하고, 관리자가 수정 암호를 정해 두면 관리자도 암호를 넣어야 해요(한 번 넣으면 5분 동안 다시 묻지 않아요). 같은 사업자번호가 이미 있으면 등록할 때 알려 줘요.\n■ 삭제하면 목록에서만 사라지고 기록은 남아요(관리자가 복원 가능).\n■ 최고관리자는 가맹점 정보 창의 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.\n■ 계약기간·만료 예정: 등록·수정에 계약시작일·계약종료일. 목록 위 ‘계약 만료 예정’ 1·2·3개월 이내·만료됨을 누르면 그 가맹점만 종료일 빠른 순으로 보여요(검색과 같이 써요, 종료일이 빈 가맹점은 필터에서만 빠짐).\n■ VAN사: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG — 그 밖은 직접 입력하면 다음부터 목록에 같이 나와요.'],
+  ['가맹점', '■ 보안: 목록의 전화·주소는 가려서(010-****-1234, 시·구까지) 보이고, 눌러서 상세를 열면 전체가 보여요. 상세 열람은 기록되고 하루 한도(관리자가 정함)가 있어요. 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있는 직원만(서버가 막아요), 엑셀 가져오기는 관리자만.\n■ 주소: 주소 칸(또는 ‘주소 검색’)을 누르면 인터넷 주소 검색처럼 도로명·지번·건물명으로 찾아 골라요. 고른 뒤 동·호수 같은 상세 주소를 이어 적어요.\n■ 검색: 상호, 초성(예: ㅅㅇㅍ), 사업자번호(- 없이도), 전화번호. 한글을 치는 중에도 바로 걸러져요. PC는 표로 보여요.\n■ 항목: 상호·사업자번호·전화번호·휴대폰번호·이메일·주소·VAN사·계약구분(임대면 월 CMS 금액, 판매면 판매 금액)·계약조건·등급 코드·메모. 칸마다 이름이 위에 있어요.\n■ 등급 코드(밴피 기준): 0 S·월 5만원 이상 / 1 A·3만원 이상 / 2 B·1만원 이상 / 3 C·1만원 미만 / 4 해지 / 5 신규 / 7 협력사.\n■ 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있어야 하고, 관리자가 수정 암호를 정해 두면 관리자도 암호를 넣어야 해요(한 번 넣으면 5분 동안 다시 묻지 않아요). 같은 사업자번호가 이미 있으면 등록할 때 알려 줘요.\n■ 삭제하면 목록에서만 사라지고 기록은 남아요(관리자가 복원 가능).\n■ 최고관리자는 가맹점 정보 창의 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.\n■ 계약기간·만료 예정: 등록·수정에 계약시작일·계약종료일. 목록 위 ‘계약 만료 예정’ 1·2·3개월 이내·만료됨을 누르면 그 가맹점만 종료일 빠른 순으로 보여요(검색과 같이 써요, 종료일이 빈 가맹점은 필터에서만 빠짐).\n■ VAN사: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG — 그 밖은 직접 입력하면 다음부터 목록에 같이 나와요.'],
   ['가맹점 응대 기록', '■ 가맹점을 열어 ‘+ 응대 기록 남기기’ → 날짜·종류(방문A/S·원격A/S·전화응대·기타)·요청사항·처리결과.\n■ 가맹점 창에서 종류 버튼과 날짜로 걸러 봐요.\n■ 전체 → 가맹점 응대 기록 조회: 상호·초성·사업자번호로 가맹점을 찾거나, 모든 가맹점의 최근 기록을 검색해요.\n■ 기록은 직원 누구나 고칠 수 있고 수정한 사람·시각이 남아요. 지우기는 쓴 사람과 최고관리자만 해요.'],
   ['재고 · 바코드', '■ 입고(＋ 입고 또는 오른쪽 아래 +): 모델명, 시리얼(한 줄에 하나 — 스캐너로 계속 찍으면 여러 대가 한 번에), 시리얼 없는 물품은 수량, 안전재고, 입고 단가(실적 권한자).\n■ 출고(− 출고): 계약 없이 나가는 장비 — 반품(공급처로)·불량·폐기·A/S 교체·분실·기타 중 사유를 고르고, 재고에서 찾거나 스캐너로 찍어 담아요. 시리얼 없는 물품은 수량을 적어요. A/S 교체는 가맹점을 연결할 수 있어요. 계약으로 나가는 장비는 지금처럼 ‘계약’에서 고릅니다.\n■ 수량 정정(재고 조사): 창고에서 센 실제 수량을 적고, 시리얼 장비는 없는 것만 체크를 꺼요(스캐너로 찍으면 ‘확인’ 표시). 사유를 적으면 차이만큼 바로잡고 이력에 남아요.\n■ 이력: 재고 화면의 ‘이력’ 또는 전체 → 일 → 재고 이력. 입고·출고·계약 출고·정정이 날짜·직원·메모와 함께 시간 순으로 나와요. 장비를 누르면 그 장비의 이력도 볼 수 있어요.\n■ 삭제는 잘못 넣은 것을 지울 때만 쓰세요(이력이 안 남음).\n■ 바코드: PC는 USB·블루투스 스캐너로 찍으면 바로 입력돼요. 검색칸에 시리얼을 찍으면 그 장비가 바로 열려요. 휴대폰은 📷 버튼으로 카메라 스캔(처음에 카메라 허용).\n■ 모델별로 재고·출고중 수량이 보이고, 안전재고보다 적으면 빨간색으로 알려요.\n■ 시리얼 줄을 눌러 수정·삭제, 실적 권한자는 입고·출고 단가와 보유 재고 자산을 봐요.\n■ 순서: 재고 → (계약에서 고르면) 출고중 → (설치 완료하면) 재고에서 빠짐.\n■ 보관지: 본사·광주지사. 입고할 때 보관지를 고르고, 위 ‘보관지’ 버튼으로 나눠 봐요. 장비를 눌러 보관지를 바꾸면 ‘이동’으로 이력에 남아요(예전 재고는 본사로 잡혀 있어요).\n■ 물품요청(지사 → 본사): 재고 화면 아래 또는 ☰ → 업무 → 물품요청. 품목·수량·받을 곳·본사 담당자를 적어 보내면 담당자 업무에 알림이 가요. 담당자가 ‘주문함’ → ‘발송(발주처리)’(송장 메모)을 누르면, 요청한 사람에게 ‘입고 확인’ 알림이 가요. 물건을 받고 ‘입고 확인’에서 받은 수량·시리얼을 적으면 받은 곳 재고에 바로 들어가요. 안 되면 담당자가 ‘반려’(사유).'],
   ['계약 · 입금', '■ 신규 계약 올리기: 가맹점 찾기 → 결제 연동(VAN/PG·업체명) → 구분(판매·CMS·렌탈)과 금액 → 나가는 장비(재고에서 고르기·스캔·직접 입력) → 장비 메모 → 계약일·만료일(+12/24/36개월 버튼).\n■ 계약 관리: 만료 3개월 이내 계약이 위에 빨간 D-day 로 나와요. 계약을 눌러 장비 추가, ‘설치 완료’(장비가 재고에서 빠짐). 실적 권한이 없으면 내가 올린 계약만 보여요.\n■ 입금 확인: + 로 종류·금액·가맹점·메모를 올리면 ‘입금확인’ 채팅방에 알림이 가고, 확인한 사람이 ‘확인 처리’를 눌러요.'],
@@ -2747,7 +2839,7 @@ const WEB_MANUAL = [
   ['일일보고 · 실적 보고서', '■ 일일보고 쓰기: ‹ › 로 날짜를 고르고 오늘 한 일·특이사항·내일 계획을 적어 제출해요. 그날 완료한 업무와 올린 계약은 (자동 집계)로 나에게만 보여요(보고에는 직접 쓴 내용만 올라가요). 같은 날 다시 내면 수정본으로 바뀌어요.\n■ 일일보고 종합 보기(보고 열람 권한자): 날짜별로 직원별 보고와 미제출자를 봐요.\n■ 실적 보고서: 실적 권한자는 자동 집계된 이달 실적을 고쳐 ‘대표님께 보고하기’, 보고 열람 권한자는 올라온 보고서를 봐요.'],
   ['자료실 · 비상연락망', '■ 자료실: 분류 버튼과 검색으로 찾고, 눌러서 첨부 파일을 받아요. + 로 제목·설명·분류와 파일(5개, 3MB까지, 사진은 자동으로 줄여서)을 올려요. 올린 사람과 관리자만 고치고 지워요. 개인정보 파일은 올리지 마세요.\n■ 비상연락망: 구분별로 모아 보이고, 번호를 누르면 전화가 걸려요. + 로 추가, ‘수정’으로 고치거나 지워요.'],
   ['내 프로필 · 공지사항', '■ 내 프로필: 전체 탭 맨 위 내 카드(또는 전체 → 계정 → 내 프로필)에서 사진과 상태 메시지(예: 외근 중)를 바꿔요. 다른 직원 프로필에서는 1:1 대화·전화하기.\n■ 공지사항: 읽지 않은 공지는 숫자로 표시돼요. ‘공지 작성’ 권한이 있으면 + 로 올리고 ‘맨 위에 고정’할 수 있어요. 작성 권한자·관리자는 공지 창에서 읽은 사람 목록을 봐요.'],
-  ['알림 · 저장 상태 · 뒤로가기', '■ 화면 왼쪽 위 ‹ 뒤로: 하위 화면·다른 탭에서 누르면 한 단계씩 돌아가요(하위 화면 → 전체 메뉴 → 업무). 업무 화면에서 뒤로가기를 누르면 종료할지 물어봐요.\n■ 알림: 웹앱을 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·안내로 알려요. PC는 전체 → 계정 → 알림 받기를 허용하면 다른 창을 보고 있어도 알림이 떠요. 탭 제목에 안 본 개수가 보여요. (웹앱을 닫았을 때 오는 알림은 서버 연동 후 가능)\n■ 저장 상태: 저장하면 화면 위에 ‘저장 중’이 잠깐 보여요. 인터넷이 끊기면 ‘저장 대기’로 바뀌고, 연결되면 저절로 저장돼요. 이 띠가 있는 동안에는 닫지 마세요.\n■ 가맹점 수정 창을 연 사이 다른 직원이 같은 가맹점을 고치면, 저장할 때 바뀐 항목을 보여 주고 덮어쓸지 한 번 더 물어요.\n■ 뒤로가기: 폰 뒤로가기·브라우저 뒤로 버튼으로 팝업 → 대화방 → 메뉴 → 하위 화면 → 첫 화면 순서로 닫혀요. 첫 화면에서 한 번 더 누르면 나가요.\n■ 알림 소리·음성: 새 업무가 배정되면 ‘띵동’ 소리와 함께 “업무가 배정되었습니다”, 채팅이 오면 카톡처럼 “나인톡!”, 공지는 “새 공지가 있습니다”라고 말해 줘요. ☰ → 업무 → ‘업무 알림 및 소리 설정’ / 채팅 → ‘채팅 알림 및 소리 설정’에서 업무 소리·채팅 소리를 따로 끄고 켜고, ‘들어 보기’로 미리 들어 봐요. 채팅방 위 🔔 를 누르면 그 방만 소리를 꺼요(🔕).'],
+  ['알림 · 저장 상태 · 뒤로가기', '■ 앱 잠금(PIN): ☰ → 내 계정·설정 → 앱 잠금에서 숫자 4~6자리 PIN을 정하면, 새로 열거나 1분 넘게 다른 창에 있다 돌아올 때 PIN을 물어요(이 기기만). 잊으면 ‘PIN을 잊었어요’ → 다시 로그인.\n■ 화면 왼쪽 위 ‹ 뒤로: 하위 화면·다른 탭에서 누르면 한 단계씩 돌아가요(하위 화면 → 전체 메뉴 → 업무). 업무 화면에서 뒤로가기를 누르면 종료할지 물어봐요.\n■ 알림: 웹앱을 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·안내로 알려요. PC는 전체 → 계정 → 알림 받기를 허용하면 다른 창을 보고 있어도 알림이 떠요. 탭 제목에 안 본 개수가 보여요. (웹앱을 닫았을 때 오는 알림은 서버 연동 후 가능)\n■ 저장 상태: 저장하면 화면 위에 ‘저장 중’이 잠깐 보여요. 인터넷이 끊기면 ‘저장 대기’로 바뀌고, 연결되면 저절로 저장돼요. 이 띠가 있는 동안에는 닫지 마세요.\n■ 가맹점 수정 창을 연 사이 다른 직원이 같은 가맹점을 고치면, 저장할 때 바뀐 항목을 보여 주고 덮어쓸지 한 번 더 물어요.\n■ 뒤로가기: 폰 뒤로가기·브라우저 뒤로 버튼으로 팝업 → 대화방 → 메뉴 → 하위 화면 → 첫 화면 순서로 닫혀요. 첫 화면에서 한 번 더 누르면 나가요.\n■ 알림 소리·음성: 새 업무가 배정되면 ‘띵동’ 소리와 함께 “업무가 배정되었습니다”, 채팅이 오면 카톡처럼 “나인톡!”, 공지는 “새 공지가 있습니다”라고 말해 줘요. ☰ → 업무 → ‘업무 알림 및 소리 설정’ / 채팅 → ‘채팅 알림 및 소리 설정’에서 업무 소리·채팅 소리를 따로 끄고 켜고, ‘들어 보기’로 미리 들어 봐요. 채팅방 위 🔔 를 누르면 그 방만 소리를 꺼요(🔕).'],
   ['관리자: 직원과 권한', '■ 직원을 누르면 ‘직원 정보’ 창이 열려요(사진·부서·직책·생년월일·연락처·주소). 여기서 ‘정보 수정’, ‘권한 설정’, ‘완전 삭제’를 따로 해요.\n■ 권한 설정 창: 항목별 권한(직원 정보 보기 포함), 영업 실적·순위에서 빼기, 일일보고·실적보고 명단에 넣기, 사용 중지.\n■ 직책 목록(☰ → 관리자 → 직책 목록): 한 줄에 하나, 위에 있을수록 앞에 보여요. 기본: 대표·이사·본부장·지사장·부장·차장·과장·대리·사원.\n■ 삭제 비밀번호(☰ → 관리자): 직원 완전 삭제, 가맹점·재고·응대 기록·자료실 삭제 때 물어봐요. 정하기 전에는 직원 완전 삭제를 할 수 없어요. 완전 삭제한 직원은 목록·명단·담당자 고르기에서 사라지고 로그인할 수 없어요(지난 기록의 이름은 남아요).\n■ 전체 → 관리자 → 직원과 권한. + 로 이름·휴대폰 번호·권한 묶음(영업직·사무직·관리자)을 넣어 등록하면 그 번호로 로그인할 수 있어요.\n■ 직원을 눌러 항목별 권한을 켜고 끄거나, ‘사용 중지’로 퇴사자의 접근을 막아요. 마지막 관리자는 중지하거나 관리 권한을 끌 수 없어요.\n■ 권한: 업무 만들기 / 다른 직원에게 업무 배정 / 전체 업무 보기 / 전체 이력 보기 / 공지 작성 / 실적 보기 / 일일보고·실적보고 종합 보기 / 가맹점 등록·수정 / 직원 관리(최고관리자).'],
   ['관리자: 백업 · 가맹점 보호·복원', '■ 자료는 여러 겹으로 지켜져요: ① 서버는 지우기가 막혀 있고 모든 변경이 기록돼요 ② 매일 새벽 서버 전체를 암호화해 90일 보관(비밀값 설정 후) ③ 관리자가 앱·웹을 열면 그 기기에 하루 한 번 14일치 자동 보관 ④ 데이터 백업 내려받기로 파일 보관(한 달에 한 번 이상 권장).\n■ 가맹점 보호·복원: 삭제한 가맹점 복원, 백업 파일(.json)로 복원, 되돌리기 기준점 만들기. 가져오기·복원·되돌리기 직전 상태는 그 PC에 자동 저장돼요(전체 → 관리자 → PC에 보관된 자동 백업).\n■ 가맹점 수정 암호: 전체 → 관리자에서 정하고 바꾸고 끄요.'],
   ['재고 일괄 등록 (엑셀)', '■ 처음 재고를 옮길 때 써요(관리자). 재고 화면의 ‘📥 재고 일괄 등록 (엑셀)’ 또는 ☰ → 계약·재고.\n■ ‘업로드 양식 받기’로 엑셀 양식을 받아 상품코드(또는 상품명)·상품 바코드·시리얼(장비 바코드)·수량·현재위치·사업자번호·설치일·메모를 채워요. 상품 바코드는 상자에 찍힌 것(같은 상품이면 같음), 시리얼은 장비마다 다른 번호예요. ‘(예시)’ 줄은 건너뛰어요.\n■ 현재위치가 본사·광주지사 → 우리 재고로 입고돼요(같은 상품·보관지의 시리얼 없는 물품은 수량이 더해져요).\n■ 현재위치가 가맹점 상호 → 이미 설치된 장비로 기록만 하고 재고 수·수익에는 넣지 않아요. 가맹점이 먼저 등록돼 있어야 하고, 사업자번호를 적으면 정확히 찾아요.\n■ 상품 목록에 없는 상품명은 새 상품코드(P0001…)로 등록돼요. 올리기 전에 미리보기로 개수와 못 올리는 줄(이유)을 보여 줘요.\n■ 앞으로 가맹점에 나가는 것은 계약·출고로 처리해요.'],
@@ -2858,7 +2950,10 @@ function demoSeed() {
   S.data.notices.set(81, {id: 81, title: '웹앱 체험 중입니다', body: '이 화면은 연습용 가짜 자료예요. 서버에 아무것도 저장되지 않아요.', pinned: true, author: 1, t: nowStr(), readBy: []});
 }
 if (DEMO) { demoSeed(); render(); } else {
-  firebase.initializeApp(CFG); auth = firebase.auth(); fs = firebase.firestore(); auth.languageCode = 'ko';
+  firebase.initializeApp(CFG);
+  // App Check: Firebase 콘솔에서 reCAPTCHA v3 사이트 키를 만들어 APPCHECK_KEY 에 넣으면 켜진다(사이트 키는 공개돼도 되는 값). 비어 있으면 건너뜀
+  if (APPCHECK_KEY && firebase.appCheck) { try { firebase.appCheck().activate(new firebase.appCheck.ReCaptchaV3Provider(APPCHECK_KEY), true); } catch (e) {} }
+  auth = firebase.auth(); fs = firebase.firestore(); auth.languageCode = 'ko';
   fs.enablePersistence({synchronizeTabs: true}).catch(() => {}); // 한 번 받은 자료는 기기에 보관 → 다음부터 바로 열리고, 인터넷이 약해도 보인다
   loginView('phone');
   auth.onAuthStateChanged(u => { if (u && !S.uid) afterLogin(u); });
