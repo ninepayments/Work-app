@@ -3617,7 +3617,7 @@ public class MainActivity extends Activity {
             for (JSONObject r : store.list(store.arr("stock"))) {
                 if (r.optBoolean("deleted") || "설치완료".equals(r.optString("status"))) continue;
                 if (!stockLoc.isEmpty() && !stockLoc.equals(locOf(r))) continue;
-                if (!Kor.match(r.optString("model") + " " + codeOf(r.optString("model")) + " " + r.optString("serial") + " " + locOf(r), q.getText().toString())) continue;
+                if (!Kor.match(r.optString("model") + " " + codeOf(r.optString("model")) + " " + barcodeOf(r.optString("model")) + " " + r.optString("serial") + " " + locOf(r), q.getText().toString())) continue;
                 if (!g.containsKey(r.optString("model"))) g.put(r.optString("model"), new ArrayList<JSONObject>());
                 g.get(r.optString("model")).add(r);
             }
@@ -3664,7 +3664,7 @@ public class MainActivity extends Activity {
 
     private void showAddStock() {
         LinearLayout f = form();
-        final EditText model = Ui.field(this, "상품 (상품코드나 이름, 예: P0001)", false);
+        final EditText model = Ui.field(this, "상품 (상품코드·이름·상품 바코드, 예: P0001)", false);
         final EditText serials = Ui.field(this, "시리얼 (여러 개는 줄을 바꿔 한 줄에 하나)", false);
         serials.setSingleLine(false);
         serials.setMinLines(3);
@@ -3679,6 +3679,7 @@ public class MainActivity extends Activity {
         if ("광주지사".equals(stockLoc)) locSp.setSelection(1);
         f.addView(model);
         f.addView(prodPickButton(model), Ui.lp(this, 6));
+        f.addView(scanButtons(model, false));
         f.addView(serials);
         f.addView(scanButtons(serials, true));
         f.addView(Ui.text(this, "시리얼이 없는 물품은 같은 모델이 있으면 그 수량에 더해져요.", 12, Ui.GRAY, false), Ui.lp(this, 6));
@@ -4209,7 +4210,14 @@ public class MainActivity extends Activity {
         String code = (br ? m.group(1) : v).trim(), name = (br ? m.group(2) : v).trim();
         for (JSONObject p : products()) if (p.optString("code").equalsIgnoreCase(code)) return p;
         for (JSONObject p : products()) if (p.optString("name").equals(name)) return p;
+        for (JSONObject p : products()) if (!p.optString("barcode").isEmpty() && p.optString("barcode").equalsIgnoreCase(v)) return p; // 상품 바코드
         return null;
+    }
+
+    private String barcodeOf(String name) {
+        String n = name == null ? "" : name.trim();
+        for (JSONObject p : products()) if (p.optString("name").equals(n)) return p.optString("barcode");
+        return "";
     }
 
     private String codeOf(String name) {
@@ -4340,11 +4348,11 @@ public class MainActivity extends Activity {
             list.removeAllViews();
             int n = 0;
             for (final JSONObject p : products()) {
-                if (!Kor.match(p.optString("code") + " " + p.optString("name"), q.getText().toString())) continue;
+                if (!Kor.match(p.optString("code") + " " + p.optString("name") + " " + p.optString("barcode"), q.getText().toString())) continue;
                 n++;
                 LinearLayout c = Ui.cardH(this);
                 c.addView(Ui.chip(this, p.optString("code"), Ui.TINT, Ui.DEEP));
-                TextView nm = Ui.text(this, p.optString("name"), 15, Ui.INK, true);
+                TextView nm = Ui.text(this, p.optString("name") + (p.optString("barcode").isEmpty() ? "" : "\n바코드 " + p.optString("barcode")), 15, Ui.INK, true);
                 nm.setPadding(Ui.dp(this, 10), 0, 0, 0);
                 c.addView(nm, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
                 Integer h = cnt.get(p.optString("name"));
@@ -4374,13 +4382,17 @@ public class MainActivity extends Activity {
         code.setText(old != null ? old.optString("code") : nextProdCode(products()));
         final EditText name = Ui.field(this, "상품명 (예: 영수증 용지)", false);
         if (old != null) name.setText(old.optString("name"));
+        final EditText bar = Ui.field(this, "상품 바코드 (선택 — 상자에 찍힌 바코드, 같은 상품이면 모두 같음)", false);
+        if (old != null) bar.setText(old.optString("barcode"));
         f.addView(code);
         f.addView(name);
+        f.addView(bar);
+        f.addView(scanButtons(bar, false));
         if (old != null) f.addView(Ui.text(this, "상품명을 바꾸면 재고에 있는 같은 상품 이름도 함께 바뀌어요.", 12, Ui.GRAY, false), Ui.lp(this, 6));
         final AlertDialog dlg = new Dlg(this).setTitle(old != null ? "상품 수정" : "상품 등록").setView(f).setNegativeButton("취소", null).setPositiveButton("저장", null).create();
         dlg.show();
         dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            String c = code.getText().toString().trim(), n = name.getText().toString().trim();
+            String c = code.getText().toString().trim(), n = name.getText().toString().trim(), bc = bar.getText().toString().trim();
             if (c.isEmpty() || n.isEmpty()) {
                 Ui.warn(this, "상품코드와 상품명을 모두 적어 주세요.");
                 return;
@@ -4397,10 +4409,16 @@ public class MainActivity extends Activity {
                     Ui.warn(this, "이미 있는 상품명이에요: " + n);
                     return;
                 }
+                if (!bc.isEmpty() && p.optString("barcode").equalsIgnoreCase(bc)) {
+                    Ui.warn(this, "이미 다른 상품에 쓴 바코드예요: " + bc);
+                    return;
+                }
                 ps.add(p);
             }
             try {
-                ps.add(new JSONObject().put("code", c).put("name", n));
+                JSONObject np = new JSONObject().put("code", c).put("name", n);
+                if (!bc.isEmpty()) np.put("barcode", bc);
+                ps.add(np);
                 if (old != null && (!on.equals(n) || !oc.equals(c)))
                     for (JSONObject r : store.list(store.arr("stock"))) if (r.optString("model").trim().equals(on)) r.put("model", n).put("code", c);
             } catch (Exception ignored) {
@@ -6118,7 +6136,7 @@ public class MainActivity extends Activity {
             {"신규 계약 올리기", "계약이 되면 바로 올려 주세요. (전체 → 신규 계약 올리기, 또는 계약 관리 화면의 + 버튼)\n\n1. 가맹점 조회·선택: 등록된 가맹점을 고릅니다. 없으면 '새 가맹점 등록'.\n2. 결제 연동: VAN사 또는 PG사, 업체명 (예: 다우데이타).\n3. 구분을 고르면 금액 입력 이름이 바뀝니다.\n   - 판매 → 판매금액\n   - CMS → CMS 금액\n   - 렌탈 → 월 렌탈료\n4. 나가는 장비: '+ 장비 추가'를 눌러 재고에서 체크해 고릅니다. 재고에 없으면 '직접 입력'으로 모델명·시리얼을 적어요. 잘못 고른 장비는 오른쪽 − 로 뺍니다. 장비를 여러 번 + 해서 여러 대를 넣을 수 있어요.\n5. 장비 메모: 설치 조건 등 자유롭게 적습니다.\n6. 계약일과 만료일: 만료일 아래 '+12개월 / +24개월 / +36개월' 버튼을 누르면 계약일 기준으로 자동 계산됩니다.\n7. '올리기'.\n\n※ 올리면 고른 장비는 재고에서 '출고중'이 됩니다."},
             {"계약 관리 · 설치 완료 · 만료 알림", "(전체 → 계약 관리)\n\n■ 계약 보기\n- 위쪽에 '만료가 가까운 계약(3개월 이내)'이 빨간 D-숫자와 함께 먼저 나옵니다. 아래는 전체 계약입니다.\n- 일반 직원은 내가 올린 계약만, 실적 권한이 있는 사람은 전체 계약이 보입니다.\n\n■ 설치 완료\n- 계약을 누르고 '설치 완료'를 누르면 나간 장비가 재고에서 완전히 빠집니다.\n\n■ 장비 추가\n- 같은 가맹점에 장비가 더 나가면 계약을 열어 '장비 추가'를 눌러 모델명·시리얼을 이어서 추가합니다.\n\n■ 만료 알림\n- 만료가 90일 이하로 남은 계약이 있으면 '업무' 탭 위에 알림 카드가 뜨고, 전체 탭에도 숫자가 표시됩니다."},
             {"실적 (권한자 전용)", "■ 내 실적 (전체 → 내 실적)\n- 나만 볼 수 있습니다. 이번 달 신규 계약 대수, 판매금액, 올린 계약 목록, 지난달과의 비교가 나와요.\n\n■ 전체 실적·직원별 순위 (실적 보기 권한자)\n- 위 ‹ › 로 월을 바꿉니다.\n- 신규 계약 대수와 판매금액, 직원별 순위 막대 그래프, 올라온 계약 목록이 나옵니다.\n- 월별 성과: '지난달 → 선택한 달' 계약 대수와 성장률(▲ 늘어남 / ▼ 줄어듦, 지난달이 0이면 '신규')을 직원별 막대 두 개(회색 지난달, 금색 이번 달)로 보여 줍니다. 그 아래 최근 6개월 추이 그래프도 있어요.\n- 계약을 누르면 상세 정보와 장비를 볼 수 있어요.\n\n■ 수익 현황 (실적 보기 권한자, 전체 → 수익 현황)\n- 지금까지 총 수익, 선택한 달 수익(매출·매입), 최근 6개월 수익 그래프, 직원별 수익이 나옵니다.\n- 계약에 올라가 출고된 장비(출고중·설치완료)의 '출고 단가 − 입고 단가'를 합산하고, 월은 계약일 기준이에요.\n- 단가를 아직 안 적은 장비는 수익에서 빠지고, 맨 아래 목록에 나옵니다. 눌러서 단가를 적으면 바로 반영돼요."},
-            {"재고 일괄 등록 (엑셀)", "(관리자) 재고 화면의 '📥 재고 일괄 등록 (엑셀)' 또는 전체 → 계약·재고\n\n■ '업로드 양식 받기'로 양식을 받아(PC로 보내서) 상품코드 또는 상품명·시리얼·수량·현재위치·사업자번호·설치일·메모를 채워요. '(예시)' 줄은 건너뛰어요.\n■ 현재위치가 본사·광주지사면 우리 재고로 입고돼요.\n■ 가맹점 상호면 이미 설치된 장비로 기록만 하고 재고 수에는 넣지 않아요(가맹점이 먼저 등록돼 있어야 해요).\n■ 상품 목록에 없는 상품명은 새 상품코드로 등록돼요. 올리기 전에 미리보기로 개수와 못 올리는 줄(이유)을 보여 줘요.\n■ 앞으로 가맹점에 나가는 것은 계약·출고로 처리해요."},
+            {"재고 일괄 등록 (엑셀)", "(관리자) 재고 화면의 '📥 재고 일괄 등록 (엑셀)' 또는 전체 → 계약·재고\n\n■ '업로드 양식 받기'로 양식을 받아(PC로 보내서) 상품코드 또는 상품명·상품 바코드·시리얼(장비 바코드)·수량·현재위치·사업자번호·설치일·메모를 채워요. 상품 바코드는 상자에 찍힌 것(같은 상품이면 같음), 시리얼은 장비마다 다른 번호예요. '(예시)' 줄은 건너뛰어요.\n■ 현재위치가 본사·광주지사면 우리 재고로 입고돼요.\n■ 가맹점 상호면 이미 설치된 장비로 기록만 하고 재고 수에는 넣지 않아요(가맹점이 먼저 등록돼 있어야 해요).\n■ 상품 목록에 없는 상품명은 새 상품코드로 등록돼요. 올리기 전에 미리보기로 개수와 못 올리는 줄(이유)을 보여 줘요.\n■ 앞으로 가맹점에 나가는 것은 계약·출고로 처리해요."},
             {"가맹점 일괄 가져오기 (엑셀·CSV)", "('📄 가맹점 업로드 양식 받기'로 양식을 받을 수 있어요 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요)\n\n(전체 → 가맹점 → 맨 위 '가맹점 일괄 가져오기')\n\n■ 준비\n- 이카운트(또는 다른 곳)에서 거래처 목록을 엑셀로 내려받아요. 형식은 .xlsx 또는 CSV 입니다. 옛 .xls 는 엑셀에서 .xlsx 로 다시 저장해 주세요.\n- 첫 줄(머리글)에 '거래처명'(또는 상호·가맹점명)이 있어야 합니다. 사업자등록번호, 거래처코드, 대표자, 전화, 핸드폰, 주소, 등급, 업태, 종목, 메모 열이 있으면 함께 가져와요.\n\n■ 가져오기\n1. 버튼을 눌러 파일을 고릅니다.\n2. 미리보기에서 새로 등록·갱신·건너뜀 개수와 읽은 열을 확인합니다.\n3. '가져오기'를 누르면 등록됩니다.\n\n■ 다시 올려도 안전해요\n- 같은 거래처코드, 사업자번호, 상호가 있으면 새로 만들지 않고 갱신합니다. 파일에 값이 있는 칸만 덮어쓰고 빈 칸은 그대로예요.\n- 새 가맹점의 등급은 파일에 등급이 없으면 '5코드 · 신규가맹점'으로 들어갑니다.\n- 핸드폰 열이 있으면 단체 문자에 그 번호를 씁니다."},
             {"입금 확인 · 비상연락망 · 알림 · 백업", "\n\n■ 입금 확인 (전체 → 입금 확인)\n- 오른쪽 아래 + → 종류(판매대금/미납금/정보변경수수료/기타), 금액, 가맹점 선택, 메모를 넣고 '올리기'.\n- 올리면 '입금확인' 채팅방에 자동으로 글이 올라가요(방이 없으면 만들어요). 다른 직원 폰에는 알림이 갑니다.\n- 내역을 눌러 '확인 처리'를 하면 확인한 사람 이름이 남고 채팅방에도 알려요.\n\n■ 비상연락망 (전체 → 비상연락망)\n- + 로 이름·구분(본사, 카드사, 밴사, 직원 등)·번호를 등록해요. 연락처를 누르면 전화 화면이 열립니다. 길게 누르면 수정·삭제.\n\n■ 서류 업무 자동 알림\n- 업무 요청에서 종류가 '서류 접수' 또는 '카드사 서류'이면 '서류접수' 채팅방에 담당자·거래처·기한이 자동으로 올라갑니다.\n\n■ 폰 알림\n- 내게 새 업무가 요청되거나, 새 채팅·공지·입금 요청이 오면 폰 알림이 떠요. 처음 한 번 알림 허용을 눌러 주세요. 앱이 완전히 종료된 뒤에는 알림이 오지 않을 수 있습니다(완전한 푸시는 서버 요금제 전환 후 지원).\n\n■ 데이터 백업 (관리자)\n- 전체 → 데이터 백업 내려받기: 업무·가맹점·계약·재고·채팅 글 등 전체 자료를 파일로 만들어 드라이브 등에 보관할 수 있어요. 정기적으로(예: 매주) 받아 두세요."},
             {"자료실", "양식·계약서·안내문 같은 파일을 올려 두고 직원 모두가 내려받아 쓰는 게시판이에요.\n\n■ 찾아가기\n- 전체 탭 → 회사 → 자료실\n\n■ 자료 올리기\n- 오른쪽 아래 + 를 누르고 제목(필수)·설명·분류를 적어요.\n- '📎 파일 추가'로 파일을 고르면 바로 올라가고, 한 글에 5개까지 붙일 수 있어요. 사진은 자동으로 줄여서 올라가고, 문서·엑셀·PDF 같은 파일은 3MB까지입니다.\n- 파일이 다 올라간 뒤(올리는 중 표시가 사라지면) '올리기'를 누르세요.\n- 분류: 양식·서식 / 계약·약정 / 가맹점 안내 / 교육·매뉴얼 / 사진·홍보물 / 기타\n\n■ 찾기·내려받기\n- 위쪽 분류 버튼으로 걸러 보고, 검색창에 제목·설명·파일 이름(초성도 가능)을 적어 찾아요.\n- 글을 누르면 설명과 첨부 파일이 나와요. 파일을 누르면 내려받아 열리고, 열린 앱에서 저장·공유할 수 있어요.\n\n■ 고치기·지우기\n- 올린 사람과 최고관리자만 수정·삭제할 수 있어요. 삭제해도 서버에는 기록이 남습니다.\n- 새 자료가 올라오면 다른 직원 폰에 알림이 떠요(앱이 켜져 있을 때).\n\n※ 개인정보가 든 파일(신분증 사본 등)은 올리지 마세요. 모든 직원이 볼 수 있습니다."},
@@ -6296,6 +6314,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.0.25", "2026-10-26", "• 상품 바코드: 상품 목록에 바코드 칸(상자에 찍힌 바코드, 스캔 가능). 입고 때 상품 바코드를 찍으면 그 상품이 골라지고, 재고 검색칸에 찍으면 그 상품이 걸러져요\n• 재고 업로드 양식에 '상품 바코드' 열 추가, 시리얼 열은 '시리얼(장비 바코드)'로 이름 정리"},
             {"0.0.24", "2026-10-26", "• 업무·일정 시간 고르기를 30분 단위로 (오전 9:00, 오전 9:30 …)"},
             {"0.0.23", "2026-10-25", "• 전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도)\n• 직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정·사진 바꾸기·권한 설정·완전 삭제가 따로\n• 권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기\n• 직책 목록(관리자가 추가·수정·삭제): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순\n• 직원 완전 삭제와 가맹점·재고·응대 기록·자료실 삭제에 삭제 비밀번호 (전체 → 관리자 → 삭제 비밀번호)"},
             {"0.0.22", "2026-10-25", "• 가맹점 등급 표기를 직원들이 부르는 대로: 0코드·1코드·2코드·3코드, 그다음 해지가맹점·신규가맹점·협력사 (목록·단체 문자·등록 화면·업로드 양식)"},
@@ -7659,7 +7678,7 @@ public class MainActivity extends Activity {
     private static final class SRow {
         int line, qty;
         boolean ok;
-        String why = "", serial = "", newName = "", loc = "", date = "", memo = "";
+        String why = "", serial = "", newName = "", loc = "", date = "", memo = "", barcode = "";
         JSONObject prod, mer;
     }
 
@@ -7683,12 +7702,18 @@ public class MainActivity extends Activity {
         List<SRow> bad = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         List<JSONObject> mers = store.list(store.arr("merchants"));
+        final java.util.Map<String, String> fileBc = new java.util.HashMap<>();
+        for (int i = hr + 1; i < rows.size(); i++) {
+            String b2 = MerchantImport.cell(rows.get(i), map, "barcode"), n2 = MerchantImport.cell(rows.get(i), map, "name");
+            if (!b2.isEmpty() && !n2.isEmpty() && !MerchantImport.isSample(n2) && !fileBc.containsKey(b2)) fileBc.put(b2, n2);
+        }
         for (int i = hr + 1; i < rows.size(); i++) {
             List<String> r = rows.get(i);
-            String code = MerchantImport.cell(r, map, "code"), name = MerchantImport.cell(r, map, "name"), serial = MerchantImport.cell(r, map, "serial");
+            String code = MerchantImport.cell(r, map, "code"), name = MerchantImport.cell(r, map, "name"), serial = MerchantImport.cell(r, map, "serial"), bc = MerchantImport.cell(r, map, "barcode");
             String where = MerchantImport.cell(r, map, "where").replaceAll("\\s+", " ");
             if (MerchantImport.isSample(code) || MerchantImport.isSample(name) || (!r.isEmpty() && MerchantImport.isSample(r.get(0)))) continue;
-            if (code.isEmpty() && name.isEmpty() && serial.isEmpty() && where.isEmpty()) continue;
+            if (code.isEmpty() && name.isEmpty() && bc.isEmpty() && serial.isEmpty() && where.isEmpty()) continue;
+            if (name.isEmpty() && !bc.isEmpty() && fileBc.containsKey(bc)) name = fileBc.get(bc); // 같은 파일 앞줄에서 이 바코드에 이름을 적었으면
             SRow o = new SRow();
             o.line = i + 1;
             o.serial = serial;
@@ -7696,12 +7721,16 @@ public class MainActivity extends Activity {
             o.qty = !serial.isEmpty() ? 1 : qs.isEmpty() ? (MerchantImport.cell(r, map, "qty").isEmpty() ? 1 : 0) : Integer.parseInt(qs.length() > 7 ? qs.substring(0, 7) : qs);
             o.memo = MerchantImport.cell(r, map, "memo");
             o.date = MerchantImport.dateCell(MerchantImport.cell(r, map, "date"));
+            o.barcode = bc;
             o.prod = !code.isEmpty() ? prodFind(code) : null;
+            if (o.prod == null && !bc.isEmpty()) o.prod = prodFind(bc);
             if (o.prod == null && !name.isEmpty()) o.prod = prodFind(name);
             if (o.prod == null) {
-                if (name.isEmpty()) o.why = "상품코드 " + code + "가 상품 목록에 없고 상품명도 비었어요";
+                if (name.isEmpty()) o.why = (code.isEmpty() ? "상품 바코드 " + bc : "상품코드 " + code) + "가 상품 목록에 없고 상품명도 비었어요";
                 else o.newName = name;
             }
+            if (o.why.isEmpty() && !bc.isEmpty() && o.prod != null && !o.prod.optString("barcode").isEmpty() && !o.prod.optString("barcode").equals(bc))
+                o.why = "상품 바코드가 상품 목록(" + o.prod.optString("barcode") + ")과 달라요";
             if (o.why.isEmpty() && serial.isEmpty() && o.qty < 1) o.why = "시리얼도 수량도 없어요";
             if (o.why.isEmpty() && !serial.isEmpty()) {
                 String k = serial.toLowerCase(Locale.ROOT);
@@ -7757,7 +7786,9 @@ public class MainActivity extends Activity {
 
     private void applyStockImport(List<SRow> ok, java.util.Set<String> newNames) {
         java.util.Map<String, JSONObject> made = new java.util.HashMap<>();
-        if (!newNames.isEmpty()) {
+        boolean anyBc = false;
+        for (SRow o : ok) if (!o.barcode.isEmpty()) anyBc = true;
+        if (!newNames.isEmpty() || anyBc) {
             List<JSONObject> ps = products();
             for (String n : newNames) {
                 JSONObject ex = null;
@@ -7771,6 +7802,19 @@ public class MainActivity extends Activity {
                     ps.add(ex);
                 }
                 made.put(n, ex);
+            }
+            for (SRow o : ok) { // 파일의 상품 바코드를 바코드가 아직 없는 상품에 붙인다
+                if (o.barcode.isEmpty()) continue;
+                String nm = o.prod != null ? o.prod.optString("name") : o.newName;
+                boolean used = false;
+                for (JSONObject p : ps) if (o.barcode.equals(p.optString("barcode"))) used = true;
+                for (JSONObject p : ps)
+                    if (!used && p.optString("name").equals(nm) && p.optString("barcode").isEmpty()) {
+                        try {
+                            p.put("barcode", o.barcode);
+                        } catch (Exception ignored) {
+                        }
+                    }
             }
             saveProducts(ps);
         }

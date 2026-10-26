@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.35';
+const VERSION = '웹 0.0.36';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', 'AS', '영업 방문', '서류 접수', '카드사 서류', '기타'];
@@ -1071,11 +1071,12 @@ const prodDoc = () => list('config').find(c => c.key === 'products');
 const products = () => ((prodDoc() || {}).items || []).filter(p => p && p.code && p.name).slice().sort((a, b) => a.code.localeCompare(b.code));
 const prodAdmin = () => !!(S.caps && S.caps.admin) || can('staff_manage');
 const prodLabel = p => '[' + p.code + '] ' + p.name;
-function prodFind(v) { // '[P0001] 영수증 용지' · 'P0001' · '영수증 용지' 모두 찾는다
+function prodFind(v) { // '[P0001] 영수증 용지' · 'P0001' · '영수증 용지' · 상품 바코드 모두 찾는다
   v = String(v || '').trim(); if (!v) return null;
   const m = v.match(/^\[([^\]]+)\]\s*(.*)$/); const code = (m ? m[1] : v).trim().toLowerCase(), name = (m ? m[2] : v).trim();
-  return products().find(p => p.code.toLowerCase() === code) || products().find(p => p.name === name) || null;
+  return products().find(p => p.code.toLowerCase() === code) || products().find(p => p.name === name) || products().find(p => p.barcode && p.barcode.toLowerCase() === v.toLowerCase()) || null;
 }
+const barcodeOf = name => { const p = products().find(x => x.name === String(name || '').trim()); return p && p.barcode ? p.barcode : ''; };
 const codeOf = name => { const p = products().find(x => x.name === String(name || '').trim()); return p ? p.code : ''; };
 const withCode = name => { const c = codeOf(name); return (c ? '[' + c + '] ' : '') + (name || ''); };
 function nextProdCode() { let n = 0; products().forEach(p => { const m = /^P(\d+)$/i.exec(p.code); if (m) n = Math.max(n, Number(m[1])); }); return 'P' + String(n + 1).padStart(4, '0'); }
@@ -1113,11 +1114,11 @@ function seedProducts() {
 function viewProducts() {
   if (!S.prodSeeded) { S.prodSeeded = true; setTimeout(() => { const n = seedProducts(); if (n) { toast('기존 재고 상품 ' + n + '개에 상품코드를 붙였어요.'); render(); } }, 0); }
   const cnt = {}; inStock().forEach(r => { const k = (r.model || '').trim(); cnt[k] = (cnt[k] || 0) + (r.qty || 1); });
-  const ps = products().filter(p => kmatch(p.code + ' ' + p.name, S.pq || ''));
+  const ps = products().filter(p => kmatch(p.code + ' ' + p.name + ' ' + (p.barcode || ''), S.pq || ''));
   return '<h1>상품 목록 (상품코드)</h1><div class="sub">재고 입고와 물품요청은 이 목록의 상품코드·상품명을 같이 써요. ' + (prodAdmin() ? '상품을 눌러 코드·이름을 고치고, ‘＋ 상품 등록’으로 추가해요.' : '새 상품은 본사 관리자가 등록해요.') + '</div>' +
     (prodAdmin() ? '<button class="btn gold full" data-act="prodEdit" data-arg="">＋ 상품 등록</button>' : '') +
     '<input id="prq" data-q="pq" placeholder="🔍 상품코드·상품명 (초성)" value="' + esc(S.pq || '') + '" autocomplete="off">' +
-    '<div class="qres" data-for="pq">' + (ps.length ? ps.map(p => '<div class="card"' + (prodAdmin() ? ' data-act="prodEdit" data-arg="' + esc(p.code) + '"' : '') + '><div class="row"><span class="chip">' + esc(p.code) + '</span><div class="grow t1">' + esc(p.name) + '</div><span class="sub" style="margin:0">재고 ' + (cnt[p.name] || 0) + '</span></div></div>').join('') : '<div class="empty">등록된 상품이 없어요.</div>') + '</div>';
+    '<div class="qres" data-for="pq">' + (ps.length ? ps.map(p => '<div class="card"' + (prodAdmin() ? ' data-act="prodEdit" data-arg="' + esc(p.code) + '"' : '') + '><div class="row"><span class="chip">' + esc(p.code) + '</span><div class="grow t1">' + esc(p.name) + (p.barcode ? ' <span class="sub" style="margin:0">바코드 ' + esc(p.barcode) + '</span>' : '') + '</div><span class="sub" style="margin:0">재고 ' + (cnt[p.name] || 0) + '</span></div></div>').join('') : '<div class="empty">등록된 상품이 없어요.</div>') + '</div>';
 }
 // ---------- 메모 (PC 위쪽 주 메뉴 맨 끝) — 업무 중 적어 둘 것. 내 profiles 문서의 memos 에 저장(다른 PC에서도 보임, 다른 직원 화면엔 안 보임) ----------
 const memos = () => ((myProf() || {}).memos || []).slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || (b.u || 0) - (a.u || 0));
@@ -1145,12 +1146,14 @@ ACT.prodEdit = code => {
   const old = code ? products().find(p => p.code === code) : null;
   formModal(old ? '상품 수정' : '상품 등록', '<label class="fl" for="f_pc">상품코드</label><input id="f_pc" value="' + esc(old ? old.code : nextProdCode()) + '" placeholder="예: P0001">' +
     '<label class="fl" for="f_pn">상품명</label><input id="f_pn" value="' + esc(old ? old.name : '') + '" placeholder="예: 영수증 용지">' +
+    '<label class="fl" for="f_pb">상품 바코드 (선택 — 상자에 찍힌 바코드, 같은 상품이면 모두 같음. 스캐너로 찍어도 돼요)</label><div class="row" style="gap:8px"><input id="f_pb" value="' + esc(old && old.barcode || '') + '" placeholder="예: 8801234567890" autocomplete="off"><button type="button" class="btn tint" data-act="scanInto" data-arg="f_pb" style="flex:none">📷</button></div>' +
     (old ? '<div class="sub">상품명을 바꾸면 재고에 있는 같은 상품 이름도 함께 바뀌어요.</div>' : ''), () => {
-    const c = $('#f_pc').value.trim(), n = $('#f_pn').value.trim();
+    const c = $('#f_pc').value.trim(), n = $('#f_pn').value.trim(), bc = $('#f_pb').value.trim();
     if (!c || !n) return warn('상품코드와 상품명을 모두 적어 주세요.');
+    if (bc && products().some(p => p !== old && (p.barcode || '').toLowerCase() === bc.toLowerCase())) return warn('이미 다른 상품에 쓴 바코드예요: ' + bc);
     if (products().some(p => p !== old && p.code.toLowerCase() === c.toLowerCase())) return warn('이미 있는 상품코드예요: ' + c);
     if (products().some(p => p !== old && p.name === n)) return warn('이미 있는 상품명이에요: ' + n);
-    saveProducts(products().filter(p => p !== old).concat({code: c, name: n}));
+    saveProducts(products().filter(p => p !== old).concat(Object.assign({code: c, name: n}, bc ? {barcode: bc} : {})));
     if (old && old.name !== n) list('stock').filter(r => (r.model || '').trim() === old.name).forEach(r => { r.model = n; r.code = c; put('stock', r); });
     else if (old && old.code !== c) list('stock').filter(r => (r.model || '').trim() === n).forEach(r => { r.code = c; put('stock', r); });
     render(); toast('저장했어요: [' + c + '] ' + n); return true;
@@ -1172,7 +1175,7 @@ function viewStock() {
 ACT.sloc = l => { S.sloc = l; render(); };
 function stockGroups() {
   const g = new Map();
-  list('stock').filter(r => r.status !== '설치완료' && (!S.sloc || locOf(r) === S.sloc) && kmatch((r.model || '') + ' ' + codeOf(r.model) + ' ' + (r.serial || '') + ' ' + locOf(r), S.sq || '')).sort((a, b) => (a.model || '').localeCompare(b.model || '') || (a.serial || '').localeCompare(b.serial || ''))
+  list('stock').filter(r => r.status !== '설치완료' && (!S.sloc || locOf(r) === S.sloc) && kmatch((r.model || '') + ' ' + codeOf(r.model) + ' ' + barcodeOf(r.model) + ' ' + (r.serial || '') + ' ' + locOf(r), S.sq || '')).sort((a, b) => (a.model || '').localeCompare(b.model || '') || (a.serial || '').localeCompare(b.serial || ''))
     .forEach(r => { if (!g.has(r.model)) g.set(r.model, []); g.get(r.model).push(r); });
   if (!g.size) return '<div class="empty">' + ((S.sq || '').trim() ? '찾는 장비가 없어요.' : '등록된 재고가 없습니다. ‘＋ 입고’로 추가해 주세요.') + '</div>';
   return [...g.entries()].map(([model, rows]) => {
@@ -1193,7 +1196,7 @@ document.addEventListener('keydown', e => {
 });
 ACT.newStock = () => {
   formModal('입고 (재고 추가)',
-    '<label class="fl" for="f_mo">상품 (필수 · 상품코드나 이름으로 골라요' + (prodAdmin() ? ', 목록에 없으면 새 코드로 등록돼요' : '') + ')</label><input id="f_mo" list="prodlist" placeholder="예: P0001 또는 토스 포스 T2" autocomplete="off">' + prodOptions() +
+    '<label class="fl" for="f_mo">상품 (필수 · 상품코드나 이름으로 골라요' + (prodAdmin() ? ', 목록에 없으면 새 코드로 등록돼요' : '') + ')</label><div class="row" style="gap:8px"><input id="f_mo" list="prodlist" placeholder="예: P0001 · 토스 포스 T2 · 상품 바코드" autocomplete="off"><button type="button" class="btn tint" data-act="scanInto" data-arg="f_mo" style="flex:none" aria-label="상품 바코드 찍기">📷</button></div>' + prodOptions() +
     '<label class="fl" for="f_se">시리얼 (여러 개는 한 줄에 하나 — 스캐너로 계속 찍으면 줄이 바뀌어요)</label><textarea id="f_se" placeholder="시리얼 번호"></textarea><button class="btn tint full" data-act="scanInto" data-arg="f_se">📷 카메라로 바코드 찍기</button>' +
     '<label class="fl" for="f_q">시리얼이 없는 물품의 수량 (같은 모델이 있으면 그 수량에 더해져요)</label><input id="f_q" inputmode="numeric" placeholder="예: 10">' +
     '<label class="fl" for="f_lc">보관지</label><select id="f_lc">' + LOCS.map(l => '<option' + (l === (S.sloc || '본사') ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
@@ -1336,16 +1339,19 @@ ACT.editStock = id => {
 // ---------- 재고 일괄 등록 (엑셀) — 처음 옮길 때: 상품코드/상품명 · 시리얼 · 수량 · 현재위치(본사|광주지사|가맹점 상호) ----------
 // 본사·광주지사 = 우리 재고(재고 수에 들어감). 가맹점 = 이미 설치된 장비 → 기록만 남기고 재고 수에는 넣지 않는다(status 설치완료 + gone '기존 설치', merchant).
 // 앞으로 가맹점에 나가는 것은 계약·출고로 처리한다.
-const S_TPL_HEAD = ['상품코드', '상품명', '시리얼', '수량', '현재위치', '사업자번호', '설치일', '메모'];
+const S_TPL_HEAD = ['상품코드', '상품명', '상품 바코드', '시리얼(장비 바코드)', '수량', '현재위치', '사업자번호', '설치일', '메모'];
 ACT.sTemplate = () => saveBytes('나인패밀리_재고_업로드양식.xlsx', xlsxOf([
-  '■ 재고 일괄 등록 양식 — 상품코드나 상품명 중 하나는 꼭 적어요(상품 목록에 없으면 새 상품코드로 등록돼요). 시리얼이 있으면 한 줄에 한 대, 없으면 수량을 적어요.',
+  '■ 재고 일괄 등록 양식 — 상품코드·상품명·상품 바코드 중 하나는 꼭 적어요(상품 목록에 없으면 새 상품코드로 등록돼요). 시리얼이 있으면 한 줄에 한 대, 없으면 수량을 적어요.',
+  '■ 상품 바코드 = 상자에 찍힌 바코드(같은 상품이면 모두 같음, 용지 같은 소모품) / 시리얼(장비 바코드) = 단말기마다 다른 번호(스캐너로 찍으면 이 칸).',
   '■ 현재위치: ‘본사’ 또는 ‘광주지사’ → 우리 재고로 잡혀요 / 가맹점 상호 → 이미 설치된 장비로 기록만 하고 재고 수에는 넣지 않아요(가맹점이 앱에 등록돼 있어야 해요, 사업자번호를 적으면 더 정확해요).',
   '■ 설치일: 가맹점에 설치된 날(선택, 2026-10-01 처럼) / ‘(예시)’로 시작하는 줄은 올릴 때 건너뛰어요.'],
-  S_TPL_HEAD, [['(예시) P0001', '토스 포스 T2', 'T2-0001', '1', '본사', '', '', ''], ['(예시)', '영수증 용지', '', '30', '광주지사', '', '', '박스 단위'], ['(예시)', '토스 포스 T2', 'T2-0009', '1', '삼영푸드', '123-45-67890', '2025-03-02', '']],
-  [12, 22, 18, 8, 16, 16, 12, 20]), XLSX_MIME);
+  S_TPL_HEAD, [['(예시) P0001', '토스 포스 T2', '', 'T2-0001', '1', '본사', '', '', ''], ['(예시)', '영수증 용지', '8801234567890', '', '30', '광주지사', '', '', '박스 단위'], ['(예시)', '토스 포스 T2', '', 'T2-0009', '1', '삼영푸드', '123-45-67890', '2025-03-02', '']],
+  [12, 22, 18, 22, 8, 16, 16, 12, 20]), XLSX_MIME);
 function sFieldOf(h) {
   h = normH(h); if (!h) return null;
   if (h.includes('상품코드') || h.includes('품목코드') || h === '코드') return 'code';
+  if (h.includes('시리얼') || h.includes('serial') || h.includes('일련번호') || h === 'sn') return 'serial'; // '시리얼(장비 바코드)'
+  if (h.includes('바코드') || h.includes('barcode')) return 'barcode';
   if (h.includes('상품명') || h.includes('품목명') || h.includes('품명') || h.includes('모델') || h.includes('제품')) return 'name';
   if (h.includes('시리얼') || h.includes('serial') || h.includes('일련번호') || h.includes('s/n') || h === 'sn') return 'serial';
   if (h.includes('수량')) return 'qty';
@@ -1357,12 +1363,16 @@ function sFieldOf(h) {
 }
 function sHeader(rows) { for (let i = 0; i < Math.min(rows.length, 15); i++) { const m = {}; rows[i].forEach((c, j) => { const f = sFieldOf(c); if (f && !(f in m)) m[f] = j; }); if (('name' in m || 'code' in m) && 'where' in m) return [i, m]; } return null; }
 // 한 줄을 해석한다 → {ok, why, kind: 'stock'|'site', prod:{code,name}|newName, serial, qty, loc, mer, date, memo}
+let sFileBc = {};
 function sPlanRow(r, map, seen) {
-  const code = cellOf(r, map, 'code'), name = cellOf(r, map, 'name'), serial = cellOf(r, map, 'serial'), where = cellOf(r, map, 'where').replace(/\s+/g, ' ');
+  const code = cellOf(r, map, 'code'), name = cellOf(r, map, 'name'), serial = cellOf(r, map, 'serial'), where = cellOf(r, map, 'where').replace(/\s+/g, ' '), bc = cellOf(r, map, 'barcode');
   if (isSample(code) || isSample(name) || isSample(r[0])) return {skip: true};
-  if (!code && !name && !serial && !where) return {skip: true};
+  if (!code && !name && !bc && !serial && !where) return {skip: true};
   const o = {serial, qty: serial ? 1 : Math.max(0, numOf(cellOf(r, map, 'qty')) || (cellOf(r, map, 'qty') ? 0 : 1)), memo: cellOf(r, map, 'memo'), date: dateCell(cellOf(r, map, 'date'))};
-  o.prod = (code && prodFind(code)) || (name && prodFind(name)) || null; if (!o.prod) { if (!name) return Object.assign(o, {why: '상품코드 ' + code + '가 상품 목록에 없고 상품명도 비었어요'}); o.newName = name; }
+  o.barcode = bc;
+  const nm = name || (bc && sFileBc[bc]) || ''; // 같은 파일 앞줄에서 이 바코드에 이름을 적었으면 그 상품
+  o.prod = (code && prodFind(code)) || (bc && prodFind(bc)) || (nm && prodFind(nm)) || null; if (!o.prod) { if (!nm) return Object.assign(o, {why: (code ? '상품코드 ' + code : '상품 바코드 ' + bc) + '가 상품 목록에 없고 상품명도 비었어요'}); o.newName = nm; }
+  if (bc && o.prod && o.prod.barcode && o.prod.barcode !== bc) return Object.assign(o, {why: '상품 바코드가 상품 목록(' + o.prod.barcode + ')과 달라요'});
   if (!serial && o.qty < 1) return Object.assign(o, {why: '시리얼도 수량도 없어요'});
   if (serial) { const k = serial.toLowerCase(); if (seen.has(k)) return Object.assign(o, {why: '파일 안에 같은 시리얼이 또 있어요'}); seen.add(k); if (list('stock').some(x => x.status !== '설치완료' && (x.serial || '').trim().toLowerCase() === k)) return Object.assign(o, {why: '이미 재고에 있는 시리얼이에요'}); }
   if (!where) return Object.assign(o, {why: '현재위치가 비었어요'});
@@ -1382,6 +1392,7 @@ ACT.importStock = () => {
     let rows; try { rows = await readTable($('#f_imp').files[0]); } catch (e) { return toast(e.message && e.message !== 'zip' ? e.message : '파일을 읽지 못했어요.'); }
     const hd = sHeader(rows); if (!hd) return toast('머리글에서 ‘상품명’(또는 상품코드)과 ‘현재위치’ 열을 찾지 못했어요. 양식을 받아 써 주세요.');
     const [hr, map] = hd, seen = new Set(), plan = [];
+    sFileBc = {}; rows.slice(hr + 1).forEach(r => { const b2 = cellOf(r, map, 'barcode'), n2 = cellOf(r, map, 'name'); if (b2 && n2 && !isSample(n2) && !sFileBc[b2]) sFileBc[b2] = n2; });
     rows.slice(hr + 1).forEach((r, i) => { const p = sPlanRow(r, map, seen); if (!p.skip) { p.line = hr + 2 + i; plan.push(p); } });
     const ok = plan.filter(p => p.ok), bad = plan.filter(p => !p.ok), newNames = [...new Set(ok.filter(p => p.newName).map(p => p.newName))];
     const sum = k => ok.filter(p => p.kind === k).reduce((a, p) => a + p.qty, 0);
@@ -1394,7 +1405,8 @@ ACT.importStock = () => {
     askConfirm('재고 일괄 등록 미리보기', msg, ok.length + '줄 올리기', () => {
       let items = products(); const made = {};
       newNames.forEach(n => { const ex = items.find(p => p.name === n); if (ex) { made[n] = ex; return; } const n0 = items.reduce((m, p) => { const k = /^P(\d+)$/i.exec(p.code); return k ? Math.max(m, Number(k[1])) : m; }, 0); const p = {code: 'P' + String(n0 + 1).padStart(4, '0'), name: n}; items = items.concat(p); made[n] = p; });
-      if (newNames.length) saveProducts(items);
+      ok.forEach(p => { if (!p.barcode) return; const nm = (p.prod || made[p.newName] || {}).name; const t = items.find(x => x.name === nm); if (t && !t.barcode && !items.some(x => x.barcode === p.barcode)) items = items.map(x => x === t ? Object.assign({}, x, {barcode: p.barcode}) : x); });
+      if (newNames.length || ok.some(p => p.barcode)) saveProducts(items);
       ok.forEach(p => {
         const pr = p.prod || made[p.newName], memo = '엑셀 일괄 등록' + (p.memo ? ' · ' + p.memo : '');
         if (p.kind === 'stock') {
@@ -2502,6 +2514,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.36', '2026-10-26', ['상품 바코드: 상품 목록에 바코드 칸(상자에 찍힌 바코드, 스캐너·카메라로 찍기). 입고 때 상품 바코드를 찍으면 그 상품이 골라지고, 재고 검색칸에 찍으면 그 상품이 걸러져요', '재고 업로드 양식에 ‘상품 바코드’ 열 추가, 시리얼 열은 ‘시리얼(장비 바코드)’로 이름 정리']],
   ['웹 0.0.35', '2026-10-26', ['업무·일정 시간 고르기를 30분 단위로 (오전 9:00, 오전 9:30 …)']],
   ['웹 0.0.34', '2026-10-25', ['전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도), 순서 정리', '직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정과 권한 설정 창이 따로', '권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기', '직책 목록(관리자가 추가·수정·삭제, 위에 있을수록 앞): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순 선택', '직원 완전 삭제(삭제 비밀번호 필요), 가맹점·재고·응대 기록·자료실 삭제도 삭제 비밀번호를 물어요 (☰ → 관리자 → 삭제 비밀번호)']],
   ['웹 0.0.33', '2026-10-25', ['가맹점 등급 표기를 직원들이 부르는 대로: 0코드·1코드·2코드·3코드, 그다음 해지가맹점·신규가맹점·협력사 (목록·단체 문자·등록 화면·업로드 양식)']],
@@ -2561,7 +2574,7 @@ const WEB_MANUAL = [
   ['알림 · 저장 상태 · 뒤로가기', '■ 알림: 웹앱을 열어 둔 동안 새 업무·채팅·공지가 오면 소리·진동·안내로 알려요. PC는 전체 → 계정 → 알림 받기를 허용하면 다른 창을 보고 있어도 알림이 떠요. 탭 제목에 안 본 개수가 보여요. (웹앱을 닫았을 때 오는 알림은 서버 연동 후 가능)\n■ 저장 상태: 저장하면 화면 위에 ‘저장 중’이 잠깐 보여요. 인터넷이 끊기면 ‘저장 대기’로 바뀌고, 연결되면 저절로 저장돼요. 이 띠가 있는 동안에는 닫지 마세요.\n■ 가맹점 수정 창을 연 사이 다른 직원이 같은 가맹점을 고치면, 저장할 때 바뀐 항목을 보여 주고 덮어쓸지 한 번 더 물어요.\n■ 뒤로가기: 폰 뒤로가기·브라우저 뒤로 버튼으로 팝업 → 대화방 → 메뉴 → 하위 화면 → 첫 화면 순서로 닫혀요. 첫 화면에서 한 번 더 누르면 나가요.\n■ 알림 소리·음성: 새 업무가 배정되면 ‘띵동’ 소리와 함께 “업무가 배정되었습니다”, 채팅이 오면 카톡처럼 “나인톡!”, 공지는 “새 공지가 있습니다”라고 말해 줘요. ☰ → 내 계정·설정 → ‘알림 및 소리 설정’에서 업무 소리·채팅 소리를 따로 끄고 켜고, ‘들어 보기’로 미리 들어 봐요. 채팅방 위 🔔 를 누르면 그 방만 소리를 꺼요(🔕).'],
   ['관리자: 직원과 권한', '■ 직원을 누르면 ‘직원 정보’ 창이 열려요(사진·부서·직책·생년월일·연락처·주소). 여기서 ‘정보 수정’, ‘권한 설정’, ‘완전 삭제’를 따로 해요.\n■ 권한 설정 창: 항목별 권한(직원 정보 보기 포함), 영업 실적·순위에서 빼기, 일일보고·실적보고 명단에 넣기, 사용 중지.\n■ 직책 목록(☰ → 관리자 → 직책 목록): 한 줄에 하나, 위에 있을수록 앞에 보여요. 기본: 대표·이사·본부장·지사장·부장·차장·과장·대리·사원.\n■ 삭제 비밀번호(☰ → 관리자): 직원 완전 삭제, 가맹점·재고·응대 기록·자료실 삭제 때 물어봐요. 정하기 전에는 직원 완전 삭제를 할 수 없어요. 완전 삭제한 직원은 목록·명단·담당자 고르기에서 사라지고 로그인할 수 없어요(지난 기록의 이름은 남아요).\n■ 전체 → 관리자 → 직원과 권한. + 로 이름·휴대폰 번호·권한 묶음(영업직·사무직·관리자)을 넣어 등록하면 그 번호로 로그인할 수 있어요.\n■ 직원을 눌러 항목별 권한을 켜고 끄거나, ‘사용 중지’로 퇴사자의 접근을 막아요. 마지막 관리자는 중지하거나 관리 권한을 끌 수 없어요.\n■ 권한: 업무 만들기 / 다른 직원에게 업무 배정 / 전체 업무 보기 / 전체 이력 보기 / 공지 작성 / 실적 보기 / 일일보고·실적보고 종합 보기 / 가맹점 등록·수정 / 직원 관리(최고관리자).'],
   ['관리자: 백업 · 가맹점 보호·복원', '■ 자료는 여러 겹으로 지켜져요: ① 서버는 지우기가 막혀 있고 모든 변경이 기록돼요 ② 매일 새벽 서버 전체를 암호화해 90일 보관(비밀값 설정 후) ③ 관리자가 앱·웹을 열면 그 기기에 하루 한 번 14일치 자동 보관 ④ 데이터 백업 내려받기로 파일 보관(한 달에 한 번 이상 권장).\n■ 가맹점 보호·복원: 삭제한 가맹점 복원, 백업 파일(.json)로 복원, 되돌리기 기준점 만들기. 가져오기·복원·되돌리기 직전 상태는 그 PC에 자동 저장돼요(전체 → 관리자 → PC에 보관된 자동 백업).\n■ 가맹점 수정 암호: 전체 → 관리자에서 정하고 바꾸고 끄요.'],
-  ['재고 일괄 등록 (엑셀)', '■ 처음 재고를 옮길 때 써요(관리자). 재고 화면의 ‘📥 재고 일괄 등록 (엑셀)’ 또는 ☰ → 계약·재고.\n■ ‘업로드 양식 받기’로 엑셀 양식을 받아 상품코드(또는 상품명)·시리얼·수량·현재위치·사업자번호·설치일·메모를 채워요. ‘(예시)’ 줄은 건너뛰어요.\n■ 현재위치가 본사·광주지사 → 우리 재고로 입고돼요(같은 상품·보관지의 시리얼 없는 물품은 수량이 더해져요).\n■ 현재위치가 가맹점 상호 → 이미 설치된 장비로 기록만 하고 재고 수·수익에는 넣지 않아요. 가맹점이 먼저 등록돼 있어야 하고, 사업자번호를 적으면 정확히 찾아요.\n■ 상품 목록에 없는 상품명은 새 상품코드(P0001…)로 등록돼요. 올리기 전에 미리보기로 개수와 못 올리는 줄(이유)을 보여 줘요.\n■ 앞으로 가맹점에 나가는 것은 계약·출고로 처리해요.'],
+  ['재고 일괄 등록 (엑셀)', '■ 처음 재고를 옮길 때 써요(관리자). 재고 화면의 ‘📥 재고 일괄 등록 (엑셀)’ 또는 ☰ → 계약·재고.\n■ ‘업로드 양식 받기’로 엑셀 양식을 받아 상품코드(또는 상품명)·상품 바코드·시리얼(장비 바코드)·수량·현재위치·사업자번호·설치일·메모를 채워요. 상품 바코드는 상자에 찍힌 것(같은 상품이면 같음), 시리얼은 장비마다 다른 번호예요. ‘(예시)’ 줄은 건너뛰어요.\n■ 현재위치가 본사·광주지사 → 우리 재고로 입고돼요(같은 상품·보관지의 시리얼 없는 물품은 수량이 더해져요).\n■ 현재위치가 가맹점 상호 → 이미 설치된 장비로 기록만 하고 재고 수·수익에는 넣지 않아요. 가맹점이 먼저 등록돼 있어야 하고, 사업자번호를 적으면 정확히 찾아요.\n■ 상품 목록에 없는 상품명은 새 상품코드(P0001…)로 등록돼요. 올리기 전에 미리보기로 개수와 못 올리는 줄(이유)을 보여 줘요.\n■ 앞으로 가맹점에 나가는 것은 계약·출고로 처리해요.'],
   ['메모 (PC)', '■ PC 화면 위쪽 메뉴 맨 끝 ‘메모’. 업무 중 적어 둘 것을 메모해요.\n■ 새 메모를 적고 ‘추가’(Ctrl+Enter). 메모 칸을 고치면 잠시 뒤 저절로 저장돼요. 📌 로 맨 위에 고정, 🗑 로 삭제.\n■ 내 계정에 저장돼서 다른 PC에서도 보이고, 다른 직원 화면에는 안 보여요.'],
   ['가맹점 일괄 가져오기 (엑셀·CSV)', '■ ‘📄 업로드 양식 받기’로 양식(.xlsx)을 받을 수 있어요. 이카운트 거래처 머리글과 같은 이름이라 이카운트 엑셀을 그대로 올리거나 양식에 붙여 넣어도 돼요. VAN사·계약시작일·계약종료일도 읽어요.\n■ 이카운트 등에서 거래처 목록을 엑셀(.xlsx) 또는 CSV로 받아요. 옛 .xls 는 엑셀에서 .xlsx 로 다시 저장해 주세요.\n■ 머리글에 ‘거래처명’(또는 상호·가맹점명)이 있어야 하고, 사업자등록번호·거래처코드·대표자·전화·핸드폰·주소·등급·업태·종목·메모 열이 있으면 함께 가져와요.\n■ 전체 → 가맹점 일괄 가져오기 → 파일 고르기 → 미리보기(새로 등록·갱신·건너뜀) 확인 → 가져오기.\n■ 같은 거래처코드·사업자번호·상호가 있으면 새로 만들지 않고, 파일에 값이 있는 칸만 덮어써요. 잘못되면 가맹점 보호·복원에서 되돌려요.'],
   ['단체 문자 (가맹점)', '■ 전체 → 단체 문자 보내기. 내용을 쓰고({상호} 는 가맹점 이름으로 바뀜), 등급 버튼·검색·체크로 받을 가맹점을 골라요(휴대폰 번호가 있는 곳만).\n■ ‘문자 보내기 시작’ → 한 곳씩 휴대폰 문자 앱이 열리고 내용이 채워져 있어요. 보내고 돌아오면 다음 가맹점이 준비돼요. 받는 분끼리 번호가 보이지 않고, 요금은 그 휴대폰 요금제로 나가요.\n■ PC에는 문자 앱이 없어 보낼 수 없어요(남은 번호 복사는 가능). 알리고 연동 후 PC에서도 바로 보낼 수 있게 할 예정이에요.'],
