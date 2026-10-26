@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.58';
+const VERSION = '웹 0.0.59';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -87,9 +87,12 @@ function put(coll, o) {
   if (!(priv || coll === 'msgs' || coll === 'profiles')) fs.collection('audit').add({c: coll, id: o.id, by: S.uid, u: Date.now(), j}).catch(() => {});
 }
 // 화면 위쪽 작은 띠: 저장 중 / 인터넷 끊김(저장 대기) — 서버에 다 들어가면 사라진다
-function syncBadge() {
+let syncT = 0, syncSince = 0;
+function syncBadge() { // 저장이 1.5초 넘게 걸릴 때만 '저장 중'을 보인다(보통은 순식간이라 깜빡이지 않게). 인터넷 끊김은 바로
   let b = $('#syncb'); if (!b) { b = document.createElement('div'); b.id = 'syncb'; document.body.appendChild(b); }
-  const off = !navigator.onLine, n = S.pend || 0;
+  const off = !navigator.onLine;
+  if (!(S.pend > 0)) syncSince = 0; else if (!syncSince) { syncSince = Date.now(); clearTimeout(syncT); syncT = setTimeout(syncBadge, 1600); }
+  const n = S.pend > 0 && (off || Date.now() - syncSince >= 1500) ? S.pend : 0;
   b.className = off ? 'off' : n ? 'on' : '';
   b.textContent = off ? '📴 인터넷 끊김' + (n ? ' · 저장 대기 ' + n + '건 (연결되면 자동으로 저장돼요)' : ' · 기기에 받아 둔 자료로 보는 중') : n ? '⏳ 서버에 저장 중… ' + n + '건' : '';
 }
@@ -2664,6 +2667,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.59', '2026-10-26', ['채팅을 보낼 때 위쪽에 ‘서버에 저장 중’이 잠깐씩 깜빡이던 것: 저장이 1.5초 넘게 걸릴 때만 보이게']],
   ['웹 0.0.58', '2026-10-26', ['홈페이지 서류접수·상담신청을 앱 ‘서류접수’·‘상담신청’ 채팅방으로 받을 준비(글쓴이 ‘📮 홈페이지 접수’, 사진 함께)']],
   ['웹 0.0.57', '2026-10-26', ['PC 오른쪽 채팅창에서 스크린샷 붙여넣기(Ctrl+V)·파일 끌어 놓기가 안 되던 것 고침']],
   ['웹 0.0.56', '2026-10-26', ['대화방에서 위쪽(안 읽은 글 등)을 읽는 중에 새 글이 오면 아래에 ‘새 메시지 ↓’ 버튼 — 누르면 맨 아래로. 맨 아래를 보고 있으면 새 글을 따라 내려가요']],
