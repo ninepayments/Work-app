@@ -111,6 +111,19 @@ ipcMain.on('nine-update', e => {
   });
   win.webContents.downloadURL(SETUP_URL);
 });
+// 위쪽 줄 끌기로 창 옮기기 — 전체 모드에서 끌면 윈도우처럼 작은 창이 되어 마우스를 따라온다(다른 모니터로도)
+ipcMain.on('nine-move', (e, dx, dy) => {
+  if (!win || e.sender !== win.webContents) return;
+  if (win.isMaximized() || win.isFullScreen()) {
+    const c = screen.getCursorScreenPoint(), b = win.getBounds(), rx = (c.x - b.x) / Math.max(1, b.width);
+    if (win.isFullScreen()) win.setFullScreen(false);
+    win.unmaximize();
+    const wa = screen.getDisplayNearestPoint(c).workArea, w = Math.min(1100, wa.width - 80), h = Math.min(760, wa.height - 80);
+    win.setBounds({x: Math.round(c.x - rx * w), y: Math.max(wa.y, c.y - 20), width: w, height: h});
+    return;
+  }
+  const [x, y] = win.getPosition(); win.setPosition(x + Math.round(dx), y + Math.round(dy));
+});
 ipcMain.handle('nine-win-state', e => ({full: !!(win && (win.isMaximized() || win.isFullScreen()))}));
 
 function createTray() {

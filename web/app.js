@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.53';
+const VERSION = '웹 0.0.54';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -306,6 +306,21 @@ const NAVPHONE = [['task', '업무', 'task', ''], ['project', '프로젝트', 'p
 const NAVPC = [['task', '업무', 'task', ''], ['project', '프로젝트', 'project', ''], ['calendar', '일정', 'calendar', ''], ['merchants', '가맹점', 'all', 'merchants'], ['logs', '응대 기록', 'all', 'logs'], ['memo', '메모', 'all', 'memo']];
 const isWide = () => window.innerWidth >= 900;
 if (window.nineWin) document.documentElement.classList.add('elec'); // PC 프로그램(제목줄 없는 창): 위쪽 검은 줄을 끌어 창을 옮긴다
+// PC 0.0.9 이상: 위쪽 줄 어디든(메뉴 버튼 위라도) 잡고 끌면 창이 옮겨진다. 살짝 누르기만 하면 그냥 클릭. 빈 곳을 두 번 누르면 전체 ↔ 작은 창
+if (window.nineWin && window.nineWin.move) {
+  document.documentElement.classList.add('jsdrag');
+  let dg = null;
+  document.addEventListener('pointerdown', e => { const t = e.target.closest && e.target.closest('.pctop'); if (!t || e.button !== 0) return; dg = {x: e.screenX, y: e.screenY, on: false, id: e.pointerId, el: t}; }, true);
+  document.addEventListener('pointermove', e => {
+    if (!dg || e.pointerId !== dg.id) return; const dx = e.screenX - dg.x, dy = e.screenY - dg.y;
+    if (!dg.on) { if (Math.abs(dx) + Math.abs(dy) < 6) return; dg.on = true; try { dg.el.setPointerCapture(dg.id); } catch (er) {} }
+    dg.x = e.screenX; dg.y = e.screenY; window.nineWin.move(dx, dy);
+  }, true);
+  const end = e => { if (!dg) return; const was = dg.on; try { dg.el.releasePointerCapture(dg.id); } catch (er) {} dg = null;
+    if (was) { const stop = ev => { ev.preventDefault(); ev.stopPropagation(); }; document.addEventListener('click', stop, {capture: true, once: true}); setTimeout(() => document.removeEventListener('click', stop, true), 300); } };
+  document.addEventListener('pointerup', end, true); document.addEventListener('pointercancel', end, true);
+  document.addEventListener('dblclick', e => { if (!e.target.closest('.pctop') || e.target.closest('button,.logo')) return; window.nineWin.state().then(st => window.nineWin.act(st && st.full ? 'shrink' : 'full')); }, true);
+}
 function newTaskCount() { return list('tasks').filter(t => t.assignee === S.uid && t.status === '지시됨').length + list('tasks').filter(t => t.preq && t.preq.stage === '발송함' && t.creator === S.uid).length; } // 물품요청이 발송되면 요청한 사람에게 '입고 확인' 알림
 function bodyHTML() {
   const k = S.sub || S.tab, wide = isWide();
@@ -2640,6 +2655,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.54', '2026-10-26', ['PC 프로그램(0.0.9): 위쪽 검은 줄 어디든(메뉴 버튼 위라도) 잡고 끌면 창이 옮겨져요(다른 모니터로도). 전체 모드에서 끌면 작은 창이 되어 따라와요. 빈 곳을 두 번 누르면 전체 ↔ 작은 창']],
   ['웹 0.0.53', '2026-10-26', ['PC 프로그램 창 줄이기 때 위쪽 검은 줄(메뉴 사이 빈 곳·이름 쪽)을 끌어 다른 모니터로 옮길 수 있게 — 옮긴 뒤 ⋮ → 크게보기를 누르면 그 모니터에서 전체 모드']],
   ['웹 0.0.52', '2026-10-26', ['PC 오른쪽 채팅창을 텔레그램 PC처럼: 처음엔 대화방 목록, 방에 들어가면 왼쪽 세로줄(대화방들)·오른쪽 대화. PC 위쪽 ‘채팅’ 메뉴는 없애고 ‘💬 채팅창’ 버튼으로', '⋮ 메뉴의 창 줄이기 아이콘을 화살표가 마주보는 모양으로']],
   ['웹 0.0.51', '2026-10-26', ['전체 메뉴에 ‘채팅’ 묶음: 채팅 알림 및 소리 설정 / 업무 묶음: 업무 알림 및 소리 설정 (따로 분리)', '가맹점 찾기: 대표자명·전화번호·핸드폰번호(하이픈 없이도)로도 찾아요', 'PC(넓은 화면): 위쪽 ‘💬 채팅창’ 버튼으로 오른쪽에 채팅창을 열고 닫아요(텔레그램 데스크톱처럼) — 처음엔 대화방 목록, 방에 들어가면 왼쪽 세로줄에 대화방들·오른쪽에 대화(세로줄을 누르면 그 방으로). 위쪽 ‘채팅’ 메뉴는 없앴어요', 'PC 프로그램(0.0.8): ‘지금 업데이트’를 누르면 설치 파일을 받아 설치 창이 자동으로 열려요. 자동으로 못 받으면 ‘설치 파일 직접 받기’ 버튼']],
@@ -2700,7 +2716,7 @@ function viewAbout() {
 }
 const WEB_MANUAL = [
   ['처음 시작하기 · 로그인', '1. 관리자가 등록해 둔 내 휴대폰 번호를 넣고 ‘인증번호 받기’를 눌러요.\n2. 문자로 온 인증번호 6자리를 넣으면 로그인돼요. 한 번 로그인하면 계속 유지돼요.\n※ ‘등록되지 않은 번호입니다’가 나오면 관리자에게 번호 등록을 요청하세요.\n※ 아이폰: Safari 로 열고 공유 버튼 → ‘홈 화면에 추가’ 하면 앱처럼 써요.\n※ 로그아웃: 전체(☰) → 계정 → 로그아웃.'],
-  ['PC 프로그램 (윈도우)', '■ 윈도우 제목줄 없이 전체 모드로 실행돼요. 오른쪽 위 ⋮: 새로고침·다시시작·종료, 창 최소화(화면 구석에 바로가기 아이콘 — 끌어서 옮기고 더블클릭하면 다시 열려요, 안 읽은 개수는 빨간 숫자)·창 줄이기(작은 창 — 위쪽 검은 줄의 메뉴 사이 빈 곳이나 이름 쪽을 끌어 옮기고(다른 모니터로도), 가장자리를 끌어 크기 조절)·크게보기(지금 있는 모니터에서 다시 전체 모드). ■ X 를 눌러도 꺼지지 않고 오른쪽 아래 트레이(시계 옆)에서 계속 실행돼 알림을 받아요. 트레이 아이콘을 누르면 다시 열리고, 완전히 끄려면 트레이 아이콘 오른쪽 클릭 → 종료 또는 ⋮ → 종료. (PC 설치 파일 0.0.8 이상 — 새 버전이 나오면 위쪽 ‘지금 업데이트’를 누르면 받아서 설치 창이 자동으로 열려요)\n전체(☰) → 계정 → ‘PC 프로그램 설치 파일 받기’로 설치 파일을 받아 실행하면 바탕화면·시작 메뉴에 ‘나인패밀리’가 생겨요.\n처음 실행할 때 ‘Windows의 PC 보호’ 창이 뜨면 ‘추가 정보’ → ‘실행’을 눌러 주세요.\n프로그램은 이 웹앱을 창으로 띄우는 방식이라, 업데이트가 나오면 다시 설치하지 않아도 다음에 켤 때(켜 둔 상태면 F5) 바로 바뀌어요.\n크롬·엣지에서 주소창 오른쪽 설치 버튼으로 설치해도 같아요.\n■ 왼쪽 칸: PC에서는 채팅처럼 화면 왼쪽에 바로가기 목록이 나와요. 업무는 기한 지난·내 업무, 프로젝트는 진행률, 일정은 오늘부터 일주일, 가맹점·응대 기록은 진행 중인 가맹점 업무와 최근 연 가맹점, ☰에서 연 화면은 같은 묶음 메뉴. 눌러서 바로 열어요.'],
+  ['PC 프로그램 (윈도우)', '■ 윈도우 제목줄 없이 전체 모드로 실행돼요. 오른쪽 위 ⋮: 새로고침·다시시작·종료, 창 최소화(화면 구석에 바로가기 아이콘 — 끌어서 옮기고 더블클릭하면 다시 열려요, 안 읽은 개수는 빨간 숫자)·창 줄이기(작은 창 — 위쪽 검은 줄 어디든 잡고 끌어 옮기고(다른 모니터로도, 전체 모드에서 끌면 작은 창이 되어 따라와요), 가장자리를 끌어 크기 조절)·크게보기(지금 있는 모니터에서 다시 전체 모드). ■ X 를 눌러도 꺼지지 않고 오른쪽 아래 트레이(시계 옆)에서 계속 실행돼 알림을 받아요. 트레이 아이콘을 누르면 다시 열리고, 완전히 끄려면 트레이 아이콘 오른쪽 클릭 → 종료 또는 ⋮ → 종료. (PC 설치 파일 0.0.9 이상 — 새 버전이 나오면 위쪽 ‘지금 업데이트’를 누르면 받아서 설치 창이 자동으로 열려요)\n전체(☰) → 계정 → ‘PC 프로그램 설치 파일 받기’로 설치 파일을 받아 실행하면 바탕화면·시작 메뉴에 ‘나인패밀리’가 생겨요.\n처음 실행할 때 ‘Windows의 PC 보호’ 창이 뜨면 ‘추가 정보’ → ‘실행’을 눌러 주세요.\n프로그램은 이 웹앱을 창으로 띄우는 방식이라, 업데이트가 나오면 다시 설치하지 않아도 다음에 켤 때(켜 둔 상태면 F5) 바로 바뀌어요.\n크롬·엣지에서 주소창 오른쪽 설치 버튼으로 설치해도 같아요.\n■ 왼쪽 칸: PC에서는 채팅처럼 화면 왼쪽에 바로가기 목록이 나와요. 업무는 기한 지난·내 업무, 프로젝트는 진행률, 일정은 오늘부터 일주일, 가맹점·응대 기록은 진행 중인 가맹점 업무와 최근 연 가맹점, ☰에서 연 화면은 같은 묶음 메뉴. 눌러서 바로 열어요.'],
   ['화면 구성', '휴대폰(아이폰): 안드로이드 앱과 같은 화면이에요. 아래 탭 업무·프로젝트·채팅·일정·전체, 나머지 기능은 전체 탭에 계정 → 회사 → 일 → 관리자 순서로 있어요.\nPC: 위쪽 가로줄이 주 메뉴(업무·프로젝트·채팅·일정·가맹점·응대 기록)예요. 왼쪽 위 ☰ 를 누르면 전체 메뉴가 펼쳐지고, ‘나인패밀리’를 누르면 홈(오늘 현황)으로 가요.\n전체 메뉴 위 기능 검색에 단어나 초성(예: ㅈㄱ)을 치면 기능을 바로 찾아요.\n안드로이드 앱·아이폰·PC 는 같은 서버를 써서, 어디서 고쳐도 다른 기기에 바로 보여요.'],
   ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 요청: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 요청할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.\n■ 용지신청·새 가맹점: 요청사항 위 ‘＋ 용지신청’을 누르면 칸에 들어가요(다시 누르면 빠짐). 완료하면 응대 기록 종류가 ‘용지신청’. 가맹점 조회에서 못 찾으면 ‘새 가맹점 등록’ → 찾던 상호·사업자번호가 채워지고, 저장하면 업무 창으로 돌아와 자동 연결돼요(권한·암호 필요).'],
   ['프로젝트', '+ 로 이름·마감일·메모·체크리스트(한 줄에 하나)·담당자를 넣어 만들어요.\n프로젝트를 눌러 항목을 체크하면 진행률이 자동으로 올라가고, ‘항목 추가’로 늘려요. 100%가 되면 ‘완료 되돌리기’로 진행중으로 돌릴 수 있어요.\n목록 위 전체·진행중·완료로 걸러 봐요.'],
