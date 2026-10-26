@@ -24,6 +24,18 @@ final class Alerts {
     private static final Handler ui = new Handler(Looper.getMainLooper());
     static long lastSay = 0;
     private static int seq = 100;
+    private static final int ROOM_BASE = 1_000_000; // 채팅방 알림 번호 = ROOM_BASE + 방 번호
+    private static final java.util.Map<Integer, Integer> roomCnt = new java.util.HashMap<>();
+
+    /** 그 방을 열었으면 방 알림을 지우고 개수를 0으로 */
+    static void clearRoom(Context c, int room) {
+        if (room == 0) return;
+        roomCnt.remove(room);
+        try {
+            ((NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE)).cancel(ROOM_BASE + room);
+        } catch (Exception ignored) {
+        }
+    }
 
     static void channels(Context c) {
         if (Build.VERSION.SDK_INT < 26) return;
@@ -82,17 +94,32 @@ final class Alerts {
             body = o.optString("kind") + " " + won(o.optLong("amount")) + " " + o.optString("mname");
         }
         if (title == null) return;
+        boolean chat = "msgs".equals(coll);
+        if (!c.getSharedPreferences("workapp", Context.MODE_PRIVATE).getBoolean(chat ? "pushChat" : "pushTask", true)) return; // 알림 받기를 끈 종류
+        int room = chat ? o.optInt("room") : 0;
+        int nid = seq++;
+        if (chat) { // 채팅은 방마다 알림 1개: 새 글이 오면 그 방 알림을 바꾸고 '새 메시지 N개'로 센다
+            Integer n = roomCnt.get(room);
+            n = n == null ? 1 : n + 1;
+            roomCnt.put(room, n);
+            JSONObject r = store.byId("rooms", room);
+            String rn = r == null ? "" : r.optBoolean("dm") ? "" : r.optString("name");
+            title = "나인톡 · " + (rn.isEmpty() ? store.userName(o.optInt("who")) : rn) + (n > 1 ? " (" + n + ")" : "");
+            body = (rn.isEmpty() ? "" : store.userName(o.optInt("who")) + ": ") + snippet(o);
+            nid = ROOM_BASE + room;
+        }
         speak(c, say);
         try {
             channels(c);
             Intent it = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            PendingIntent pi = PendingIntent.getActivity(c, 0, it, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            if (chat) it.putExtra("openRoom", room); // 누르면 그 채팅방으로
+            PendingIntent pi = PendingIntent.getActivity(c, chat ? room : 0, it, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
             Notification.Builder nb = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(c, CH) : new Notification.Builder(c);
             nb.setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setContentIntent(pi).setAutoCancel(true)
                     .setCategory("msgs".equals(coll) ? Notification.CATEGORY_MESSAGE : Notification.CATEGORY_REMINDER)
                     .setVisibility(Notification.VISIBILITY_PUBLIC);
             if (Build.VERSION.SDK_INT < 26) nb.setPriority(Notification.PRIORITY_HIGH).setVibrate(new long[]{0, 250, 120, 250});
-            ((NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE)).notify(seq++, nb.build());
+            ((NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE)).notify(nid, nb.build());
         } catch (Exception ignored) {
         }
         wake(c);

@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.45';
+const VERSION = '웹 0.0.46';
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -142,6 +142,7 @@ function refreshMe() { if (S.uid) { const u = user(S.uid); if (u) S.me = u; } }
 // 알림 소리는 업무·채팅을 따로 끄고 켠다. 채팅방마다 소리 끄기도 된다(이 기기에만 기억).
 const soundOn = () => LS('snd_' + S.uid) !== '0'; // 업무·물품요청·공지
 const chatSndOn = () => LS('sndc_' + S.uid) !== '0'; // 채팅 “나인톡!”
+const pushTaskOn = () => LS('ntask_' + S.uid) !== '0', pushChatOn = () => LS('nchat_' + S.uid) !== '0'; // 알림 받기 (끄면 알림창·소리 모두 없음)
 const mutedRooms = () => (LS('mute_' + S.uid) || '').split(',').filter(Boolean).map(Number);
 const roomMuted = id => mutedRooms().includes(Number(id));
 let actx = null;
@@ -188,9 +189,10 @@ function notify(title, body, go, say) {
 }
 function watchNew(coll, o, prev) {
   if (!S.me || o.deleted) return;
-  if (coll === 'msgs' && !prev && o.who !== S.uid && o.ts > Date.now() - 5 * 60000 && !(S.room === o.room && !document.hidden)) {
+  if (coll === 'msgs' && pushChatOn() && !prev && o.who !== S.uid && o.ts > Date.now() - 5 * 60000 && !(S.room === o.room && !document.hidden)) {
     const r = byId('rooms', o.room); notify('💬 ' + (r ? roomTitle(r) : '채팅'), uname(o.who) + ': ' + msgText(o), () => { S.tab = 'chat'; S.sub = ''; S.room = o.room; render(); }, roomMuted(o.room) ? '' : '나인톡');
   }
+  if (!pushTaskOn()) return; // 아래는 업무 쪽 알림
   if (coll === 'tasks' && o.assignee === S.uid && o.status === '지시됨' && o.creator !== S.uid && (!prev || prev.assignee !== S.uid)) {
     notify('📋 새 업무', o.title + ' (' + uname(o.creator) + ')', () => { S.tab = 'task'; S.sub = ''; render(); ACT.task(o.id); }, o.preq ? '물품요청이 들어왔습니다' : '업무가 배정되었습니다');
   }
@@ -317,6 +319,7 @@ function render() {
   if (S.me.active === false) { toast('사용이 중지된 계정입니다.'); return logout(); }
   const root = $('#root'); const wide = isWide(); if (!wide) S.menu = false;
   const keepScroll = $('.scroll') ? $('.scroll').scrollTop : 0;
+  const mb0 = $('#msgbox'), mbKeep = mb0 && S.mbRoom === S.room ? {top: mb0.scrollTop, bottom: mb0.scrollHeight - mb0.scrollTop - mb0.clientHeight < 120} : null;
   const act = document.activeElement; const focusId = act && act.id; const selPos = act && act.selectionStart; const focusVal = act && act.value;
   const badges = {task: newTaskCount(), all: unreadNotices(), chat: unreadTotal()};
   syncTitle(badges.task + badges.all + badges.chat); armBack();
@@ -335,7 +338,13 @@ function render() {
   syncInstall();
   bind(root);
   const sc = $('.scroll'); if (sc) sc.scrollTop = keepScroll;
-  const ms = $('#msgbox'); if (ms) { ms.scrollTop = ms.scrollHeight; loadImages(); }
+  const ms = $('#msgbox'); S.mbRoom = ms ? S.room : 0;
+  if (ms) { // 처음 열면 안 읽은 첫 글부터, 그 뒤엔 맨 아래를 보고 있을 때만 새 글 따라 내려간다
+    const ul = S.jumpUnread && $('#unreadline'); S.jumpUnread = false;
+    if (ul) ms.scrollTop += ul.getBoundingClientRect().top - ms.getBoundingClientRect().top - 40;
+    else if (!mbKeep || mbKeep.bottom) ms.scrollTop = ms.scrollHeight; else ms.scrollTop = mbKeep.top;
+    loadImages();
+  }
   if ($('#msgin')) setTimeout(() => { const mi = $('#msgin'); if (mi && mi.value) growMsg(mi); }, 0);
   if (focusId && $('#' + focusId) && $('#' + focusId).closest('#root')) { const el = $('#' + focusId); if (focusVal != null && el.tagName !== 'SELECT') el.value = focusVal; el.focus(); try { el.setSelectionRange(selPos, selPos); } catch (e) {} }
 }
@@ -406,6 +415,8 @@ function viewSound() {
   const np = 'Notification' in window ? Notification.permission : 'none';
   const row = (title, desc, on, tog, test) => '<div class="card"><div class="row"><div class="grow"><div class="t1">' + title + '</div><div class="t2" style="white-space:normal">' + desc + '</div></div><button class="btn ' + (on ? 'gold' : '') + '" data-act="' + tog + '" style="min-width:72px">' + (on ? '켜짐' : '꺼짐') + '</button></div>' + (test ? '<button class="btn tint full" data-act="' + test + '" style="margin-top:10px">▶ 들어 보기</button>' : '') + '</div>';
   return '<h1>알림 및 소리 설정</h1><div class="sub">이 기기에서만 적용돼요. 소리가 안 나면 기기 볼륨을 올리고 화면을 한 번 누른 뒤 다시 들어 보세요.</div>' +
+    row('🔔 업무 알림 받기', '새 업무·물품요청·발송·공지를 알림으로 받아요 (끄면 알림·소리 모두 꺼져요, 빨간 숫자는 그대로)', pushTaskOn(), 'pushTaskToggle') +
+    row('🔔 채팅 알림 받기', '채팅방마다 알림 1개만 떠요(새 글이 오면 그 방 알림이 바뀌어요) · 방 하나만 끄려면 그 방 위 🔔', pushChatOn(), 'pushChatToggle') +
     row('📋 업무 알림 소리', '‘띵동’ + “업무가 배정되었습니다” (물품요청·발송·공지도 같은 설정)', soundOn(), 'soundToggle', 'soundTest') +
     row('💬 채팅 알림 소리', '카톡처럼 짧게 “나인톡!” · 채팅방 하나만 끄려면 그 방 위 🔔 를 눌러요', chatSndOn(), 'chatSndToggle', 'chatSndTest') +
     '<div class="card" data-act="notifyOn"><div class="row"><div class="grow"><div class="t1">🔔 화면 알림 (이 기기)</div><div class="t2" style="white-space:normal">PC는 다른 창을 보고 있어도 알림이 떠요. 웹앱을 닫으면 알림이 오지 않아요.</div></div><b>' + (np === 'granted' ? '켜짐' : np === 'none' ? '소리만' : '켜기 ›') + '</b></div></div>';
@@ -416,6 +427,8 @@ ACT.notifyOn = () => {
 };
 ACT.soundTest = () => { unlockAudio(); if (!soundOn()) return toast('업무 알림 소리가 꺼져 있어요. 먼저 켜 주세요.'); lastSay = 0; beep('업무가 배정되었습니다'); };
 ACT.chatSndTest = () => { unlockAudio(); if (!chatSndOn()) return toast('채팅 알림 소리가 꺼져 있어요. 먼저 켜 주세요.'); lastSay = 0; beep('나인톡'); };
+ACT.pushTaskToggle = () => { LS('ntask_' + S.uid, pushTaskOn() ? '0' : '1'); toast(pushTaskOn() ? '업무 알림을 켰어요.' : '업무 알림을 껐어요.'); render(); };
+ACT.pushChatToggle = () => { LS('nchat_' + S.uid, pushChatOn() ? '0' : '1'); toast(pushChatOn() ? '채팅 알림을 켰어요.' : '채팅 알림을 껐어요.'); render(); };
 ACT.soundToggle = () => { LS('snd_' + S.uid, soundOn() ? '0' : '1'); toast(soundOn() ? '업무 알림 소리를 켰어요.' : '업무 알림 소리를 껐어요.'); render(); };
 ACT.chatSndToggle = () => { LS('sndc_' + S.uid, chatSndOn() ? '0' : '1'); toast(chatSndOn() ? '채팅 알림 소리(나인톡)를 켰어요.' : '채팅 알림 소리를 껐어요.'); render(); };
 ACT.roomMute = () => { const m = mutedRooms(), id = Number(S.room); LS('mute_' + S.uid, (m.includes(id) ? m.filter(x => x !== id) : m.concat(id)).join(',')); toast(roomMuted(id) ? '이 채팅방 알림 소리를 껐어요.' : '이 채팅방 알림 소리를 켰어요.'); render(); };
@@ -681,14 +694,16 @@ function viewChat() {
       return '<div class="card" data-act="room" data-arg="' + x.r.id + '"><div class="row"><div class="tile">' + esc((roomTitle(x.r) || '?').slice(0, 1)) + '</div><div class="grow"><div class="t1">' + esc(roomTitle(x.r)) + '</div><div class="t2">' + esc(l ? (l.who === S.uid ? '나' : uname(l.who)) + ': ' + msgText(l) : '아직 대화가 없어요') + '</div></div><div style="text-align:right;font-size:11px;color:var(--gray)">' + (l ? new Date(l.ts).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false}) : '') + (c ? '<br><span class="badge">' + c + '</span>' : '') + '</div></div></div>';
     }).join('') + '</div>' + (rooms.length ? '' : '<div class="empty">아직 채팅방이 없어요.</div>') + '<div style="height:90px"></div></div>';
   const wide = isWide();
-  if (!S.room) return wide ? '<div class="chatwrap">' + lst + '<div class="chatroom"><div class="empty" style="margin:auto">대화방을 골라 주세요.</div></div></div>' : lst;
+  if (!S.room) { S.openRoom = 0; return wide ? '<div class="chatwrap">' + lst + '<div class="chatroom"><div class="empty" style="margin:auto">대화방을 골라 주세요.</div></div></div>' : lst; }
   const room = byId('rooms', S.room) || (S.dmDraft && S.dmDraft.id === S.room ? S.dmDraft : null);
   if (!room) { S.room = 0; return lst; }
+  if (S.openRoom !== S.room) { S.openRoom = S.room; S.openRead = readAt(S.room); S.jumpUnread = true; } // 방을 열 때 읽었던 위치 (안 읽은 글부터 보여 주려고)
   markRead(S.room);
   const ms = list('msgs').filter(m => m.room === S.room).sort((a, b) => msgOrder(a) - msgOrder(b) || (a.ts || 0) - (b.ts || 0));
   const mem = roomMemberIds(room);
-  let lastDay = '', html = '';
+  let lastDay = '', html = '', ul = false;
   ms.forEach(m => {
+    if (!ul && m.ts > S.openRead && m.who !== S.uid) { ul = true; html += '<div class="unreadline" id="unreadline"><span>여기까지 읽었어요</span></div>'; }
     const d = new Date(m.ts); const day = d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
     if (day !== lastDay) { lastDay = day; html += '<div class="day"><span>' + day + '</span></div>'; }
     const me = m.who === S.uid; const un = unreadOf(m, mem);
@@ -2606,6 +2621,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.46', '2026-10-26', ['알림 및 소리 설정에 ‘업무 알림 받기’·‘채팅 알림 받기’ 켜기·끄기', '채팅 알림은 방마다 1개만(새 글이 오면 그 방 알림이 바뀌어요)', '대화방을 열면 안 읽은 첫 글부터 보여요(‘여기까지 읽었어요’ 줄), 위로 올려 읽는 중에는 새 글이 와도 아래로 끌려가지 않아요']],
   ['웹 0.0.45', '2026-10-26', ['안 읽은 채팅 알림띠: 다른 화면에서도 위쪽에 읽을 때까지 떠 있고, 누르면 그 채팅방으로', '가맹점 등록·수정의 주소 칸: 인터넷 주소 검색처럼 찾아서 고르기(도로명·지번·건물명), 상세 주소는 이어 적기', 'PC 프로그램(0.0.3): 오른쪽 위 ⋮ 메뉴(새로고침·다시시작·종료·창 최소화·창 줄이기·크게보기), X 를 누르면 트레이로 숨어 계속 실행']],
   ['웹 0.0.44', '2026-10-26', ['일일보고의 (자동 집계)는 쓰는 사람 화면에만 보여요. 대표님께 가는 보고(종합 보기)에는 직접 쓴 내용만 보여요']],
   ['웹 0.0.43', '2026-10-26', ['첫 화면(업무)에서 뒤로가기를 누르면 ‘종료할까요?’ 확인 창']],
@@ -2662,7 +2678,7 @@ const WEB_MANUAL = [
   ['화면 구성', '휴대폰(아이폰): 안드로이드 앱과 같은 화면이에요. 아래 탭 업무·프로젝트·채팅·일정·전체, 나머지 기능은 전체 탭에 계정 → 회사 → 일 → 관리자 순서로 있어요.\nPC: 위쪽 가로줄이 주 메뉴(업무·프로젝트·채팅·일정·가맹점·응대 기록)예요. 왼쪽 위 ☰ 를 누르면 전체 메뉴가 펼쳐지고, ‘나인패밀리’를 누르면 홈(오늘 현황)으로 가요.\n전체 메뉴 위 기능 검색에 단어나 초성(예: ㅈㄱ)을 치면 기능을 바로 찾아요.\n안드로이드 앱·아이폰·PC 는 같은 서버를 써서, 어디서 고쳐도 다른 기기에 바로 보여요.'],
   ['업무', '■ 보기: 업무 탭 위에 남은 업무 수, ‘상태별로 보기’(미완료·미확인·진행중·보류·완료)로 걸러 봐요. ‘전체 업무 보기’ 권한이 있으면 ‘내 업무 / 전체 업무’를 바꿔 봐요.\n■ 요청: 오른쪽 아래 + → 제목·종류·거래처·전화·주소·기한·메모·담당 직원. ‘가맹점 조회’로 고르면 거래처·전화·주소가 자동으로 채워져요. 기한을 넣으면 일정 달력에도 표시돼요. ‘다른 직원에게 업무 배정’ 권한이 없으면 나에게만 요청할 수 있어요.\n■ 서류 업무: 종류가 ‘서류 접수’·‘카드사 서류’이면 ‘서류접수’ 채팅방에 자동으로 알림이 올라가요.\n■ 처리: 업무를 눌러 진행 시작 → 보류·연기(다시 할 날짜) → 완료(처리 결과 한 줄). 상태는 담당자 본인과 최고관리자만 바꿔요. 모든 처리는 이력으로 남아요.\n■ 삭제: 업무를 만든 사람과 최고관리자만 해요.\n■ 계약 만료가 3개월 안으로 남은 계약이 있으면 업무 화면 위에 빨간 알림 카드가 떠요.\n■ 가맹점 업무와 응대 기록: 업무를 올릴 때 가맹점을 골라 ‘가맹점 요청사항’을 적어 두면, 완료 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(📋 업무에서 표시). 가맹점 화면에는 아직 안 끝난 업무도 보여요.\n■ 용지신청·새 가맹점: 요청사항 위 ‘＋ 용지신청’을 누르면 칸에 들어가요(다시 누르면 빠짐). 완료하면 응대 기록 종류가 ‘용지신청’. 가맹점 조회에서 못 찾으면 ‘새 가맹점 등록’ → 찾던 상호·사업자번호가 채워지고, 저장하면 업무 창으로 돌아와 자동 연결돼요(권한·암호 필요).'],
   ['프로젝트', '+ 로 이름·마감일·메모·체크리스트(한 줄에 하나)·담당자를 넣어 만들어요.\n프로젝트를 눌러 항목을 체크하면 진행률이 자동으로 올라가고, ‘항목 추가’로 늘려요. 100%가 되면 ‘완료 되돌리기’로 진행중으로 돌릴 수 있어요.\n목록 위 전체·진행중·완료로 걸러 봐요.'],
-  ['채팅', '■ 안 읽은 채팅 알림띠: 다른 화면을 보고 있어도 위쪽에 ‘💬 안 읽은 채팅’ 띠가 읽을 때까지 떠 있어요. 누르면 그 채팅방으로 바로 가요(알림 끈 방은 빼요).\n■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 스크린샷: 대화방에서 Ctrl+V 로 붙여 넣으면 미리 보고 보내요(파일을 끌어다 놓아도 돼요).\n■ 줄바꿈: PC는 Shift+Enter, 휴대폰은 키보드 엔터(보내기는 버튼). 여러 줄이면 입력칸이 늘어나요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.\n■ 읽음 표시: 말풍선 시각 옆 노란 숫자 = 아직 안 읽은 사람 수. 모두 읽으면 숫자가 사라져요.'],
+  ['채팅', '■ 대화방을 열면 안 읽은 첫 글부터 보여요(‘여기까지 읽었어요’ 줄).\n■ 알림 받기: 전체 → 알림 및 소리 설정에서 업무 알림·채팅 알림을 각각 켜고 꺼요. 채팅 알림은 방마다 1개만 떠요.\n■ 안 읽은 채팅 알림띠: 다른 화면을 보고 있어도 위쪽에 ‘💬 안 읽은 채팅’ 띠가 읽을 때까지 떠 있어요. 누르면 그 채팅방으로 바로 가요(알림 끈 방은 빼요).\n■ 직원을 눌러 1:1 대화(첫 메시지를 보내야 목록에 생겨요), ‘새 그룹 채팅방’으로 초대한 사람끼리 대화해요.\n■ 말풍선을 한 번 누르면 반응(👍 ❤️ 😂 …)·답장·복사·삭제(내 것), 두 번 빠르게 누르면 ❤️ 가 붙어요. 답장 띠의 ✕ 로 취소해요.\n■ 입력줄 + 로 사진·파일(3MB까지), ☺ 로 이모지와 나인이 프렌즈 스티커 80종을 보내요. 사진을 누르면 크게 보고 저장해요.\n■ 스크린샷: 대화방에서 Ctrl+V 로 붙여 넣으면 미리 보고 보내요(파일을 끌어다 놓아도 돼요).\n■ 줄바꿈: PC는 Shift+Enter, 휴대폰은 키보드 엔터(보내기는 버튼). 여러 줄이면 입력칸이 늘어나요.\n■ 글 속 웹 주소는 눌러서 열려요.\n■ 읽음 표시는 PC와 아이폰 웹앱끼리 맞춰져요(안드로이드 앱과는 아직 따로).\n※ 1:1 대화는 두 사람만 볼 수 있어요. 개인정보는 1:1 이나 그룹방에서 나누세요.\n■ 새 채팅·직원 찾기: ‘+ 새 채팅’ → 그룹 채팅방 또는 1:1 대화(직원 검색해서 고르기). 직원이 많으면 ‘직원 찾기’ 칸에 이름·초성·번호를 치거나 직원 줄 양옆 ‹ › 로 넘겨 찾아요.\n■ 읽음 표시: 말풍선 시각 옆 노란 숫자 = 아직 안 읽은 사람 수. 모두 읽으면 숫자가 사라져요.'],
   ['일정 (달력)', '■ 일요일·공휴일은 빨간색(공휴일 이름 표시, 2026~2028년), 토요일은 파란색이에요. ‹ › 로 달을 넘기고 ‘오늘’로 돌아와요.\n■ 날짜를 누르면 그날 일정과 기한이 있는 업무가 보이고, 아래 ‘다가오는 일정’에 앞으로의 일정이 날짜 순으로 나와요.\n■ 일정을 누르면 내용이 보이고, 가맹점이 연결된 일정은 ‘가맹점 정보 보기’로 바로 가요.\n■ 일정 추가·삭제는 최고관리자만 해요(+ 버튼). 가맹점을 고르면 장소에 주소가 들어가요. 일반 직원은 업무에 기한을 넣으면 달력에 표시돼요.'],
   ['가맹점', '■ 주소: 주소 칸(또는 ‘주소 검색’)을 누르면 인터넷 주소 검색처럼 도로명·지번·건물명으로 찾아 골라요. 고른 뒤 동·호수 같은 상세 주소를 이어 적어요.\n■ 검색: 상호, 초성(예: ㅅㅇㅍ), 사업자번호(- 없이도), 전화번호. 한글을 치는 중에도 바로 걸러져요. PC는 표로 보여요.\n■ 항목: 상호·사업자번호·전화번호·휴대폰번호·이메일·주소·VAN사·계약구분(임대면 월 CMS 금액, 판매면 판매 금액)·계약조건·등급 코드·메모. 칸마다 이름이 위에 있어요.\n■ 등급 코드(밴피 기준): 0 S·월 5만원 이상 / 1 A·3만원 이상 / 2 B·1만원 이상 / 3 C·1만원 미만 / 4 해지 / 5 신규 / 7 협력사.\n■ 등록·수정·삭제는 ‘가맹점 등록·수정’ 권한이 있어야 하고, 관리자가 수정 암호를 정해 두면 관리자도 암호를 넣어야 해요(한 번 넣으면 5분 동안 다시 묻지 않아요). 같은 사업자번호가 이미 있으면 등록할 때 알려 줘요.\n■ 삭제하면 목록에서만 사라지고 기록은 남아요(관리자가 복원 가능).\n■ 최고관리자는 가맹점 정보 창의 ‘🕘 변경 이력’에서 누가 언제 무엇을 바꿨는지 보고 그 시점으로 되돌려요.\n■ 계약기간·만료 예정: 등록·수정에 계약시작일·계약종료일. 목록 위 ‘계약 만료 예정’ 1·2·3개월 이내·만료됨을 누르면 그 가맹점만 종료일 빠른 순으로 보여요(검색과 같이 써요, 종료일이 빈 가맹점은 필터에서만 빠짐).\n■ VAN사: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG — 그 밖은 직접 입력하면 다음부터 목록에 같이 나와요.'],
   ['가맹점 응대 기록', '■ 가맹점을 열어 ‘+ 응대 기록 남기기’ → 날짜·종류(방문A/S·원격A/S·전화응대·기타)·요청사항·처리결과.\n■ 가맹점 창에서 종류 버튼과 날짜로 걸러 봐요.\n■ 전체 → 가맹점 응대 기록 조회: 상호·초성·사업자번호로 가맹점을 찾거나, 모든 가맹점의 최근 기록을 검색해요.\n■ 기록은 직원 누구나 고칠 수 있고 수정한 사람·시각이 남아요. 지우기는 쓴 사람과 최고관리자만 해요.'],
