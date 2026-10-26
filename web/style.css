@@ -332,3 +332,5 @@ details.man[open]{padding-bottom:12px}
 .pcwinpop button{border:0;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:#555;padding:6px 0;border-radius:10px;font-family:inherit}
 .pcwinpop button:hover{background:#f3f4f6}.pcwinpop .ic{width:36px;height:36px;border-radius:50%;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:18px;color:#444}
 .unreadline{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--deep);font-size:12px;font-weight:700}.unreadline::before,.unreadline::after{content:"";flex:1;height:1px;background:#e2c46e}
+/* PC 프로그램(제목줄 없는 창): 위쪽 검은 줄을 끌어 옮긴다. 버튼·메뉴는 눌리게 */
+.elec .pctop{-webkit-app-region:drag;user-select:none}.elec .pctop button,.elec .pctop .logo,.elec .pctop .pcnav,.elec .pctop .me{-webkit-app-region:no-drag}

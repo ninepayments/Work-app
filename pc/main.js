@@ -24,6 +24,7 @@ function inApp(url) { // 우리 웹앱과 로그인(문자 인증·reCAPTCHA) �
 function createWindow() {
   win = new BrowserWindow({
     width: 1280, height: 860, minWidth: 900, minHeight: 600, title: '나인패밀리', backgroundColor: '#ffffff', autoHideMenuBar: true, show: false,
+    frame: false, // 토스포스처럼 윈도우 제목줄 없이: 창 조작은 웹앱 오른쪽 위 ⋮ 메뉴로, 작은 창일 때는 위쪽 검은 줄을 끌어 옮긴다
     icon: path.join(__dirname, 'res', 'icon.png'),
     webPreferences: {contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, preload: path.join(__dirname, 'preload.js')}
   });
