@@ -3,7 +3,7 @@
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
 const VERSION = '웹 0.0.61';
-const APPCHECK_KEY = ''; // App Check (reCAPTCHA v3) 사이트 키 — 콘솔에서 만든 뒤 넣는다
+const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
 const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
@@ -73,14 +73,20 @@ function wonFmt(n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; }
 
 // ---------- 서버 저장 ----------
 function ser(o) { return JSON.stringify(o).replace(/\//g, '\\/'); } // 앱(org.json)과 같은 글자 모양
+// 서버 규칙용 최상위 who(만든 사람) — 앱(Store.OWN)과 같은 표: 만들 때 본인, 그 뒤로는 바뀌지 않는다
+const OWN = {tasks: 'creator', msgs: 'who', mlogs: 'who', notices: 'author', deposits: 'by', stock: 'own'};
 function put(coll, o) {
   S.data[coll].set(o.id, o);
   if (DEMO) return;
   const isNew = !S.pushed[coll + '/' + o.id];
+  if (coll === 'stock' && isNew && o.own == null) o.own = S.uid; // 재고는 만든 사람 칸이 따로 없어서 새로 둔다(옛 재고는 없음)
   const j = ser(o); S.pushed[coll + '/' + o.id] = j;
   const m = {j, u: Date.now()}; let target = coll, priv = false;
   if (coll === 'msgs' && isNew) m.s = firebase.firestore.FieldValue.serverTimestamp(); // 메시지 순서는 서버가 받은 시각으로 (기기 시계가 달라도 순서가 맞게)
+  if (OWN[coll] && o[OWN[coll]] != null && o[OWN[coll]] !== '') m.who = Number(o[OWN[coll]]); // 없으면(옛 문서) 쓰지 않는다
   if ((coll === 'rooms' || coll === 'msgs') && o.mem && o.mem.length) { m.mem = o.mem; target = coll === 'rooms' ? 'prooms' : 'pmsgs'; priv = true; }
+  if (coll === 'rooms' && priv && o.by != null && o.by !== '') m.by = Number(o.by); // 비공개 방장
+  if (coll === 'users') m.super = o.super === true; // 최고관리자 표시(서버 규칙이 일반 관리자의 변경을 막음)
   if (coll === 'profiles') m.who = o.id;
   if (coll === 'contracts' || coll === 'reports') { m.who = o.who; m.date = o.date || ''; } // 서버 규칙이 '내 것만'을 이걸로 판단
   S.pend = (S.pend || 0) + 1; syncBadge();
@@ -298,6 +304,7 @@ function noProfile() { // 서버에서 받은 직원 목록에 내가 없을 때
   $('#root').innerHTML = '<div class="login"><h1>처음 오셨나요?</h1><div class="sub">직원 정보가 아직 없어요. 앱에서 한 번 로그인한 뒤 다시 열어 주세요.</div><button class="btn full" id="lo">로그아웃</button></div>'; $('#lo').onclick = logout;
 }
 // ---------- 앱 잠금 (PIN) — 이 기기에서만. 새로 열거나 1분 넘게 다른 창에 있다 돌아오면 잠근다 (안드로이드 앱은 지문도) ----------
+// ※ PIN은 화면 잠금일 뿐이다. 기기에 받아 둔 자료를 암호화하지 않고, 서버 접근 권한(로그인·보안 규칙)과도 별개다.
 const lockOn = () => !!(S.uid && LS('lockpin_' + S.uid));
 let hiddenAt = 0;
 document.addEventListener('visibilitychange', () => { if (document.hidden) hiddenAt = Date.now(); else if (hiddenAt && Date.now() - hiddenAt > 60000) showLock(); });
@@ -322,6 +329,8 @@ async function logout() {
   unsubs.forEach(u => u()); unsubs = [];
   COLLS.forEach(c => S.data[c].clear()); S.pushed = {}; S.me = null; S.uid = 0;
   try { await auth.signOut(); } catch (e) {}
+  // 이 기기에 받아 둔 서버 자료(오프라인 보관)도 지운다 — 같은 PC를 다른 사람이 써도 남지 않게. 지운 뒤 새로 연다
+  if (!DEMO) { try { await fs.terminate(); await fs.clearPersistence(); } catch (e) {} location.reload(); return; }
   loginView('phone');
 }
 
@@ -366,7 +375,7 @@ function render() {
   const mb0 = $('#msgbox'), mbKeep = mb0 && S.mbRoom === S.room ? {top: mb0.scrollTop, bottom: mb0.scrollHeight - mb0.scrollTop - mb0.clientHeight < 120} : null;
   const act = document.activeElement; const focusId = act && act.id; const selPos = act && act.selectionStart; const focusVal = act && act.value;
   if (S.room && S.me) markRead(S.room);
-  if (!S.lockChecked && S.me && !DEMO) { S.lockChecked = true; showLock(); } // 새로 열면 잠금 (켜 둔 경우)
+  if (!S.lockChecked && S.me && !DEMO) { S.lockChecked = true; showLock(); watchLocks(); } // 새로 열면 잠금 (켜 둔 경우)
   if (!S.phSynced && S.me && can('staff_manage') && !DEMO) { S.phSynced = true; watchOver(); ensureSupers(); if (LS('phsync3_' + S.uid) !== '1') { list('users').forEach(syncPhone); LS('phsync3_' + S.uid, '1'); } } // 서버 규칙용 권한 표시(medit 등)를 한 번 모두 맞춘다 // 보고 있는 방은 읽은 것으로 먼저 (숫자가 남지 않게)
   const badges = {task: newTaskCount(), all: unreadNotices(), chat: unreadTotal()};
   syncTitle(badges.task + badges.all + badges.chat); armBack();
@@ -1138,7 +1147,19 @@ function readMerchant(o) {
 }
 // ---------- 가맹점 수정 암호 (화면 잠금) ----------
 const LOCK_MS = 5 * 60 * 1000; let unlockedAt = 0;
-const lockDoc = () => list('config').filter(c => c.key === 'merchant_lock' && c.hash).sort((a, b) => (b.created || '').localeCompare(a.created || ''))[0];
+// 가맹점 수정 암호·삭제 비밀번호 해시는 locks/{merchant_lock|delete_lock} 에 둔다(전 직원이 읽는 config 에서 옮김).
+// locks 문서가 아직 없을 때만 예전 config 값을 읽는다(옮기기 전·규칙 게시 전에도 암호가 풀리지 않게). config 에는 해시를 새로 쓰지 않는다.
+S.locks = {};
+const oldCfgLock = k => list('config').filter(c => c.key === k && c.hash).sort((a, b) => (b.created || '').localeCompare(a.created || ''))[0] || null;
+const lockOf = k => { const L = S.locks[k]; return L ? (L.hash ? L : null) : oldCfgLock(k); };
+function setLock(k, salt, hash) { const d = {salt, hash, by: S.uid, u: Date.now()}; S.locks[k] = d; if (!DEMO) fs.collection('locks').doc(k).set(d).catch(e => toast('저장하지 못했어요: ' + (e.code || e.message))); }
+function watchLocks() { // 삭제 비밀번호는 전 직원(본인 기록 삭제에도 물음), 가맹점 수정 암호는 등록·수정 권한자·관리자만 읽는다
+  ['delete_lock'].concat(canEditMerchant() || can('staff_manage') ? ['merchant_lock'] : []).forEach(k => fs.collection('locks').doc(k).onSnapshot(d => {
+    S.locks[k] = d.exists ? d.data() : null; later();
+    if (!d.exists && can('staff_manage')) { const o = oldCfgLock(k); if (o) fs.collection('locks').doc(k).set({salt: o.salt, hash: o.hash, by: S.uid, u: Date.now()}).catch(() => {}); } // 관리자: 예전 config 해시를 한 번 옮김
+  }, () => {}));
+}
+const lockDoc = () => lockOf('merchant_lock');
 const canEditMerchant = () => can('merchant_edit') || can('staff_manage');
 async function sha(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
 function needLock(then) {
@@ -1154,7 +1175,7 @@ ACT.mlockSet = () => {
   formModal('가맹점 수정 암호', '<div class="sub">' + (L ? '암호가 설정돼 있어요. 바꾸려면 현재 암호도 입력해 주세요.' : '아직 암호가 없어서 누구나(권한이 있으면) 수정할 수 있어요. 암호를 정하면 수정할 때마다 물어봐요.') + '</div>' +
     (L ? '<input id="f_old" type="password" autocomplete="off" placeholder="현재 암호">' : '') + '<input id="f_new" type="password" autocomplete="off" placeholder="새 암호 (4자 이상)"><input id="f_new2" type="password" autocomplete="off" placeholder="새 암호 한 번 더">', () => {
     const nw = $('#f_new').value; if (nw.length < 4) return warn('암호는 4자 이상으로 해 주세요.'); if (nw !== $('#f_new2').value) return warn('새 암호가 서로 달라요.');
-    const done = () => { const salt = Math.random().toString(36).slice(2) + Date.now().toString(36); sha(salt + nw).then(h => { const o = L || create('config', {key: 'merchant_lock'}); o.salt = salt; o.hash = h; o.changedBy = S.uid; o.changedAt = nowStr(); put('config', o); unlockedAt = Date.now(); closeModal(); render(); toast('암호를 저장했어요.'); }); };
+    const done = () => { const salt = Math.random().toString(36).slice(2) + Date.now().toString(36); sha(salt + nw).then(h => { setLock('merchant_lock', salt, h); unlockedAt = Date.now(); closeModal(); render(); toast('암호를 저장했어요.'); }); };
     if (L) sha(L.salt + $('#f_old').value).then(h => { if (h === L.hash) done(); else toast('현재 암호가 맞지 않아요.'); }); else done();
     return false;
   }, '저장');
@@ -1162,7 +1183,7 @@ ACT.mlockSet = () => {
 ACT.mlockOff = () => {
   if (!can('staff_manage')) return; const L = lockDoc(); if (!L) return;
   formModal('암호 끄기', '<div class="sub">현재 암호를 입력하면 잠금을 꺼요. (이후 권한이 있는 직원은 암호 없이 수정해요)</div><input id="f_old" type="password" autocomplete="off" placeholder="현재 암호">', () => {
-    sha(L.salt + $('#f_old').value).then(h => { if (h === L.hash) { L.salt = ''; L.hash = ''; L.key = 'merchant_lock_off'; put('config', L); closeModal(); render(); toast('암호를 껐어요.'); } else toast('현재 암호가 맞지 않아요.'); }); return false;
+    sha(L.salt + $('#f_old').value).then(h => { if (h === L.hash) { setLock('merchant_lock', '', ''); closeModal(); render(); toast('암호를 껐어요.'); } else toast('현재 암호가 맞지 않아요.'); }); return false;
   }, '끄기');
 };
 ACT.newMerchant = () => needLock(() => { let dupOk = false; formModal('가맹점 등록', merchantForm(null), () => {
@@ -2097,10 +2118,16 @@ ACT.picPick = () => {
 
 // ---------- 직원과 권한 (최고관리자) — users 문서 + 로그인용 phones 문서를 같이 맞춘다 (앱 Store.push 와 같음) ----------
 // 최고관리자(양문희·가태현): 모든 권한(모든 메뉴의 등록·수정·삭제)이 항상 켜져 있고, 다른 관리자가 끄거나 사용 중지할 수 없다
-const SUPER_NAMES = ['양문희', '가태현'];
-const isSuper = u => !!(u && (u.super || SUPER_NAMES.includes(String(u.name || '').trim())) && !u.deleted);
-function ensureSupers() { // 관리자 기기에서 한 번: 최고관리자에게 모든 권한
-  list('users').filter(isSuper).forEach(u => { const all = PERMS.map(p => p[0]); if (!u.super || all.some(k => !hasP(u, k)) || u.active === false) { u.super = true; u.perms = all; u.active = true; put('users', u); syncPhone(u); } });
+// 최고관리자는 users.super == true 인 계정만(이름으로 정하지 않는다). 서버 규칙도 phones.super 로 판단한다
+const isSuper = u => !!(u && u.super === true && !u.deleted);
+// [한 번만 쓰는 옮기기] 예전에는 이름으로 정했다 → 관리자 로그인 1회에 그 계정에 super=true 를 users·phones 에 심는다.
+// 옮기기가 끝나면(관리자가 새 버전으로 한 번 로그인) 다음 커밋에서 이 이름 목록과 아래 옮기기 코드를 지운다.
+const SUPER_MIGRATE_NAMES = ['양문희', '가태현'];
+function ensureSupers() {
+  if (LS('supmig1_' + S.uid) === '1') return;
+  const all = PERMS.map(p => p[0]);
+  list('users').filter(u => !u.deleted && (u.super === true || SUPER_MIGRATE_NAMES.includes(String(u.name || '').trim()))).forEach(u => { u.super = true; u.perms = all; u.active = true; put('users', u); syncPhone(u); });
+  LS('supmig1_' + S.uid, '1');
 }
 const PERMS = [['task_create', '업무 만들기'], ['task_assign', '다른 직원에게 업무 배정'], ['task_view_all', '전체 업무 보기'], ['history_all', '전체 이력 보기'], ['notice_write', '공지 작성'],
   ['perf_view', '실적 보기 (본부장·대표님)'], ['report_view', '일일보고·실적보고 종합 보기 (대표님)'], ['merchant_edit', '가맹점 등록·수정 (암호 필요)'], ['staff_view', '직원 정보 보기 (부서·직책·생년월일·연락처·주소)'], ['staff_manage', '직원 관리 (관리자 전용)']];
@@ -2109,7 +2136,7 @@ const hasP = (u, k) => (u.perms || []).includes(k);
 const adminCount = () => list('users').filter(u => u.active !== false && hasP(u, 'staff_manage')).length;
 function syncPhone(u) { // 로그인 허용 번호와 서버 규칙용 권한 표시
   if (DEMO || !u.phone) return;
-  fs.collection('phones').doc(u.phone).set({uid: u.id, admin: hasP(u, 'staff_manage'), perf: hasP(u, 'perf_view'), report: hasP(u, 'report_view'), medit: hasP(u, 'merchant_edit') || hasP(u, 'staff_manage'), active: u.active !== false, name: u.name})
+  fs.collection('phones').doc(u.phone).set({uid: u.id, admin: hasP(u, 'staff_manage'), perf: hasP(u, 'perf_view'), report: hasP(u, 'report_view'), medit: hasP(u, 'merchant_edit') || hasP(u, 'staff_manage'), super: u.super === true, active: u.active !== false, name: u.name})
     .catch(e => toast('로그인 번호를 저장하지 못했어요: ' + (e.code || e.message)));
 }
 // ---------- 직책 목록 (정렬 순서) — config key 'positions' {items}. 위에 있을수록 먼저 (부장급: 본부장·지사장) ----------
@@ -2126,8 +2153,8 @@ ACT.posEdit = () => {
     const o = posDoc() || create('config', {key: 'positions'}); o.items = items; o.changedBy = S.uid; o.changedAt = nowStr(); put('config', o); render(); toast('직책 ' + items.length + '개를 저장했어요.'); return true;
   }, '저장');
 };
-// ---------- 삭제 비밀번호 (중요한 삭제: 직원·가맹점·재고·응대 기록·자료실) — config key 'delete_lock' {salt, hash}, 관리자가 정한다 ----------
-const dlockDoc = () => list('config').find(c => c.key === 'delete_lock' && c.hash);
+// ---------- 삭제 비밀번호 (중요한 삭제: 직원·가맹점·재고·응대 기록·자료실) — locks/delete_lock {salt, hash}, 관리자가 정한다 ----------
+const dlockDoc = () => lockOf('delete_lock');
 function needDelPw(what, then, must) { // must: 비밀번호가 아직 없으면 막는다(직원 완전 삭제)
   const L = dlockDoc();
   if (!L) { if (must) return toast(can('staff_manage') ? '먼저 ☰ → 관리자 → 삭제 비밀번호를 정해 주세요.' : '삭제 비밀번호가 아직 없어요. 관리자에게 요청해 주세요.'); return then(); }
@@ -2141,7 +2168,7 @@ ACT.dlockSet = () => {
   formModal('삭제 비밀번호', '<div class="sub" style="margin-top:0">직원 완전 삭제, 가맹점·재고·응대 기록·자료실 삭제 때 물어봐요. ' + (L ? '바꾸려면 현재 비밀번호도 입력해 주세요.' : '아직 없어요 — 정하기 전에는 직원 완전 삭제를 할 수 없어요.') + '</div>' +
     (L ? '<input id="f_old" type="password" autocomplete="off" placeholder="현재 비밀번호">' : '') + '<input id="f_new" type="password" autocomplete="off" placeholder="새 비밀번호 (4자 이상)"><input id="f_new2" type="password" autocomplete="off" placeholder="새 비밀번호 한 번 더">', () => {
     const nw = $('#f_new').value; if (nw.length < 4) return warn('비밀번호는 4자 이상으로 해 주세요.'); if (nw !== $('#f_new2').value) return warn('새 비밀번호가 서로 달라요.');
-    const done = () => { const salt = Math.random().toString(36).slice(2) + Date.now().toString(36); sha(salt + nw).then(h => { const o = list('config').find(c => c.key === 'delete_lock') || create('config', {key: 'delete_lock'}); o.salt = salt; o.hash = h; o.changedBy = S.uid; o.changedAt = nowStr(); put('config', o); closeModal(); render(); toast('삭제 비밀번호를 저장했어요.'); }); };
+    const done = () => { const salt = Math.random().toString(36).slice(2) + Date.now().toString(36); sha(salt + nw).then(h => { setLock('delete_lock', salt, h); closeModal(); render(); toast('삭제 비밀번호를 저장했어요.'); }); };
     if (L) sha(L.salt + $('#f_old').value).then(h => { if (h === L.hash) done(); else toast('현재 비밀번호가 맞지 않아요.'); }); else done();
     return false;
   }, '저장');
@@ -2174,6 +2201,7 @@ ACT.staffInfo = id => { // 정보 창: 보기 전용 + (관리자) 정보 수정
 };
 ACT.staffInfoEdit = id => {
   const u = byId('users', id); if (!u || !can('staff_manage')) return; let pic = u.photo || '';
+  if (isSuper(u) && !isSuper(S.me)) return toast('최고관리자 정보는 최고관리자만 고칠 수 있어요.');
   const depts = [...new Set(staffList().map(x => (x.dept || '').trim()).filter(Boolean))];
   formModal(u.name + ' 정보', '<div class="row" style="gap:12px;align-items:center"><span id="f_pv">' + staffPhoto(u, 64) + '</span><button type="button" class="btn tint" id="f_pic">사진 고르기</button><button type="button" class="btn" id="f_picx">사진 빼기</button></div>' +
     '<label class="fl" for="f_n">이름 (직함 없이)</label><input id="f_n" value="' + esc(u.name) + '">' +

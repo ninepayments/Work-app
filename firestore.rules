@@ -1,1 +1,111 @@
-rules_version = '2'; service cloud.firestore { match /databases/{database}/documents { function phoneDoc() { return get(/databases/$(database)/documents/phones/$(request.auth.token.phone_number)); } function member() { return request.auth != null && request.auth.token.phone_number != null && exists(/databases/$(database)/documents/phones/$(request.auth.token.phone_number)) && phoneDoc().data.active == true; } function isAdmin() { return member() && phoneDoc().data.admin == true; } function canPerf() { return member() && (phoneDoc().data.admin == true || phoneDoc().data.perf == true); } function canReport() { return member() && phoneDoc().data.get('report', false) == true; } function canMerchant() { return member() && (phoneDoc().data.admin == true || phoneDoc().data.get('medit', false) == true); } function myUid() { return phoneDoc().data.uid; } match /phones/{p} { allow read: if isAdmin() || (request.auth != null && request.auth.token.phone_number == p); allow create, update: if isAdmin(); allow delete: if false; } match /users/{id} { allow read: if member(); allow create, update: if isAdmin(); allow delete: if false; } match /tasks/{id} { allow read, create, update: if member(); allow delete: if false; } match /notices/{id} { allow read, create, update: if member(); allow delete: if false; } match /projects/{id} { allow read, create, update: if member(); allow delete: if false; } match /events/{id} { allow read, create, update: if member(); allow delete: if false; } match /merchants/{id} { allow read: if member(); allow create, update: if canMerchant() && request.resource.data.keys().hasOnly(['j', 'u']) && request.resource.data.j is string && request.resource.data.j.size() > 20 && request.resource.data.j.size() < 200000 && request.resource.data.u is int; allow delete: if false; } match /stock/{id} { allow read, create, update: if member(); allow delete: if false; } match /rooms/{id} { allow read, create, update: if member(); allow delete: if false; } match /msgs/{id} { allow read, create, update: if member(); allow delete: if false; } match /contacts/{id} { allow read, create, update: if member(); allow delete: if false; } match /deposits/{id} { allow read, create, update: if member(); allow delete: if false; } match /library/{id} { allow read, create, update: if member(); allow delete: if false; } match /mlogs/{id} { allow read, create, update: if member(); allow delete: if false; } match /prooms/{id} { allow read: if member() && request.auth.token.phone_number in resource.data.mem; allow create: if member() && request.auth.token.phone_number in request.resource.data.mem && request.resource.data.mem.size() >= 2 && request.resource.data.mem.size() <= 30; allow update: if member() && request.auth.token.phone_number in resource.data.mem && request.auth.token.phone_number in request.resource.data.mem && request.resource.data.mem.size() <= 30; allow delete: if false; } match /pmsgs/{id} { allow read: if member() && request.auth.token.phone_number in resource.data.mem; allow create: if member() && request.auth.token.phone_number in request.resource.data.mem && request.resource.data.mem.size() >= 2 && request.resource.data.mem.size() <= 30; allow update: if member() && request.auth.token.phone_number in resource.data.mem && request.resource.data.mem == resource.data.mem; allow delete: if false; } match /blobs/{id} { allow read, create: if member(); allow update, delete: if false; } match /profiles/{id} { allow read: if member(); allow create: if member() && request.resource.data.who == phoneDoc().data.uid; allow update: if member() && resource.data.who == phoneDoc().data.uid && request.resource.data.who == phoneDoc().data.uid; allow delete: if false; } match /costs/{id} { allow read, create, update: if canPerf(); allow delete: if false; } match /contracts/{id} { allow read: if canPerf() || (member() && resource.data.who == phoneDoc().data.uid); allow create: if member() && request.resource.data.who == phoneDoc().data.uid; allow update: if canPerf() || (member() && resource.data.who == phoneDoc().data.uid); allow delete: if false; } match /reports/{id} { allow read: if canReport() || (member() && resource.data.who == phoneDoc().data.uid); allow create: if member() && request.resource.data.who == phoneDoc().data.uid; allow update: if member() && resource.data.who == phoneDoc().data.uid; allow delete: if false; } match /config/{id} { allow read: if member(); allow create, update: if isAdmin(); allow delete: if false; } match /auditLogs/{id} { allow create: if member() && request.resource.data.who == myUid() && request.resource.data.keys().hasOnly(['who', 'a', 'c', 'id', 'name', 'n', 'u']) && request.resource.data.a in ['view', 'new', 'edit', 'delete', 'import', 'export', 'over'] && request.resource.data.u is int; allow read: if isAdmin(); allow update, delete: if false; } match /audit/{id} { allow create: if member(); allow read: if isAdmin(); allow update, delete: if false; } } }
+rules_version = '2';
+// 나인패밀리 Firestore 보안 규칙 — 콘솔(Firestore → 규칙)에 게시는 지사장님이 직접.
+// 원칙: 직원(활성 phones 문서)은 업무·가맹점·채팅을 함께 본다(10명이 같이 쓰는 구조). 쓰기는 화면 권한과 같게 막는다.
+// 클라이언트의 실제 삭제(delete)는 모두 금지 — 삭제는 deleted: true (소프트 삭제).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function phoneDoc() { return get(/databases/$(database)/documents/phones/$(request.auth.token.phone_number)); }
+    function member() { return request.auth != null && request.auth.token.phone_number != null && exists(/databases/$(database)/documents/phones/$(request.auth.token.phone_number)) && phoneDoc().data.active == true; }
+    function myUid() { return phoneDoc().data.uid; }
+    function myPhone() { return request.auth.token.phone_number; }
+    function isAdmin() { return member() && phoneDoc().data.admin == true; }
+    function isSuper() { return isAdmin() && phoneDoc().data.get('super', false) == true; }
+    function canPerf() { return member() && (phoneDoc().data.admin == true || phoneDoc().data.perf == true); }
+    function canReport() { return member() && (phoneDoc().data.admin == true || phoneDoc().data.get('report', false) == true); }
+    function canMerchant() { return member() && (phoneDoc().data.admin == true || phoneDoc().data.get('medit', false) == true); }
+    // 최고관리자 표시(super)는 최고관리자만 켜고 끈다. 최고관리자 문서는 최고관리자만 고친다
+    function superCreateOk() { return request.resource.data.get('super', false) != true || isSuper(); }
+    function superUpdateOk() { return (resource.data.get('super', false) != true && request.resource.data.get('super', false) == resource.data.get('super', false)) || isSuper(); }
+    // 최상위 who(만든 사람): 새로 만들 때는 본인, 고칠 때는 이미 있으면 바꾸지 못함. who 가 없는 옛 문서는 고칠 수 있다(바로 막으면 기존 자료를 못 고침)
+    function whoCreateOk() { return request.resource.data.get('who', null) == myUid(); }
+    function whoKeepOk() { return !('who' in resource.data) || request.resource.data.get('who', null) == resource.data.who; }
+
+    match /phones/{p} {
+      allow read: if isAdmin() || (request.auth != null && request.auth.token.phone_number == p);
+      allow create: if isAdmin() && superCreateOk();
+      allow update: if isAdmin() && superUpdateOk();
+      allow delete: if false;
+    }
+    match /users/{id} {
+      allow read: if member();
+      allow create: if isAdmin() && superCreateOk();
+      allow update: if isAdmin() && superUpdateOk();
+      allow delete: if false;
+    }
+    match /tasks/{id} { allow read: if member(); allow create: if member() && whoCreateOk(); allow update: if member() && whoKeepOk(); allow delete: if false; }
+    match /notices/{id} { allow read: if member(); allow create: if member() && whoCreateOk(); allow update: if member() && whoKeepOk(); allow delete: if false; }
+    match /msgs/{id} { allow read: if member(); allow create: if member() && whoCreateOk(); allow update: if member() && whoKeepOk(); allow delete: if false; }
+    match /mlogs/{id} { allow read: if member(); allow create: if member() && whoCreateOk(); allow update: if member() && whoKeepOk(); allow delete: if false; }
+    match /stock/{id} { allow read: if member(); allow create: if member() && whoCreateOk(); allow update: if member() && whoKeepOk(); allow delete: if false; }
+    match /deposits/{id} { allow read: if member(); allow create: if member() && whoCreateOk(); allow update: if member() && whoKeepOk(); allow delete: if false; }
+    match /projects/{id} { allow read, create, update: if member(); allow delete: if false; }
+    match /events/{id} { allow read, create, update: if member(); allow delete: if false; }
+    match /rooms/{id} { allow read, create, update: if member(); allow delete: if false; }
+    match /contacts/{id} { allow read, create, update: if member(); allow delete: if false; }
+    match /library/{id} { allow read, create, update: if member(); allow delete: if false; }
+    match /merchants/{id} {
+      allow read: if member();
+      allow create, update: if canMerchant() && request.resource.data.keys().hasOnly(['j', 'u']) && request.resource.data.j is string && request.resource.data.j.size() > 20 && request.resource.data.j.size() < 200000 && request.resource.data.u is int;
+      allow delete: if false;
+    }
+    // 비공개 대화방(1:1·그룹): 참가자(mem, 전화번호 목록)만. 방장 = 최상위 by(직원 번호), 없으면 처음 mem[0]
+    match /prooms/{id} {
+      function oldMem() { return resource.data.mem; }
+      function newMem() { return request.resource.data.mem; }
+      function roomOwner() { return ('by' in resource.data && resource.data.by == myUid()) || (!('by' in resource.data) && oldMem()[0] == myPhone()); }
+      function byKeep() { return request.resource.data.get('by', null) == resource.data.get('by', null) || (!('by' in resource.data) && request.resource.data.by == get(/databases/$(database)/documents/phones/$(oldMem()[0])).data.uid); }
+      function stays() { return myPhone() in newMem() && (oldMem().toSet().difference(newMem().toSet()).size() == 0 || roomOwner()); } // 남이 빠지는 건 방장만
+      function leaves() { return !(myPhone() in newMem()) && newMem().toSet() == oldMem().toSet().difference([myPhone()].toSet()); } // 내 번호만 빼는 탈퇴
+      allow read: if member() && myPhone() in resource.data.mem;
+      allow create: if member() && request.resource.data.mem is list && myPhone() in request.resource.data.mem && request.resource.data.mem.size() >= 2 && request.resource.data.mem.size() <= 30 && (!('by' in request.resource.data) || request.resource.data.by == myUid());
+      allow update: if member() && myPhone() in oldMem() && newMem() is list && newMem().size() <= 30 && byKeep() && (stays() || leaves());
+      allow delete: if false;
+    }
+    // 비공개 메시지: 참가자 목록(mem)·만든 사람(who)은 못 바꾼다. 본문(j)은 막지 않음 — 반응(set merge)이 j 를 고치기 때문
+    match /pmsgs/{id} {
+      allow read: if member() && myPhone() in resource.data.mem;
+      allow create: if member() && myPhone() in request.resource.data.mem && request.resource.data.mem.size() >= 2 && request.resource.data.mem.size() <= 30 && whoCreateOk();
+      allow update: if member() && myPhone() in resource.data.mem && request.resource.data.mem == resource.data.mem && whoKeepOk();
+      allow delete: if false;
+    }
+    match /blobs/{id} { allow read, create: if member(); allow update, delete: if false; }
+    match /profiles/{id} {
+      allow read: if member();
+      allow create, update: if member() && int(id) == myUid() && request.resource.data.who == myUid();
+      allow delete: if false;
+    }
+    match /costs/{id} { allow read, create, update: if canPerf(); allow delete: if false; }
+    match /contracts/{id} {
+      allow read: if canPerf() || (member() && resource.data.who == myUid());
+      allow create: if member() && request.resource.data.who == myUid();
+      allow update: if (canPerf() || (member() && resource.data.who == myUid())) && request.resource.data.who == resource.data.who;
+      allow delete: if false;
+    }
+    match /reports/{id} {
+      allow read: if canReport() || (member() && resource.data.who == myUid());
+      allow create: if member() && request.resource.data.who == myUid();
+      allow update: if member() && resource.data.who == myUid() && request.resource.data.who == resource.data.who;
+      allow delete: if false;
+    }
+    match /config/{id} { allow read: if member(); allow create, update: if isAdmin(); allow delete: if false; }
+    // 가맹점 수정 암호·삭제 비밀번호 해시 (config 에서 옮김). 삭제 비밀번호는 직원 본인 기록 삭제에도 묻기 때문에 직원이 읽는다
+    match /locks/{id} {
+      allow read: if canMerchant() || isAdmin() || (id == 'delete_lock' && member());
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+    // 변경 기록: 본인 번호(by)로만, 시각(u)은 서버 시각 ±2분
+    match /audit/{id} {
+      allow create: if member() && request.resource.data.keys().hasOnly(['by', 'c', 'id', 'u', 'j']) && request.resource.data.keys().hasAll(['by', 'c', 'id', 'u', 'j'])
+        && request.resource.data.by == myUid() && request.resource.data.j is string && request.resource.data.j.size() < 900000
+        && request.resource.data.u is int && math.abs(request.resource.data.u - request.time.toMillis()) <= 120000;
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+    match /auditLogs/{id} {
+      allow create: if member() && request.resource.data.who == myUid() && request.resource.data.keys().hasOnly(['who', 'a', 'c', 'id', 'name', 'n', 'u']) && request.resource.data.a in ['view', 'new', 'edit', 'delete', 'import', 'export', 'over'] && request.resource.data.u is int;
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+  }
+}

@@ -13,6 +13,12 @@
  * 기존 doPost 에 붙이는 법 (텔레그램 전송 다음 줄):
  *   try { nineForward(e); } catch (err) { console.error('nineForward', err); }
  * 서류접수(JSON 본문)·상담(form 값) 둘 다 e 를 그대로 넘기면 알아서 구분한다.
+ *
+ * 요청 확인값: 스크립트 속성 NINE_FORWARD_SECRET 과 요청에 실린 값이 같을 때만 앱으로 보낸다(값은 코드에 적지 않는다).
+ *   ※ Apps Script 웹앱의 doPost 는 HTTP 헤더를 읽을 수 없다(e 에 헤더가 없음). 그래서 홈페이지 doPost 요청에 헤더 대신
+ *     주소 꼬리 ?nf=<값> (또는 JSON 본문의 _nf, form 값 nf)로 실어 보낸다.
+ *   ※ 이 값은 홈페이지 스크립트에 들어가므로 완전한 비밀이 아니다(페이지 소스를 보면 보임). 아무나 이 주소로 가짜 접수를 넣는 것을
+ *     조금 줄이는 정도이고, 앱 데이터 보호는 서비스 계정 키(NINE_SA)를 스크립트 속성에만 두는 것으로 한다.
  */
 var NINE_PROJECT = 'nine-family';
 var NINE_DOC_ROOM = '서류접수';
@@ -24,6 +30,9 @@ function nineForward(e) {
   var body = null;
   try { if (e && e.postData && e.postData.contents && /json/i.test(e.postData.type || '')) body = JSON.parse(e.postData.contents); } catch (x) {}
   if (!body && e && e.postData && e.postData.contents && e.postData.contents.charAt(0) === '{') { try { body = JSON.parse(e.postData.contents); } catch (x) {} }
+  var want = PropertiesService.getScriptProperties().getProperty('NINE_FORWARD_SECRET') || '';
+  var got = String((e && e.parameter && e.parameter.nf) || (body && body._nf) || '');
+  if (!want || got !== want) { console.warn('nineForward: 요청 확인값이 없거나 달라서 앱으로 보내지 않음'); return; } // 텔레그램 전송은 그대로
   if (body && (body.formType || body.files)) return nineDoc_(body);
   return nineConsult_((e && e.parameter) || {});
 }

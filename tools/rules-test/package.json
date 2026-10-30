@@ -1,0 +1,14 @@
+{
+  "name": "nine-rules-test",
+  "private": true,
+  "type": "module",
+  "description": "firestore.rules 단위 테스트 (Firestore 에뮬레이터). 실제 서버에는 아무것도 쓰지 않는다.",
+  "scripts": {
+    "test": "cp ../../firestore.rules ./firestore.rules && firebase emulators:exec --only firestore --project demo-nine \"node rules.test.mjs\""
+  },
+  "devDependencies": {
+    "firebase-tools": "^13.0.0",
+    "@firebase/rules-unit-testing": "^3.0.0",
+    "firebase": "^10.0.0"
+  }
+}

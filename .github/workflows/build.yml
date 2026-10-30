@@ -28,6 +28,7 @@ jobs:
           gradle assembleDebug --no-daemon
           cp app/build/outputs/apk/debug/app-debug.apk WorkApp_v${VER}.apk
       - name: Publish test release
+        if: github.ref == 'refs/heads/main' # 다른 브랜치에서는 컴파일 확인만(시험판을 덮어쓰지 않게)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VER }}-test

@@ -433,8 +433,20 @@ final class Store {
         a.put(o);
     }
 
+    /** 서버 규칙용 최상위 who(만든 사람) — 웹 OWN 과 같은 표: 만들 때 본인, 그 뒤로는 바뀌지 않는다 */
+    private static final Map<String, String> OWN = new HashMap<>();
+
+    static {
+        OWN.put("tasks", "creator");
+        OWN.put("msgs", "who");
+        OWN.put("mlogs", "who");
+        OWN.put("notices", "author");
+        OWN.put("deposits", "by");
+        OWN.put("stock", "own");
+    }
+
     private static String phoneSig(JSONObject u) {
-        return u.optString("phone") + "|" + has(u, Perm.STAFF_MANAGE) + "|" + has(u, Perm.PERF_VIEW) + "|" + has(u, Perm.REPORT_VIEW) + "|" + has(u, Perm.MERCHANT_EDIT) + "|"
+        return u.optString("phone") + "|" + has(u, Perm.STAFF_MANAGE) + "|" + has(u, Perm.PERF_VIEW) + "|" + has(u, Perm.REPORT_VIEW) + "|" + has(u, Perm.MERCHANT_EDIT) + "|" + u.optBoolean("super") + "|"
                 + u.optBoolean("active", true) + "|" + u.optString("name") + "|" + u.optInt("id");
     }
 
@@ -446,11 +458,20 @@ final class Store {
                 JSONObject o = a.optJSONObject(i);
                 int id = o.optInt("id");
                 String key = coll + "/" + id;
+                if ("stock".equals(coll) && pushed.get(key) == null && !o.has("own")) { // 재고는 만든 사람 칸이 따로 없어서 새로 둔다(옛 재고는 없음)
+                    try {
+                        o.put("own", actor);
+                    } catch (JSONException ignored) {
+                    }
+                }
                 String s = o.toString();
                 if (!s.equals(pushed.get(key))) {
                     Map<String, Object> m = new HashMap<>();
                     m.put("j", s);
                     m.put("u", System.currentTimeMillis());
+                    String of = OWN.get(coll);
+                    if (of != null && o.has(of) && !o.optString(of).isEmpty()) m.put("who", (long) o.optInt(of)); // 없으면(옛 문서) 쓰지 않는다
+                    if ("users".equals(coll)) m.put("super", o.optBoolean("super")); // 최고관리자 표시(서버 규칙이 일반 관리자의 변경을 막음)
                     if ("msgs".equals(coll) && pushed.get(key) == null) m.put("s", com.google.firebase.firestore.FieldValue.serverTimestamp());
                     String target = coll;
                     boolean priv = false;
@@ -462,6 +483,7 @@ final class Store {
                             m.put("mem", ml);
                             target = "rooms".equals(coll) ? "prooms" : "pmsgs";
                             priv = true;
+                            if ("rooms".equals(coll) && o.has("by") && !o.optString("by").isEmpty()) m.put("by", (long) o.optInt("by")); // 비공개 방장
                         }
                     }
                     if ("contracts".equals(coll) || "reports".equals(coll)) {
@@ -493,6 +515,7 @@ final class Store {
                         p.put("perf", has(o, Perm.PERF_VIEW));
                         p.put("report", has(o, Perm.REPORT_VIEW));
                         p.put("medit", has(o, Perm.MERCHANT_EDIT) || has(o, Perm.STAFF_MANAGE)); // 서버 규칙: 가맹점 쓰기 권한
+                        p.put("super", o.optBoolean("super")); // 서버 규칙: 최고관리자
                         p.put("active", o.optBoolean("active", true));
                         p.put("name", o.optString("name"));
                         Cloud.fs().collection("phones").document(o.optString("phone")).set(p);
@@ -501,6 +524,12 @@ final class Store {
                 }
             }
         }
+    }
+
+    /** 내용이 같아도 서버에 다시 쓴다(새로 생긴 최상위 표시 — super 등 — 를 채우려고) */
+    void repush(String coll, int id) {
+        pushed.remove(coll + "/" + id);
+        save();
     }
 
     /** 관리자: 모든 직원의 로그인 허용 번호(phones)와 서버 규칙용 권한 표시를 한 번 다시 맞춘다 */
@@ -515,6 +544,7 @@ final class Store {
             p.put("perf", has(o, Perm.PERF_VIEW));
             p.put("report", has(o, Perm.REPORT_VIEW));
             p.put("medit", has(o, Perm.MERCHANT_EDIT) || has(o, Perm.STAFF_MANAGE));
+            p.put("super", o.optBoolean("super"));
             p.put("active", o.optBoolean("active", true));
             p.put("name", o.optString("name"));
             Cloud.fs().collection("phones").document(o.optString("phone")).set(p);

@@ -203,6 +203,14 @@ public class MainActivity extends Activity {
         store.detach();
         Cloud.auth().signOut();
         store.clear();
+        locks.clear();
+        locksSeen.clear();
+        locksWatch = false;
+        adminWatch = false;
+        try { // 이 폰에 받아 둔 서버 자료(오프라인 보관)도 지운다. 끝난 뒤 새 Firestore 를 쓴다(getInstance 가 새로 만듦)
+            Cloud.fs().terminate().addOnCompleteListener(t -> com.google.firebase.firestore.FirebaseFirestore.getInstance().clearPersistence());
+        } catch (Exception ignored) {
+        }
         me = null;
         sub = null;
         tab = "task";
@@ -759,6 +767,7 @@ public class MainActivity extends Activity {
 
     private void buildMain() {
         startAdminWatch();
+        watchLocks();
         migrateAdminReport();
         final boolean wide = wide();
         final int off = wide ? centerOffsetDp() : 0;
@@ -880,6 +889,7 @@ public class MainActivity extends Activity {
     }
 
     // ---------- 앱 잠금 (PIN · 지문) — 이 폰에서만. 1분 넘게 다른 앱에 있다 오거나 새로 켜면 잠근다 ----------
+    // ※ PIN·지문은 화면 잠금일 뿐이다. 폰에 받아 둔 자료를 암호화하지 않고, 서버 접근 권한(로그인·보안 규칙)과도 별개다.
     private long stoppedAt = 0;
     private AlertDialog lockDlg;
 
@@ -2009,9 +2019,77 @@ public class MainActivity extends Activity {
     }
 
     // ---------- 삭제 비밀번호 (중요한 삭제: 직원·가맹점·재고·응대 기록·자료실) — config key 'delete_lock' {salt, hash} ----------
+    // 가맹점 수정 암호·삭제 비밀번호 해시는 locks/{merchant_lock|delete_lock} 에 둔다(전 직원이 읽는 config 에서 옮김 — 웹과 같음).
+    // locks 문서가 아직 없을 때만 예전 config 값을 읽는다(옮기기 전·규칙 게시 전에도 암호가 풀리지 않게). config 에는 해시를 새로 쓰지 않는다.
+    private final java.util.Map<String, JSONObject> locks = new java.util.HashMap<>();
+    private final java.util.Set<String> locksSeen = new java.util.HashSet<>();
+    private boolean locksWatch = false;
+
+    private JSONObject oldCfgLock(String k) {
+        JSONObject best = null;
+        for (JSONObject c : store.list(store.arr("config"))) {
+            if (!k.equals(c.optString("key")) || c.optString("hash").isEmpty()) continue;
+            if (best == null || c.optString("created").compareTo(best.optString("created")) > 0) best = c;
+        }
+        return best;
+    }
+
+    private JSONObject lockOf(String k) {
+        if (locksSeen.contains(k)) {
+            JSONObject L = locks.get(k);
+            if (L != null) return L.optString("hash").isEmpty() ? null : L;
+        }
+        return oldCfgLock(k);
+    }
+
+    private void setLock(String k, String salt, String hash) {
+        try {
+            locks.put(k, new JSONObject().put("salt", salt).put("hash", hash));
+            locksSeen.add(k);
+        } catch (Exception ignored) {
+        }
+        java.util.Map<String, Object> d = new java.util.HashMap<>();
+        d.put("salt", salt);
+        d.put("hash", hash);
+        d.put("by", (long) myId());
+        d.put("u", System.currentTimeMillis());
+        Cloud.fs().collection("locks").document(k).set(d).addOnFailureListener(e -> Ui.toast(this, "저장하지 못했어요: " + e.getMessage()));
+    }
+
+    /** 삭제 비밀번호는 전 직원(본인 기록 삭제에도 물음), 가맹점 수정 암호는 등록·수정 권한자·관리자만 읽는다 */
+    private void watchLocks() {
+        if (locksWatch || me == null) return;
+        locksWatch = true;
+        List<String> ks = new ArrayList<>();
+        ks.add("delete_lock");
+        if (canEditMerchant() || can(Perm.STAFF_MANAGE)) ks.add("merchant_lock");
+        for (final String k : ks) {
+            Cloud.fs().collection("locks").document(k).addSnapshotListener(this, (d, err) -> {
+                if (d == null) return;
+                locksSeen.add(k);
+                if (d.exists()) {
+                    try {
+                        locks.put(k, new JSONObject().put("salt", String.valueOf(d.get("salt"))).put("hash", String.valueOf(d.get("hash"))));
+                    } catch (Exception ignored) {
+                    }
+                } else {
+                    locks.remove(k);
+                    JSONObject o = oldCfgLock(k);
+                    if (o != null && can(Perm.STAFF_MANAGE)) { // 관리자: 예전 config 해시를 한 번 옮김
+                        java.util.Map<String, Object> m = new java.util.HashMap<>();
+                        m.put("salt", o.optString("salt"));
+                        m.put("hash", o.optString("hash"));
+                        m.put("by", (long) myId());
+                        m.put("u", System.currentTimeMillis());
+                        Cloud.fs().collection("locks").document(k).set(m);
+                    }
+                }
+            });
+        }
+    }
+
     private JSONObject dlockDoc() {
-        for (JSONObject c : store.list(store.arr("config"))) if ("delete_lock".equals(c.optString("key")) && !c.optString("hash").isEmpty()) return c;
-        return null;
+        return lockOf("delete_lock");
     }
 
     /** must: 비밀번호가 아직 없으면 막는다(직원 완전 삭제) */
@@ -2066,15 +2144,8 @@ public class MainActivity extends Activity {
                 Ui.warn(this, "현재 비밀번호가 맞지 않아요.");
                 return;
             }
-            JSONObject o = null;
-            for (JSONObject c : store.list(store.arr("config"))) if ("delete_lock".equals(c.optString("key"))) o = c;
-            if (o == null) o = store.create("config");
             String salt = Long.toString(System.nanoTime(), 36) + Long.toString(new java.util.Random().nextLong(), 36);
-            try {
-                o.put("key", "delete_lock").put("salt", salt).put("hash", sha256(salt + n)).put("changedBy", myId()).put("changedAt", store.now());
-            } catch (Exception ignored) {
-            }
-            store.save();
+            setLock("delete_lock", salt, sha256(salt + n));
             dlg.dismiss();
             Ui.toast(this, "삭제 비밀번호를 저장했어요.");
             render();
@@ -2209,6 +2280,10 @@ public class MainActivity extends Activity {
     private int staffPicFor = 0;
 
     private void showStaffInfoEdit(final JSONObject u) {
+        if (isSuper(u) && !isSuper(me)) {
+            Ui.warn(this, "최고관리자 정보는 최고관리자만 고칠 수 있어요.");
+            return;
+        }
         LinearLayout f = form();
         final EditText name = Ui.field(this, "이름 (직함 없이)", false);
         name.setText(u.optString("name"));
@@ -2321,33 +2396,33 @@ public class MainActivity extends Activity {
                 }).show();
     }
 
-    // 최고관리자(양문희·가태현): 모든 권한(모든 메뉴의 등록·수정·삭제)이 항상 켜져 있고, 다른 관리자가 끄거나 사용 중지·삭제할 수 없다 (웹과 같음)
-    private static final String[] SUPER_NAMES = {"양문희", "가태현"};
-
+    // 최고관리자 = users.super == true 인 계정만(이름으로 정하지 않는다). 모든 권한이 켜져 있고, 최고관리자가 아닌 관리자는 바꾸거나 사용 중지·삭제할 수 없다 (웹과 같음)
     static boolean isSuper(JSONObject u) {
-        if (u == null || u.optBoolean("deleted")) return false;
-        if (u.optBoolean("super")) return true;
-        for (String n : SUPER_NAMES) if (n.equals(u.optString("name").trim())) return true;
-        return false;
+        return u != null && !u.optBoolean("deleted") && u.optBoolean("super");
     }
 
-    /** 관리자 기기에서 한 번: 최고관리자에게 모든 권한 */
+    // [한 번만 쓰는 옮기기] 예전에는 이름으로 정했다 → 관리자 로그인 1회에 그 계정에 super=true 를 users·phones 에 심는다.
+    // 옮기기가 끝나면(관리자가 새 버전으로 한 번 로그인) 다음 커밋에서 이 이름 목록과 옮기기 코드를 지운다.
+    private static final String[] SUPER_MIGRATE_NAMES = {"양문희", "가태현"};
+
     private void ensureSupers() {
-        boolean ch = false;
+        android.content.SharedPreferences sp = getSharedPreferences("workapp", MODE_PRIVATE);
+        if (sp.getBoolean("supmig1_" + myId(), false)) return;
         for (JSONObject u : store.list(store.users())) {
-            if (!isSuper(u)) continue;
-            boolean all = u.optBoolean("super") && u.optBoolean("active", true);
-            for (String k : Perm.KEYS) if (!Store.has(u, k)) all = false;
-            if (all) continue;
+            boolean named = false;
+            for (String n : SUPER_MIGRATE_NAMES) if (n.equals(u.optString("name").trim())) named = true;
+            if (u.optBoolean("deleted") || !(named || u.optBoolean("super"))) continue;
             try {
                 JSONArray np = new JSONArray();
                 for (String k : Perm.KEYS) np.put(k);
                 u.put("perms", np).put("super", true).put("active", true);
-                ch = true;
             } catch (Exception ignored) {
             }
         }
-        if (ch) store.save();
+        store.save();
+        for (JSONObject u : store.list(store.users())) if (isSuper(u)) store.repush("users", u.optInt("id")); // 최상위 super 표시까지 다시 씀
+        store.syncAllPhones(); // phones 에도 super=true
+        sp.edit().putBoolean("supmig1_" + myId(), true).apply();
     }
 
     private void showEditStaff(final JSONObject u) {
@@ -3278,12 +3353,7 @@ public class MainActivity extends Activity {
 
     /** 설정된 가맹점 수정 암호 문서(없으면 null). */
     private JSONObject lockDoc() {
-        JSONObject best = null;
-        for (JSONObject c : store.list(store.arr("config"))) {
-            if (!"merchant_lock".equals(c.optString("key")) || c.optString("hash").isEmpty()) continue;
-            if (best == null || c.optString("created").compareTo(best.optString("created")) > 0) best = c;
-        }
-        return best;
+        return lockOf("merchant_lock");
     }
 
     private static String sha256(String t) {
@@ -3351,17 +3421,8 @@ public class MainActivity extends Activity {
                 Ui.warn(this, "새 암호가 서로 달라요.");
                 return;
             }
-            JSONObject o = L != null ? L : store.create("config");
             String salt = Long.toString(System.nanoTime(), 36) + Long.toString(new java.util.Random().nextLong(), 36);
-            try {
-                o.put("key", "merchant_lock");
-                o.put("salt", salt);
-                o.put("hash", sha256(salt + nw));
-                o.put("changedBy", myId());
-                o.put("changedAt", store.now());
-            } catch (Exception ignored) {
-            }
-            store.save();
+            setLock("merchant_lock", salt, sha256(salt + nw));
             unlockedAt = System.currentTimeMillis();
             Ui.toast(this, "암호를 저장했어요.");
         });
@@ -3379,13 +3440,7 @@ public class MainActivity extends Activity {
                 Ui.warn(this, "현재 암호가 맞지 않아요.");
                 return;
             }
-            try {
-                L.put("salt", "");
-                L.put("hash", "");
-                L.put("key", "merchant_lock_off");
-            } catch (Exception ignored) {
-            }
-            store.save();
+            setLock("merchant_lock", "", "");
             Ui.toast(this, "암호를 껐어요.");
         }).show();
     }

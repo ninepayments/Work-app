@@ -1,0 +1,68 @@
+import {initializeTestEnvironment, assertFails, assertSucceeds} from '@firebase/rules-unit-testing';
+import {readFileSync} from 'fs';
+import {doc, getDoc, setDoc, updateDoc, collection, addDoc, getDocs, query, where} from 'firebase/firestore';
+const env = await initializeTestEnvironment({projectId: 'demo-nine', firestore: {rules: readFileSync(new URL('../../firestore.rules', import.meta.url), 'utf8'), host: '127.0.0.1', port: 8085}});
+const P = {sup: '+821000000001', adm: '+821000000002', edt: '+821000000003', mem: '+821000000004', off: '+821000000005', mem2: '+821000000006'};
+const U = {sup: 1, adm: 2, edt: 3, mem: 4, off: 5, mem2: 6};
+await env.withSecurityRulesDisabled(async c => {
+  const d = c.firestore();
+  await setDoc(doc(d, 'phones', P.sup), {uid: 1, admin: true, perf: true, report: true, medit: true, super: true, active: true});
+  await setDoc(doc(d, 'phones', P.adm), {uid: 2, admin: true, perf: true, report: false, medit: true, super: false, active: true});
+  await setDoc(doc(d, 'phones', P.edt), {uid: 3, admin: false, perf: false, report: false, medit: true, active: true});
+  await setDoc(doc(d, 'phones', P.mem), {uid: 4, admin: false, perf: false, report: false, active: true});
+  await setDoc(doc(d, 'phones', P.off), {uid: 5, admin: false, perf: false, report: false, active: false});
+  await setDoc(doc(d, 'phones', P.mem2), {uid: 6, admin: false, perf: false, report: false, active: true});
+  await setDoc(doc(d, 'users', '1'), {j: '{"id":1,"name":"최고","super":true}', u: 1, super: true});
+  await setDoc(doc(d, 'users', '4'), {j: '{"id":4,"name":"직원"}', u: 1, super: false});
+  await setDoc(doc(d, 'merchants', '100'), {j: '{"id":100,"name":"가게가게가게가게가게"}', u: 1});
+  await setDoc(doc(d, 'msgs', '200'), {j: '{"id":200,"who":4}', u: 1, who: 4});
+  await setDoc(doc(d, 'msgs', '201'), {j: '{"id":201,"who":6}', u: 1}); // 옛 문서(who 없음)
+  await setDoc(doc(d, 'contracts', '300'), {j: '{}', u: 1, who: 4, date: ''});
+  await setDoc(doc(d, 'prooms', '400'), {j: '{}', u: 1, mem: [P.mem, P.mem2, P.edt], by: 4}); // 방장 4
+  await setDoc(doc(d, 'prooms', '401'), {j: '{}', u: 1, mem: [P.mem2, P.mem, P.edt]}); // by 없음 → 방장 mem[0]=6
+  await setDoc(doc(d, 'locks', 'merchant_lock'), {salt: 'a', hash: 'b'});
+  await setDoc(doc(d, 'locks', 'delete_lock'), {salt: 'a', hash: 'b'});
+  await setDoc(doc(d, 'profiles', '4'), {j: '{}', u: 1, who: 4});
+});
+const db = k => env.authenticatedContext('u' + U[k], {phone_number: P[k]}).firestore();
+const results = [];
+async function t(name, expectOk, fn) { try { await (expectOk ? assertSucceeds(fn()) : assertFails(fn())); results.push('✅ ' + name); } catch (e) { results.push('❌ ' + name + ' — ' + (e.message || e).toString().slice(0, 120)); } }
+const now = Date.now();
+await t('[필수] 비관리자의 phones 수정 실패', false, () => updateDoc(doc(db('mem'), 'phones', P.mem), {admin: true}));
+await t('[필수] 남의 프로필 생성 실패', false, () => setDoc(doc(db('mem'), 'profiles', '6'), {j: '{}', u: now, who: 6}));
+await t('  본인 프로필 수정 성공', true, () => setDoc(doc(db('mem'), 'profiles', '4'), {j: '{}', u: now, who: 4}));
+await t('  프로필 who 위조(내 문서에 남의 who) 실패', false, () => setDoc(doc(db('mem'), 'profiles', '4'), {j: '{}', u: now, who: 6}));
+await t('[필수] audit 의 by 위조 실패', false, () => addDoc(collection(db('mem'), 'audit'), {by: 6, c: 'tasks', id: 1, u: now, j: '{}'}));
+await t('  audit 본인 by 성공', true, () => addDoc(collection(db('mem'), 'audit'), {by: 4, c: 'tasks', id: 1, u: now, j: '{}'}));
+await t('  audit 시각 10분 어긋남 실패', false, () => addDoc(collection(db('mem'), 'audit'), {by: 4, c: 'tasks', id: 1, u: now - 600000, j: '{}'}));
+await t('  audit 다른 필드 추가 실패', false, () => addDoc(collection(db('mem'), 'audit'), {by: 4, c: 'tasks', id: 1, u: now, j: '{}', x: 1}));
+await t('[필수] 방장이 아닌 사람의 멤버 추방 실패', false, () => updateDoc(doc(db('mem2'), 'prooms', '400'), {mem: [P.mem, P.mem2]}));
+await t('  방장(by)의 멤버 추방 성공', true, () => updateDoc(doc(db('mem'), 'prooms', '400'), {mem: [P.mem, P.mem2]}));
+await t('  본인 탈퇴(내 번호만 빼기) 성공', true, () => updateDoc(doc(db('mem2'), 'prooms', '400'), {mem: [P.mem]}));
+await t('  by 없는 옛 방: mem[0] 아닌 사람 추방 실패', false, () => updateDoc(doc(db('mem'), 'prooms', '401'), {mem: [P.mem2, P.mem]}));
+await t('  by 없는 옛 방: mem[0](방장) 추방 성공', true, () => updateDoc(doc(db('mem2'), 'prooms', '401'), {mem: [P.mem2, P.mem]}));
+await t('  방장(by) 바꾸기 실패', false, () => updateDoc(doc(db('mem'), 'prooms', '400'), {by: 6}));
+await t('[필수] 일반 직원의 가맹점 조회 성공', true, () => getDoc(doc(db('mem'), 'merchants', '100')));
+await t('  일반 직원의 가맹점 목록 조회 성공', true, () => getDocs(collection(db('mem'), 'merchants')));
+await t('  비활성 직원의 가맹점 조회 실패', false, () => getDoc(doc(db('off'), 'merchants', '100')));
+await t('  일반 직원의 가맹점 수정 실패', false, () => setDoc(doc(db('mem'), 'merchants', '100'), {j: '{"id":100,"name":"바꾼가게바꾼가게바꾼가게"}', u: now}));
+await t('  가맹점 권한자(medit)의 가맹점 수정 성공', true, () => setDoc(doc(db('edt'), 'merchants', '100'), {j: '{"id":100,"name":"바꾼가게바꾼가게바꾼가게"}', u: now}));
+await t('  메시지 생성: 본인 who 성공', true, () => setDoc(doc(db('mem'), 'msgs', '210'), {j: '{"id":210}', u: now, who: 4}));
+await t('  메시지 생성: 남의 who 실패', false, () => setDoc(doc(db('mem'), 'msgs', '211'), {j: '{"id":211}', u: now, who: 6}));
+await t('  메시지 수정: who 바꾸기 실패', false, () => setDoc(doc(db('mem2'), 'msgs', '200'), {j: '{"id":200}', u: now, who: 6}));
+await t('  메시지 반응(merge, who 그대로) 성공', true, () => setDoc(doc(db('mem2'), 'msgs', '200'), {j: '{"id":200,"react":1}', u: now, who: 4}, {merge: true}));
+await t('  옛 메시지(who 없음) 수정 성공', true, () => setDoc(doc(db('mem'), 'msgs', '201'), {j: '{"id":201,"react":1}', u: now, who: 6}, {merge: true}));
+await t('  계약 수정: who 바꾸기 실패(실적 권한자도)', false, () => updateDoc(doc(db('adm'), 'contracts', '300'), {who: 2}));
+await t('  계약 수정: 실적 권한자 수정 성공', true, () => updateDoc(doc(db('adm'), 'contracts', '300'), {j: '{"x":1}'}));
+await t('  일반 직원 merchant_lock 읽기 실패', false, () => getDoc(doc(db('mem'), 'locks', 'merchant_lock')));
+await t('  일반 직원 delete_lock 읽기 성공', true, () => getDoc(doc(db('mem'), 'locks', 'delete_lock')));
+await t('  가맹점 권한자 merchant_lock 읽기 성공', true, () => getDoc(doc(db('edt'), 'locks', 'merchant_lock')));
+await t('  관리자 아닌 사람 locks 쓰기 실패', false, () => setDoc(doc(db('edt'), 'locks', 'merchant_lock'), {salt: 'x', hash: 'y'}));
+await t('  일반 관리자: 최고관리자 계정 수정 실패', false, () => setDoc(doc(db('adm'), 'users', '1'), {j: '{"id":1}', u: now, super: true}));
+await t('  일반 관리자: 자기 phones 에 super 켜기 실패', false, () => updateDoc(doc(db('adm'), 'phones', P.adm), {super: true}));
+await t('  일반 관리자: 일반 직원 수정 성공', true, () => setDoc(doc(db('adm'), 'users', '4'), {j: '{"id":4,"name":"직원2"}', u: now, super: false}));
+await t('  최고관리자: 최고관리자 계정 수정 성공', true, () => setDoc(doc(db('sup'), 'users', '1'), {j: '{"id":1}', u: now, super: true}));
+await t('  일반 직원: 업무 조회 성공', true, () => getDocs(collection(db('mem'), 'tasks')));
+await t('  클라이언트 실제 삭제 금지 유지(가맹점)', false, async () => { const {deleteDoc} = await import('firebase/firestore'); return deleteDoc(doc(db('sup'), 'merchants', '100')); });
+console.log(results.join('\n'));
+await env.cleanup();

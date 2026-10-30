@@ -117,3 +117,10 @@
 - 2026-10-26: 최고관리자 = 양문희·가태현(users.super, 이름으로도 인정) — 관리자 기기에서 모든 권한 자동 부여, 최고관리자가 아닌 관리자는 권한 변경·사용 중지·삭제 불가.
 - 2026-10-26: App Check — 웹은 APPCHECK_KEY(reCAPTCHA v3 사이트 키) 넣으면 켜짐(지금 비어 있음). 안드로이드는 Play 스토어 배포가 아니라 Play Integrity 를 못 써서 보류. 콘솔에서 '적용(enforce)'은 켜지 않는다.
 - 2026-10-26: Firebase 요금제가 Blaze(사용한 만큼 지불)로 전환된 것 확인(콘솔 화면) ← 'Spark 무료 요금제' 대체. 서버 프로그램(Cloud Functions) 사용 가능.
+- 2026-10-30: 보안 규칙 정비(그록 피드백 교차 검증, 미게시): 최상위 who(만든 사람) — tasks·notices·msgs·mlogs·stock·deposits 생성 시 본인, 수정 시 있으면 불변, 없는 옛 문서는 수정 허용(웹 OWN·앱 Store.OWN 표: creator·author·by·who·own). 재고는 새로 own 칸.
+- 2026-10-30: 비밀번호 해시는 locks/{merchant_lock, delete_lock} 로(관리자만 쓰기). 읽기: merchant_lock 은 가맹점 권한자·관리자, delete_lock 은 전 직원(직원 본인 기록 삭제에도 묻기 때문 — 그록 제안에서 바꾼 부분). config 에는 새로 쓰지 않고, locks 문서가 없을 때만 예전 config 값을 읽음. 관리자 로그인 때 한 번 옮김.
+- 2026-10-30: 최고관리자는 users.super == true 만(이름 비교 제거). users·phones 에 최상위 super, 최고관리자 문서·super 표시는 최고관리자만 바꿈(규칙). 이름 목록(SUPER_MIGRATE_NAMES)은 관리자 로그인 1회 옮기기용 — 옮긴 뒤 다음 커밋에서 삭제.
+- 2026-10-30: 비공개 방 prooms — 최상위 by(방장), 남을 빼는 건 방장만, 본인 탈퇴 허용, 30명 이하. pmsgs — mem·who 불변(본문 j 는 반응 merge 때문에 막지 않음). audit — by·c·id·u·j 만, by=본인, u=서버 시각 ±2분. profiles — 문서 id·who 가 본인. contracts·reports — who 불변.
+- 2026-10-30: 로그아웃 때 Firestore 오프라인 보관(persistence)도 지움(웹 terminate+clearPersistence 후 새로고침, 앱 terminate 후 clearPersistence). 앱 잠금 PIN 은 화면 잠금일 뿐.
+- 2026-10-30: 저장소 비공개 전환은 하지 않음 — 무료 계정에선 Pages 가 꺼지고, 공개 릴리스(APK·PC 설치 파일·자동 업데이트·새 버전 확인)를 비로그인으로 못 받게 됨. 저장소에 비밀값은 없음(서비스 계정 키는 GitHub 비밀값·Apps Script 속성에만).
+- 2026-10-30: 규칙 테스트 tools/rules-test (Firestore 에뮬레이터, 36개). 빌드 워크플로는 main 일 때만 시험판 업로드(다른 브랜치는 컴파일 확인만).
