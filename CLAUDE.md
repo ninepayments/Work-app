@@ -34,7 +34,7 @@
 2. **기존 동작은 그대로**: 요청받은 부분만 바꾼다. 없앤 메뉴·기능은 다른 곳으로 옮겨졌는지 확인한다.
 3. **웹 ↔ 앱 같이**: 웹(`web/app.js`)에 넣은 기능은 안드로이드(`MainActivity.java`)에도 같은 방식으로 넣는다(반대도).
 4. **고친 뒤 점검**: `node tools/smoke/web-smoke.js`(웹 모든 화면 오류 점검 — 웹 배포 때 CI 도 돌림, 실패하면 배포 안 됨), 바꾼 기능은 데모(`#demo`)로 직접 눌러 본다. 앱은 CI 빌드 성공과 릴리스 업로드를 확인한다.
-5. **배포마다**: 웹 `VERSION` +1 · `WEB_CHANGES` · `WEB_MANUAL` / 앱 `versionName`·`versionCode` +1 · `CHANGELOG`(없으면 CI 실패) · `MANUAL` / `RELEASE_NOTES.md`. 버전은 끝자리 1씩(`VERSIONING.md`), versionCode 는 절대 줄이지 않는다.
+5. **배포마다**: 웹 `VERSION` +1 · `WEB_CHANGES` · `WEB_MANUAL` / 앱 `versionName`·`versionCode` +1 · `CHANGELOG`(없으면 CI 실패) · `MANUAL` / `RELEASE_NOTES.md`. 버전은 끝자리 1씩, 9 다음은 앞자리로 올림(0.3.9 → 0.4.0, `VERSIONING.md`), versionCode 는 절대 줄이지 않는다.
 
 ## 보안·비밀
 - **로그인 테스트 번호·인증번호는 저장소·채팅 어디에도 적지 않는다.**

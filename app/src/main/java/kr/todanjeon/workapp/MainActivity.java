@@ -917,7 +917,10 @@ public class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT < 29) return false;
         try {
             android.hardware.biometrics.BiometricManager bm = getSystemService(android.hardware.biometrics.BiometricManager.class);
-            return bm != null && bm.canAuthenticate() == android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS;
+            if (bm == null) return false;
+            if (android.os.Build.VERSION.SDK_INT >= 30) // 삼성 등: 지문(강)·얼굴(약) 어느 쪽이든 등록돼 있으면 쓴다
+                return bm.canAuthenticate(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK) == android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS;
+            return bm.canAuthenticate() == android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS;
         } catch (Exception e) {
             return false;
         }
@@ -968,7 +971,7 @@ public class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT < 28) return;
         try {
             android.hardware.biometrics.BiometricPrompt bp = new android.hardware.biometrics.BiometricPrompt.Builder(this)
-                    .setTitle("나인패밀리 잠금 해제").setSubtitle("지문으로 열기")
+                    .setTitle("나인패밀리 잠금 해제").setSubtitle("지문(생체 인증)으로 열기")
                     .setNegativeButton("PIN 입력", getMainExecutor(), (d, w) -> {
                     }).build();
             bp.authenticate(new android.os.CancellationSignal(), getMainExecutor(), new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
@@ -1079,6 +1082,7 @@ public class MainActivity extends Activity {
         else if ("merchants".equals(k)) renderMerchants();
         else if ("stock".equals(k)) renderStock();
         else if ("stocklog".equals(k)) renderStockLog();
+        else if ("stockstat".equals(k)) renderStockStat();
         else if ("products".equals(k)) renderProducts();
         else if ("preqs".equals(k)) renderPreqs();
         else if ("contracts".equals(k)) renderContracts();
@@ -2502,39 +2506,78 @@ public class MainActivity extends Activity {
         LinearLayout f = new LinearLayout(this);
         f.setOrientation(LinearLayout.VERTICAL);
         f.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0);
-        final CheckBox[] boxes = new CheckBox[Perm.KEYS.length];
-        f.addView(Ui.text(this, "역할로 한 번에 맞추고, 아래 항목으로 세부 조정해요. 지금: " + roleName(u), 13, Ui.GRAY, false));
-        final CheckBox sup = new CheckBox(this); // 최고관리자 표시는 최고관리자만 바꿈(서버 규칙도 같음)
-        sup.setText("최고관리자 (모든 권한 고정 · 최고관리자만 바꿈)");
-        sup.setChecked(isSuper(u));
+        final String r0 = roleName(u);
+        final String[] role = {null}; // 누른 역할 (안 누르면 지금 그대로)
+        f.addView(Ui.text(this, "역할", 12, Ui.DEEP, true));
+        final TextView rdesc = Ui.text(this, "", 12, Ui.GRAY, false);
+        final java.util.Map<String, String> RD = new java.util.HashMap<>();
+        RD.put("멤버", "내 업무·채팅·일정·가맹점 조회·새 가맹점 등록·내 보고");
+        RD.put("운영자", "멤버 + 업무 맡기기·전체 업무·공지·실적·보고서·가맹점 고치기 (삭제·직원 관리 빼고)");
+        RD.put("관리자", "모든 권한 (직원 관리·중요 자료 삭제 포함)");
+        RD.put("최고관리자", "모든 권한 고정 · 다른 관리자가 바꿀 수 없음");
+        rdesc.setText(RD.containsKey(r0) ? RD.get(r0) : "세부 권한을 따로 맞춘 계정이에요.");
+        final CheckBox[] boxes = new CheckBox[Perm.GROUPS.length];
+        final boolean[] part = new boolean[Perm.GROUPS.length]; // 일부만 켜진 옛 계정: 손대지 않으면 그대로 둔다
         Ui.Flow roles = new Ui.Flow(this, 6);
-        List<String> rn = new ArrayList<>(java.util.Arrays.asList("멤버", "운영자"));
-        if (isSuper(me)) rn.add("최고관리자");
+        List<String> rn = new ArrayList<>(java.util.Arrays.asList("멤버", "운영자", "관리자"));
+        if (isSuper(me) && u.optInt("id") != myId()) rn.add("최고관리자");
+        final List<TextView> rbs = new ArrayList<>();
         for (final String r : rn) {
-            TextView rb = Ui.smallBtn(this, r + "로 맞추기", Ui.TINT, Ui.DEEP);
+            final TextView rb = Ui.smallBtn(this, r, r.equals(r0) ? Ui.GOLD : Ui.FIELD, r.equals(r0) ? Ui.DARK : Ui.INK);
+            rb.setTextSize(15);
             rb.setOnClickListener(v -> {
-                List<String> ks = Perm.preset(r);
-                for (int i = 0; i < Perm.KEYS.length; i++) boxes[i].setChecked(ks.contains(Perm.KEYS[i]));
-                sup.setChecked("최고관리자".equals(r));
+                role[0] = r;
+                for (TextView x : rbs) x.setBackground(Ui.round(x == rb ? Ui.GOLD : Ui.FIELD, 12, this));
+                List<String> ks = Perm.preset("관리자".equals(r) ? "최고관리자" : r);
+                for (int i = 0; i < Perm.GROUPS.length; i++) {
+                    boolean all = true;
+                    for (String k : Perm.GROUPS[i]) if (!ks.contains(k)) all = false;
+                    part[i] = false;
+                    boxes[i].setText(Perm.GROUP_LABELS[i]);
+                    boxes[i].setChecked(all);
+                }
+                rdesc.setText(RD.get(r));
             });
+            rbs.add(rb);
             roles.addView(rb);
         }
-        f.addView(roles, Ui.lp(this, 6));
-        if (isSuper(me) && u.optInt("id") != myId()) f.addView(sup, Ui.lp(this, 6));
-        for (int i = 0; i < Perm.KEYS.length; i++) {
+        f.addView(roles, Ui.lp(this, 4));
+        f.addView(rdesc, Ui.lp(this, 4));
+        final LinearLayout det = new LinearLayout(this);
+        det.setOrientation(LinearLayout.VERTICAL);
+        det.setVisibility(View.GONE);
+        final TextView dt = Ui.text(this, "▸ 세부 권한 (필요할 때만)", 14, Ui.DEEP, true);
+        dt.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 6));
+        dt.setOnClickListener(v -> {
+            boolean open = det.getVisibility() != View.VISIBLE;
+            det.setVisibility(open ? View.VISIBLE : View.GONE);
+            dt.setText((open ? "▾" : "▸") + " 세부 권한 (필요할 때만)");
+        });
+        f.addView(dt, Ui.lp(this, 6));
+        f.addView(det);
+        for (int i = 0; i < Perm.GROUPS.length; i++) {
+            int n = 0;
+            for (String k : Perm.GROUPS[i]) if (Store.has(u, k)) n++;
+            part[i] = n > 0 && n < Perm.GROUPS[i].length;
+            final int gi = i;
             boxes[i] = new CheckBox(this);
-            boxes[i].setText(Perm.LABELS[i]);
-            boxes[i].setChecked(Store.has(u, Perm.KEYS[i]));
-            f.addView(boxes[i]);
+            boxes[i].setText(Perm.GROUP_LABELS[i] + (part[i] ? " (일부만 켜짐)" : ""));
+            boxes[i].setChecked(n == Perm.GROUPS[i].length);
+            boxes[i].setOnClickListener(v -> {
+                part[gi] = false;
+                boxes[gi].setText(Perm.GROUP_LABELS[gi]);
+            });
+            det.addView(boxes[i]);
         }
+        det.addView(Ui.text(this, "명단", 12, Ui.DEEP, true), Ui.lp(this, 8));
         final CheckBox np0 = new CheckBox(this);
         np0.setText("영업 실적·순위에서 빼기 (대표님 등)");
         np0.setChecked(u.optBoolean("noPerf"));
-        f.addView(np0, Ui.lp(this, 8));
+        det.addView(np0, Ui.lp(this, 4));
         final CheckBox nr0 = new CheckBox(this);
         nr0.setText("일일보고·실적보고 명단에 넣기");
         nr0.setChecked(!u.optBoolean("noReport"));
-        f.addView(nr0);
+        det.addView(nr0);
         final boolean active = u.optBoolean("active", true);
         ScrollView sv = new ScrollView(this);
         sv.addView(f);
@@ -2554,20 +2597,25 @@ public class MainActivity extends Activity {
                     render();
                 })
                 .setPositiveButton("저장", (d, w) -> {
-                    if (isSuper(me) && u.optInt("id") != myId()) {
-                        try {
-                            u.put("super", sup.isChecked());
-                        } catch (Exception ignored) {
-                        }
+                    java.util.Set<String> ns = new java.util.LinkedHashSet<>();
+                    ns.add(Perm.TASK_CREATE); // 업무 만들기(내 업무)는 누구나
+                    for (int i = 0; i < Perm.GROUPS.length; i++) {
+                        for (String k : Perm.GROUPS[i]) if (part[i] ? Store.has(u, k) : boxes[i].isChecked()) ns.add(k);
                     }
-                    JSONArray np = new JSONArray();
-                    for (int i = 0; i < Perm.KEYS.length; i++) if (boxes[i].isChecked() || isSuper(u)) np.put(Perm.KEYS[i]); // 최고관리자는 모든 권한 고정
                     boolean wasAdmin = Store.has(u, Perm.STAFF_MANAGE);
-                    boolean willAdmin = boxes[java.util.Arrays.asList(Perm.KEYS).indexOf(Perm.STAFF_MANAGE)].isChecked();
+                    boolean willAdmin = ns.contains(Perm.STAFF_MANAGE);
                     if (wasAdmin && !willAdmin && store.adminCount() <= 1) {
                         Ui.warn(this, "마지막 관리자의 직원 관리 권한은 끌 수 없습니다.");
                         return;
                     }
+                    if (isSuper(me) && u.optInt("id") != myId() && role[0] != null) { // 최고관리자 표시는 최고관리자만 바꿈(서버 규칙도 같음)
+                        try {
+                            u.put("super", "최고관리자".equals(role[0]));
+                        } catch (Exception ignored) {
+                        }
+                    }
+                    JSONArray np = new JSONArray();
+                    for (String k : Perm.KEYS) if (ns.contains(k) || isSuper(u)) np.put(k); // 최고관리자는 모든 권한 고정
                     try {
                         u.put("perms", np);
                         u.put("noPerf", np0.isChecked());
@@ -2964,6 +3012,7 @@ public class MainActivity extends Activity {
         e.add(c);
         e.add(new Entry("계약", "입금 확인", "입금 확인 입금 내역 미납금 판매대금 정보변경수수료 입금확인", () -> goSub("deposit")));
         e.add(new Entry("재고", "재고 (입고·출고·정정)", "재고 장비 바코드 시리얼 단가 입고 출고 정정 스캔 본사 광주지사 보관지", () -> goSub("stock")));
+        e.add(new Entry("재고", "재고 현황 (품목별 · 부족 품목 주문)", "재고 현황 품목별 안전재고 부족 미달 주문 물품요청 목록 정렬", () -> goSub("stockstat")));
         e.add(new Entry("재고", "재고 이력", "재고 이력 입고 출고 정정 이동 실사 조사 반품 불량", () -> goSub("stocklog")));
         e.add(new Entry("재고", "상품 목록 (상품코드)", "상품 목록 상품코드 품목 코드 등록 물품요청 재고", () -> goSub("products")));
         if (prodAdmin()) e.add(new Entry("재고", "재고 일괄 등록 (엑셀 양식)", "재고 일괄 등록 엑셀 업로드 양식 옮기기 설치 가맹점", () -> showStockImport()));
@@ -4225,6 +4274,134 @@ public class MainActivity extends Activity {
     }
 
     // ---------- 재고 ----------
+    // ---------- 재고 현황: 품목마다 보관지별 수량·출고중·안전재고 — 거르기·정렬, 안전재고 미달 품목을 체크해 바로 물품요청 (웹과 같음) ----------
+    private String ssLoc = "", ssSort = "name";
+    private boolean ssLow = false;
+    private final java.util.Set<String> ssSel = new java.util.HashSet<>();
+
+    /** {model, code, 본사, 광주지사, have, out, safe} 를 품목마다 — cnt·lack 는 보관지 거르기 반영 */
+    private List<Object[]> stockStatRows() {
+        java.util.LinkedHashMap<String, Object[]> m = new java.util.LinkedHashMap<>();
+        for (JSONObject p : products()) m.put(p.optString("name"), new Object[]{p.optString("name"), p.optString("code"), new int[LOCS.length], 0, 0, 0});
+        for (JSONObject r : store.list(store.arr("stock"))) {
+            String md = r.optString("model");
+            if ("설치완료".equals(r.optString("status")) || md.isEmpty()) continue;
+            Object[] x = m.get(md);
+            if (x == null) m.put(md, x = new Object[]{md, codeOf(md), new int[LOCS.length], 0, 0, 0});
+            int q = r.optInt("qty", 1);
+            if ("출고중".equals(r.optString("status"))) x[4] = (int) x[4] + q;
+            else {
+                int li = java.util.Arrays.asList(LOCS).indexOf(locOf(r));
+                if (li >= 0) ((int[]) x[2])[li] += q;
+                x[3] = (int) x[3] + q;
+            }
+            x[5] = Math.max((int) x[5], r.optInt("safe"));
+        }
+        List<Object[]> out = new ArrayList<>();
+        int li = java.util.Arrays.asList(LOCS).indexOf(ssLoc);
+        for (Object[] x : m.values()) {
+            int cnt = li >= 0 ? ((int[]) x[2])[li] : (int) x[3];
+            int lack = (int) x[5] > 0 ? Math.max(0, (int) x[5] - cnt) : 0;
+            out.add(new Object[]{x[0], x[1], x[2], x[3], x[4], x[5], cnt, lack});
+        }
+        return out;
+    }
+
+    private void renderStockStat() {
+        content.addView(title("재고 현황"));
+        content.addView(Ui.text(this, "품목마다 보관지별 재고·출고중·안전재고를 봐요. '안전재고 미달'로 거르고 체크한 뒤 '선택 품목 물품요청'을 누르면 부족한 수만큼 채워진 요청 창이 열려요.", 13, Ui.GRAY, false));
+        String[][] grp = {{"보관지", "", "전체", "본사", "본사", "광주지사", "광주지사"}, {"보기", "", "전체 품목", "1", "⚠ 안전재고 미달만"}, {"정렬", "name", "이름순", "code", "코드순", "few", "적은 순", "many", "많은 순", "lack", "부족 많은 순"}};
+        for (int gi = 0; gi < grp.length; gi++) {
+            final int g = gi;
+            Ui.Flow fl = new Ui.Flow(this, 6);
+            fl.addView(Ui.text(this, grp[g][0], 12, Ui.GRAY, true));
+            for (int i = 1; i + 1 < grp[g].length; i += 2) {
+                final String v = grp[g][i];
+                String cur = g == 0 ? ssLoc : g == 1 ? (ssLow ? "1" : "") : ssSort;
+                TextView c = Ui.chip(this, grp[g][i + 1], cur.equals(v) ? Ui.NAVY : Ui.FIELD, cur.equals(v) ? Color.WHITE : Ui.INK);
+                c.setPadding(Ui.dp(this, 12), Ui.dp(this, 7), Ui.dp(this, 12), Ui.dp(this, 7));
+                c.setOnClickListener(x -> {
+                    if (g == 0) ssLoc = v;
+                    else if (g == 1) ssLow = !v.isEmpty();
+                    else ssSort = v;
+                    render();
+                });
+                fl.addView(c);
+            }
+            content.addView(fl, Ui.lp(this, 8));
+        }
+        final List<Object[]> rows = new ArrayList<>();
+        for (Object[] x : stockStatRows()) if (!ssLow || (int) x[7] > 0) rows.add(x);
+        Collections.sort(rows, (a, b) -> {
+            switch (ssSort) {
+                case "code":
+                    return (((String) a[1]).isEmpty() ? "~" : (String) a[1]).compareTo(((String) b[1]).isEmpty() ? "~" : (String) b[1]);
+                case "few":
+                    return (int) a[6] - (int) b[6];
+                case "many":
+                    return (int) b[6] - (int) a[6];
+                case "lack":
+                    return (int) b[7] != (int) a[7] ? (int) b[7] - (int) a[7] : (int) a[6] - (int) b[6];
+                default:
+                    return ((String) a[0]).compareTo((String) b[0]);
+            }
+        });
+        LinearLayout tb = new LinearLayout(this);
+        Button all = Ui.button(this, ssLow ? "미달 전체 선택" : "전체 선택", Ui.FIELD, Ui.INK);
+        all.setOnClickListener(v -> {
+            for (Object[] x : rows) ssSel.add((String) x[0]);
+            render();
+        });
+        Button none = Ui.button(this, "선택 해제", Ui.FIELD, Ui.INK);
+        none.setOnClickListener(v -> {
+            ssSel.clear();
+            render();
+        });
+        tb.addView(all, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        tb.addView(none, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        content.addView(tb, Ui.lp(this, 8));
+        content.addView(Ui.text(this, rows.size() + "개 품목", 13, Ui.DEEP, true), Ui.lp(this, 6));
+        if (rows.isEmpty()) content.addView(Ui.text(this, ssLow ? "안전재고에 못 미치는 품목이 없어요." : "품목이 없어요.", 14, Ui.GRAY, false), Ui.lp(this, 12));
+        for (Object[] x : rows) {
+            final String md = (String) x[0];
+            int lack = (int) x[7];
+            LinearLayout card = Ui.cardH(this);
+            if (lack > 0) card.setBackground(Ui.round(Color.rgb(253, 241, 239), 20, this));
+            CheckBox cb = new CheckBox(this);
+            cb.setChecked(ssSel.contains(md));
+            cb.setOnCheckedChangeListener((b, on) -> {
+                if (on) ssSel.add(md);
+                else ssSel.remove(md);
+            });
+            card.addView(cb);
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.addView(Ui.text(this, (((String) x[1]).isEmpty() ? "" : "[" + x[1] + "] ") + md, 15, Ui.INK, true));
+            int[] lc = (int[]) x[2];
+            StringBuilder sb = new StringBuilder();
+            if (ssLoc.isEmpty()) {
+                for (int i = 0; i < LOCS.length; i++) sb.append(i > 0 ? " · " : "").append(LOCS[i]).append(" ").append(lc[i]);
+                sb.append(" · 합계 ").append(x[3]);
+            } else sb.append(ssLoc).append(" ").append(x[6]);
+            if ((int) x[4] > 0) sb.append(" · 출고중 ").append(x[4]);
+            col.addView(Ui.text(this, sb.toString(), 13, Ui.GRAY, false));
+            if ((int) x[5] > 0) col.addView(Ui.text(this, "안전재고 " + x[5] + (lack > 0 ? " — " + lack + "개 부족" : ""), 13, lack > 0 ? Ui.RED : Ui.GRAY, lack > 0));
+            card.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            content.addView(card, Ui.lp(this, 6));
+        }
+        Button go = Ui.button(this, "📦 선택 품목 물품요청", Ui.GOLD, Ui.DARK);
+        go.setOnClickListener(v -> {
+            List<String[]> pre = new ArrayList<>();
+            for (Object[] x : stockStatRows()) if (ssSel.contains((String) x[0])) pre.add(new String[]{((String) x[1]).isEmpty() ? (String) x[0] : "[" + x[1] + "] " + x[0], "" + Math.max(1, (int) x[7])});
+            if (pre.isEmpty()) {
+                Ui.toast(this, "주문할 품목을 체크해 주세요.");
+                return;
+            }
+            showNewPreq(null, pre);
+        });
+        content.addView(go, Ui.lp(this, 12));
+    }
+
     private void renderStock() {
         content.addView(title("재고"));
         content.addView(Ui.text(this, "입고·출고·수량 정정을 하면 이력이 남아요. 계약에서 장비를 고르면 '출고중'이 되고, 설치 완료하면 재고에서 빠집니다.", 13, Ui.GRAY, false));
@@ -4259,6 +4436,9 @@ public class MainActivity extends Activity {
             sa.addView(bt, lpp);
         }
         content.addView(sa, Ui.lp(this, 10));
+        Button stt = Ui.button(this, "📋 재고 현황 (품목별 · 필터 · 정렬 · 부족 품목 주문)", Ui.TINT, Ui.DEEP);
+        stt.setOnClickListener(v -> goSub("stockstat"));
+        content.addView(stt, Ui.lp(this, 6));
         if (prodAdmin()) {
             Button si = Ui.button(this, "📥 재고 일괄 등록 (엑셀)", Ui.FIELD, Ui.INK);
             si.setOnClickListener(v -> showStockImport());
@@ -4569,16 +4749,28 @@ public class MainActivity extends Activity {
     }
 
     private void showNewPreq() {
+        showNewPreq(null, null);
+    }
+
+    /** 물품요청 창. edit: 고칠 요청(null 이면 새 요청 — 고치기는 요청한 사람·관리자, 웹과 같음), pre: 미리 채울 품목 {이름, 수량}(재고 현황에서 부족한 품목 주문). */
+    private void showNewPreq(final JSONObject edit, final List<String[]> pre) {
+        final JSONObject EP = edit == null ? null : edit.optJSONObject("preq");
+        final boolean early = EP == null || "요청".equals(EP.optString("stage")) || "주문함".equals(EP.optString("stage")); // 품목·수량은 발송 전에만 고친다
         LinearLayout f = form();
-        f.addView(Ui.text(this, "본사 담당자에게 알림이 가요. 담당자가 주문·발송을 표시하고, 물건이 오면 '입고 확인'을 누르면 받은 곳 재고에 들어가요.", 12, Ui.GRAY, false));
+        f.addView(Ui.text(this, edit == null ? "본사 담당자에게 알림이 가요. 담당자가 주문·발송을 표시하고, 물건이 오면 '입고 확인'을 누르면 받은 곳 재고에 들어가요." : early ? "품목을 지우려면 칸을 비워요." : "이미 " + EP.optString("stage") + " 상태라 품목·수량은 바꿀 수 없어요. 메모·희망 도착일만 고쳐요.", 12, Ui.GRAY, false));
+        final LinearLayout sec = new LinearLayout(this);
+        sec.setOrientation(LinearLayout.VERTICAL);
+        f.addView(sec);
+        if (!early) sec.setVisibility(View.GONE);
         final Spinner to = spinner(LOCS);
         to.setSelection(1);
-        labeled(f, "받을 곳", to);
-        f.addView(Ui.text(this, "요청 품목", 12, Ui.GRAY, true), Ui.lp(this, 10));
-        f.addView(Ui.text(this, "… 를 누르면 재고 품목(상품코드·보관지별 재고)에서 골라요. 목록에 없는 물품은 이름을 그대로 적으면 돼요 — 본사가 확인할 때 상품 목록에 올라가요.", 12, Ui.GRAY, false), Ui.lp(this, 2));
+        if (EP != null) for (int i = 0; i < LOCS.length; i++) if (LOCS[i].equals(EP.optString("to"))) to.setSelection(i);
+        labeled(sec, "받을 곳", to);
+        sec.addView(Ui.text(this, "요청 품목", 12, Ui.GRAY, true), Ui.lp(this, 10));
+        sec.addView(Ui.text(this, "… 를 누르면 재고 품목(상품코드·보관지별 재고)에서 골라요. 목록에 없는 물품은 이름을 그대로 적으면 돼요 — 본사가 확인할 때 상품 목록에 올라가요.", 12, Ui.GRAY, false), Ui.lp(this, 2));
         final LinearLayout rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
-        f.addView(rows);
+        sec.addView(rows);
         final List<EditText[]> items = new ArrayList<>();
         final Runnable addRow = () -> {
             LinearLayout r = new LinearLayout(this);
@@ -4613,24 +4805,40 @@ public class MainActivity extends Activity {
             rows.addView(r, Ui.lp(this, 4));
             items.add(new EditText[]{m, q});
         };
-        addRow.run();
-        addRow.run();
+        List<String[]> fill = new ArrayList<>();
+        if (pre != null) fill.addAll(pre);
+        JSONArray eit = EP == null ? null : EP.optJSONArray("items");
+        for (int i = 0; eit != null && i < eit.length(); i++) fill.add(new String[]{eit.optJSONObject(i).optString("model"), "" + eit.optJSONObject(i).optInt("qty")});
+        for (String[] x : fill) {
+            addRow.run();
+            items.get(items.size() - 1)[0].setText(x[0]);
+            items.get(items.size() - 1)[1].setText(x[1]);
+        }
+        if (fill.isEmpty()) {
+            addRow.run();
+            addRow.run();
+        }
         Button more = Ui.button(this, "＋ 품목 줄 추가", Ui.FIELD, Ui.INK);
         more.setOnClickListener(v -> addRow.run());
-        f.addView(more, Ui.lp(this, 6));
+        sec.addView(more, Ui.lp(this, 6));
         final List<JSONObject> staff = activeStaff();
         String[] names = new String[staff.size()];
         for (int i = 0; i < names.length; i++) names[i] = staff.get(i).optString("name");
         final Spinner as = spinner(names);
+        if (edit != null) for (int i = 0; i < staff.size(); i++) if (staff.get(i).optInt("id") == edit.optInt("assignee")) as.setSelection(i);
         labeled(f, "본사 담당자 (알림이 가요)", as);
         final EditText due = Ui.field(this, "희망 도착일", false);
         datePickField(due, "📅 희망 도착일 (선택)");
         f.addView(due, Ui.lp(this, 8));
         final EditText memo = Ui.field(this, "메모 (선택, 예: 다음 주 설치 3건 예정)", false);
         f.addView(memo, Ui.lp(this, 6));
+        if (edit != null) {
+            due.setText(edit.optString("due"));
+            memo.setText(edit.optString("memo"));
+        }
         ScrollView sv = new ScrollView(this);
         sv.addView(f);
-        final AlertDialog dlg = new Dlg(this).setTitle("본사에 물품요청").setView(sv).setNegativeButton("취소", null).setPositiveButton("요청 보내기", null).create();
+        final AlertDialog dlg = new Dlg(this).setTitle(edit == null ? "본사에 물품요청" : "물품요청 수정").setView(sv).setNegativeButton("취소", null).setPositiveButton(edit == null ? "요청 보내기" : "저장", null).create();
         dlg.show();
         dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             JSONArray it = new JSONArray();
@@ -4659,12 +4867,29 @@ public class MainActivity extends Activity {
                     it.put(itx);
                     ti.append(ti.length() > 0 ? ", " : "").append(pn).append(" ").append(q);
                 }
-                if (it.length() == 0 || staff.isEmpty()) {
-                    Ui.toast(this, "요청할 품목을 적어 주세요.");
+                if ((early && it.length() == 0) || staff.isEmpty()) {
+                    Ui.toast(this, edit == null ? "요청할 품목을 적어 주세요." : "품목이 하나는 있어야 해요. 요청을 없애려면 '삭제'를 눌러 주세요.");
                     return;
                 }
                 String toL = LOCS[to.getSelectedItemPosition()];
                 int who = staff.get(as.getSelectedItemPosition()).optInt("id");
+                if (edit != null) {
+                    if (early) {
+                        EP.put("items", it).put("to", toL);
+                        edit.put("client", toL);
+                        edit.put("title", "물품요청 · " + toL + " · " + ti);
+                    }
+                    edit.put("assignee", who);
+                    edit.put("due", due.getText().toString().trim());
+                    edit.put("memo", memo.getText().toString().trim());
+                    store.log(edit, myId(), "물품요청 수정");
+                    store.save();
+                    dlg.dismiss();
+                    Ui.toast(this, "고쳤어요.");
+                    render();
+                    showPreq(edit);
+                    return;
+                }
                 JSONObject t = store.addTask("물품요청 · " + toL + " · " + ti, "물품요청", toL, "", "", due.getText().toString().trim(), memo.getText().toString().trim(), who, myId());
                 if (t != null) {
                     t.put("preq", new JSONObject().put("to", toL).put("items", it).put("stage", "요청"));
@@ -4769,6 +4994,30 @@ public class MainActivity extends Activity {
                 showPreqIn(t);
             });
             l.addView(b, Ui.lp(this, 10));
+        }
+        if (rq) { // 수정·삭제: 요청한 사람·관리자 (웹과 같음)
+            LinearLayout br = new LinearLayout(this);
+            Button ed = Ui.button(this, "✎ 수정", Ui.FIELD, Ui.INK);
+            ed.setOnClickListener(v -> {
+                dlg[0].dismiss();
+                showNewPreq(t, null);
+            });
+            br.addView(ed, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            Button del = Ui.button(this, "삭제", Ui.RED, Color.WHITE);
+            del.setOnClickListener(v -> new Dlg(this).setTitle("물품요청을 삭제할까요?").setMessage(t.optString("title") + ("입고완료".equals(st) ? "\n이미 입고된 재고는 그대로예요(재고 화면에서 따로 정정)." : ""))
+                    .setNegativeButton("취소", null).setPositiveButton("삭제", (d, w) -> {
+                        try {
+                            t.put("deleted", true);
+                        } catch (Exception ignored) {
+                        }
+                        store.log(t, myId(), "삭제");
+                        store.save();
+                        dlg[0].dismiss();
+                        render();
+                        Ui.toast(this, "삭제했어요.");
+                    }).show());
+            br.addView(del, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            l.addView(br, Ui.lp(this, 12));
         }
         ScrollView sv = new ScrollView(this);
         sv.addView(l);
@@ -6318,34 +6567,67 @@ public class MainActivity extends Activity {
     // ---------- 채팅에 보이는 내 이름 색(프로필 ncolor) — 웹과 같은 색 목록 ----------
     private static final String[] NAME_COLORS = {"#3b3f46", "#8f6b14", "#2a5d8f", "#1d6b4a", "#9a3d1c", "#7a3e9d", "#b02a5b", "#0f6f7a"};
 
-    private int nameColor(int uid) {
+    private int nameColor(int uid) { // 아무 색이나 (#rrggbb) — 웹과 같음
         JSONObject p = store.profile(uid);
         String c = p == null ? "" : p.optString("ncolor");
-        for (String x : NAME_COLORS) if (x.equals(c)) return Color.parseColor(c);
-        return 0;
+        return c.matches("#[0-9a-fA-F]{6}") ? Color.parseColor(c) : 0;
+    }
+
+    private void saveNameColor(String c) {
+        try {
+            store.myProfile(myId()).put("ncolor", c);
+        } catch (Exception ignored) {
+        }
+        store.save();
+        Ui.toast(this, "이름 색을 바꿨어요.");
     }
 
     private void showNameColor() {
         LinearLayout f = form();
-        f.addView(Ui.text(this, "다른 직원 화면의 채팅에서 내 이름이 이 색으로 보여요.", 13, Ui.GRAY, false));
+        f.addView(Ui.text(this, "다른 직원 화면의 채팅에서 내 이름이 이 색으로 보여요. 아래 색을 누르거나, '직접 고르기'에서 색·밝기를 끌어 아무 색이나 골라요.", 13, Ui.GRAY, false));
         final AlertDialog[] d = new AlertDialog[1];
         Ui.Flow fl = new Ui.Flow(this, 8);
         for (final String c : NAME_COLORS) {
             TextView t = Ui.smallBtn(this, me.optString("name"), Ui.FIELD, Color.parseColor(c));
             t.setTextSize(15);
             t.setOnClickListener(v -> {
-                try {
-                    store.myProfile(myId()).put("ncolor", c);
-                } catch (Exception ignored) {
-                }
-                store.save();
+                saveNameColor(c);
                 if (d[0] != null) d[0].dismiss();
-                Ui.toast(this, "이름 색을 바꿨어요.");
             });
             fl.addView(t);
         }
         f.addView(fl, Ui.lp(this, 10));
-        d[0] = new Dlg(this).setTitle("채팅에 보이는 내 이름 색").setView(f).setNegativeButton("닫기", null).show();
+        f.addView(Ui.text(this, "직접 고르기", 13, Ui.DEEP, true), Ui.lp(this, 14));
+        int c0 = nameColor(myId());
+        float[] hsv = new float[3];
+        Color.colorToHSV(c0 != 0 ? c0 : Color.parseColor(NAME_COLORS[2]), hsv);
+        final TextView prev = Ui.text(this, me.optString("name"), 20, Color.HSVToColor(hsv), true);
+        f.addView(prev, Ui.lp(this, 6));
+        final android.widget.SeekBar hue = new android.widget.SeekBar(this), val = new android.widget.SeekBar(this);
+        hue.setMax(360);
+        hue.setProgress(Math.round(hsv[0]));
+        val.setMax(100);
+        val.setProgress(Math.round((1 - hsv[2]) * 100));
+        final Runnable upd = () -> prev.setTextColor(Color.HSVToColor(new float[]{hue.getProgress(), 0.85f, Math.max(0.2f, 1 - val.getProgress() / 100f)}));
+        android.widget.SeekBar.OnSeekBarChangeListener sl = new android.widget.SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(android.widget.SeekBar b, int p, boolean u) {
+                upd.run();
+            }
+
+            public void onStartTrackingTouch(android.widget.SeekBar b) {
+            }
+
+            public void onStopTrackingTouch(android.widget.SeekBar b) {
+            }
+        };
+        hue.setOnSeekBarChangeListener(sl);
+        val.setOnSeekBarChangeListener(sl);
+        f.addView(Ui.text(this, "색", 12, Ui.GRAY, false), Ui.lp(this, 8));
+        f.addView(hue);
+        f.addView(Ui.text(this, "진하기", 12, Ui.GRAY, false), Ui.lp(this, 8));
+        f.addView(val);
+        d[0] = new Dlg(this).setTitle("채팅에 보이는 내 이름 색").setView(f).setNegativeButton("닫기", null)
+                .setPositiveButton("이 색으로", (x, w) -> saveNameColor(String.format("#%06x", prev.getCurrentTextColor() & 0xFFFFFF))).show();
     }
 
     // ---------- 채팅방 목록 순서: 직원마다 끌어서 정한다(프로필 rorder — 웹과 같은 순서) ----------
@@ -7281,35 +7563,36 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
-            {"0.0.38", "2026-10-30", "• 보안: 서버 규칙을 화면 권한과 맞춤(만든 사람 표시·방장·최고관리자 표시·암호 보관 위치·변경 기록), 로그아웃 때 폰에 남은 자료 지움\n• 권한 단계: 최고관리자·운영자·멤버, '중요 자료 삭제' 권한(가맹점·계약·재고 삭제)\n• 가맹점: 멤버도 새 가맹점 등록(등록·최근 수정한 사람 표시), 대표자 성함\n• 채팅: 내 이름 색 바꾸기(전체 → 채팅), 채팅방 목록 '순서 편집'으로 끌어서 순서 바꾸기, 입력창 다듬기, ✦ AI 다듬기\n• 업무 종류: 카드사서류·큐밴등록 / 지난 업무를 나중에 가맹점 응대 기록에 남기기\n• 계약: 수정·삭제, 장비 구분·전자계약서·리드관리·기존 VAN사\n• 실적 → 종합 보고서 / 단체 문자: 계약 만료로 거르기\n• 카드에 입체감"},
-            {"0.0.37", "2026-10-26", "• 보안: 가맹점 정보 쓰기는 '가맹점 등록·수정' 권한자·관리자만(서버 규칙), 목록의 전화·주소는 가려서 보이고 상세에서만 전체\n• 보안: 가맹점 상세 열람·등록·수정·삭제·엑셀 가져오기·백업을 감사 로그로(관리자 → 가맹점 조회 기록), 하루 조회 한도(넘으면 막고 관리자에게 알림)\n• 앱 잠금(PIN·지문): 내 계정·설정 → 앱 잠금\n• 채팅: 쓰던 메시지 임시 저장(방마다, 다른 화면 갔다 와도 이어서)\n• 가맹점 조회 창: '새 가맹점 등록'은 등록 권한자에게만, 아래 '새 가맹점 등록' 버튼 정리 / 엑셀 가져오기는 관리자 전용\n• 업무 요청 빠른 선택 버튼 작게(버튼 안 글자 한 줄, 많으면 다음 줄로)\n• 최고관리자(양문희·가태현): 모든 권한 항상 켜짐"},
-            {"0.0.36", "2026-10-26", "• 홈페이지 서류접수·상담신청을 '서류접수'·'상담신청' 채팅방으로 받을 준비(글쓴이 '📮 홈페이지 접수', 사진 함께)"},
-            {"0.0.35", "2026-10-26", "• 대화방: 맨 아래를 보고 있으면 새 글을 따라 내려가고, 위쪽(안 읽은 글 등)을 읽는 중에 새 글이 오면 아래에 '새 메시지 ↓' 버튼 — 누르면 맨 아래로. 내가 보낸 글은 항상 맨 아래로"},
-            {"0.0.34", "2026-10-26", "• 전체 메뉴에 '채팅' 묶음: 채팅 알림 및 소리 설정 / 업무 묶음: 업무 알림 및 소리 설정 (따로 분리)\n• 가맹점 찾기: 대표자명·전화번호·핸드폰번호(하이픈 없이도)로도 찾아요"},
-            {"0.0.33", "2026-10-26", "• 알림 및 소리 설정에 '업무 알림 받기'·'채팅 알림 받기' 켜기·끄기\n• 채팅 알림은 방마다 1개만(새 글이 오면 그 방 알림이 바뀌고 개수 표시), 누르면 그 채팅방이 바로 열려요\n• 대화방을 열면 안 읽은 첫 글부터 보여요('여기까지 읽었어요' 줄)"},
-            {"0.0.32", "2026-10-26", "• 안 읽은 채팅 알림띠: 다른 화면에서도 위쪽에 읽을 때까지 떠 있고, 누르면 그 채팅방으로 바로 가요\n• 가맹점 등록·수정의 주소: 인터넷 주소 검색처럼 찾아서 고르기(도로명·지번·건물명), 상세 주소는 이어 적기"},
-            {"0.0.31", "2026-10-26", "• 일일보고의 (자동 집계)는 쓰는 사람 화면에만 보여요. 대표님께 가는 보고(종합 보기)에는 직접 쓴 내용만 보여요"},
-            {"0.0.30", "2026-10-26", "• 업무 탭(첫 화면)에서 폰 뒤로가기를 누르면 ‘나인패밀리를 종료할까요?’ 확인 창이 떠요 (종료 / 취소)"},
-            {"0.0.29", "2026-10-26", "• 화면 왼쪽 위 ‹ 뒤로가기 버튼: 하위 화면과 업무 외 탭에서 보이고, 누르면 한 단계씩 뒤로(하위 화면 → 전체 → 업무)\n• 폰 뒤로가기: 다른 탭에서는 업무 탭으로"},
-            {"0.0.28", "2026-10-26", "• 가맹점 업로드 양식에 응대 기록 열(응대일자·응대종류·요청사항·처리결과): 이카운트의 요청사항·처리완료를 가맹점 응대 기록으로 한꺼번에 올려요. 한 가맹점에 여러 건이면 상호만 같게 줄을 여러 개, 같은 날 같은 내용은 건너뜀"},
-            {"0.0.27", "2026-10-26", "• 업무 종류: AS 를 방문AS · 원격AS 로 나눔 (완료하면 응대 기록 종류도 방문A/S · 원격A/S 로)\n• 가맹점 요청사항 빠른 버튼: 누르면 뒤에 쉼표가 자동으로 붙고 커서가 끝으로 가서 바로 이어 쓸 수 있어요"},
-            {"0.0.26", "2026-10-26", "• 채팅 순서: 서버가 받은 순서대로 보여요 (폰·PC 시계가 조금 달라도 나중에 쓴 글이 아래로). 이번 버전부터 보내는 메시지에 적용돼요"},
-            {"0.0.25", "2026-10-26", "• 상품 바코드: 상품 목록에 바코드 칸(상자에 찍힌 바코드, 스캔 가능). 입고 때 상품 바코드를 찍으면 그 상품이 골라지고, 재고 검색칸에 찍으면 그 상품이 걸러져요\n• 재고 업로드 양식에 '상품 바코드' 열 추가, 시리얼 열은 '시리얼(장비 바코드)'로 이름 정리"},
-            {"0.0.24", "2026-10-26", "• 업무·일정 시간 고르기를 30분 단위로 (오전 9:00, 오전 9:30 …)"},
-            {"0.0.23", "2026-10-25", "• 전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도)\n• 직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정·사진 바꾸기·권한 설정·완전 삭제가 따로\n• 권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기\n• 직책 목록(관리자가 추가·수정·삭제): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순\n• 직원 완전 삭제와 가맹점·재고·응대 기록·자료실 삭제에 삭제 비밀번호 (전체 → 관리자 → 삭제 비밀번호)"},
-            {"0.0.22", "2026-10-25", "• 가맹점 등급 표기를 직원들이 부르는 대로: 0코드·1코드·2코드·3코드, 그다음 해지가맹점·신규가맹점·협력사 (목록·단체 문자·등록 화면·업로드 양식)"},
-            {"0.0.21", "2026-10-25", "• 물품요청: … 를 누르면 재고 품목(상품코드·보관지별 재고 수)에서 고르고, 목록에 없는 물품은 이름만 적어도 요청돼요('새 물품' 표시). 본사가 주문·발송을 표시할 때 상품 목록에 올라가고 상품코드가 붙어요"},
-            {"0.0.20", "2026-10-25", "• 가맹점 일괄 가져오기에 업로드 양식(.xlsx) 받기 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요\n• 재고 일괄 등록(엑셀, 관리자): 상품코드/상품명·시리얼·수량·현재위치 — 본사·광주지사는 우리 재고, 가맹점 상호는 이미 설치된 장비로 기록만(재고 수 제외)\n• (PC 웹에는 위쪽 메뉴 끝에 메모가 생겼어요)"},
-            {"0.0.19", "2026-10-25", "• 상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 계약·재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요\n• 재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색\n• 목록에 없는 상품은 관리자가 입고·요청할 때 새 코드로 바로 등록돼요"},
-            {"0.0.18", "2026-10-25", "• 전체 → 내 계정·설정 → '알림 및 소리 설정' 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기, 화면 꺼져도 알림 받기도 여기서"},
-            {"0.0.17", "2026-10-25", "• 아래 탭의 안 본 개수를 빨간 동그라미 숫자로 (업무·채팅·☰), 전체 메뉴·채팅 목록도 같은 모양\n• 아래 탭 '전체'를 ☰ 로\n• 업무 요청 '가맹점 요청사항' 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)\n• 직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)"},
-            {"0.0.16", "2026-10-25", "• 화면이 꺼져 있거나 앱을 닫아도 새 업무·채팅 알림이 와요: 상단에 '알림 받는 중' 표시가 작게 남고, 알림이 오면 화면이 켜지며 음성이 나와요. 처음 한 번 '배터리 절약에서 빼기'를 허용해 주세요 (전체 → 내 계정·설정 → 화면 꺼져도 알림 받기)\n• 폰을 다시 켜도 알림 받기가 저절로 다시 시작돼요\n• '업무 지시'를 '업무 요청'으로 이름 바꿈"},
-            {"0.0.15", "2026-10-25", "• 로그인: 시작 화면이 뜨는 동안 사람 확인(로봇 확인)을 미리 준비해, 인증번호 받기를 누른 뒤 기다리는 시간을 줄임 (웹과 같은 방식)"},
-            {"0.0.14", "2026-10-25", "• 채팅 알림 음성을 밝은 여자 목소리 \"나인톡!\"으로 바꿈, 다른 알림 음성도 같은 목소리로"},
-            {"0.0.13", "2026-10-25", "• 채팅 알림 소리를 카톡처럼 짧게 \"나톡!\"으로 바꾸고, 업무는 '띵동' + \"업무가 배정되었습니다\"로 따로 울려요\n• 전체 → 내 계정·설정에 '업무 알림 소리'·'채팅 알림 소리(나톡)'를 따로 켜고 끄는 칸과 각각 들어 보기"},
-            {"0.0.12", "2026-10-25", "• 알림 음성이 안 나던 문제 고침: 미리 녹음한 음성 파일을 앱에 넣어, 폰에 한국어 음성 엔진이 없어도 \"업무가 배정되었습니다\"·\"나인톡\"이 들려요 (전체 → 내 계정·설정 → 알림 소리 들어 보기)"},
-            {"0.0.11", "2026-10-25", "• 알림 음성: 업무가 배정되면 \"업무가 배정되었습니다\", 채팅은 \"나인톡\", 물품요청·발송·공지도 '띵동' 소리와 음성으로 알려요 (전체 → 내 계정·설정 → 알림 소리 들어 보기)\n• 물품이 발송되면 요청한 사람에게 알림\n• 전체 메뉴에서 '내 계정·설정'을 맨 앞으로\n• 사용설명서를 시작하기 → 아래 탭 → 전체 메뉴 묶음 순서로 정리, 물품요청·알림 음성 설명 추가"},
-            {"0.0.10", "2026-10-24", "• 재고 보관지(본사·광주지사): 입고 때 보관지 선택, 보관지별 보기, 보관지 바꾸면 '이동' 이력\n• 물품요청(지사 → 본사): 품목·수량·받을 곳·본사 담당자 → 담당자에게 알림 → 주문함·발송(발주처리, 송장 메모)·반려 → 요청한 사람이 '입고 확인'하면 그 보관지 재고에 자동 입고\n• 전체 메뉴를 업무·가맹점·계약·재고·실적·보고·회사·내 계정·설정·관리자로 나눔 (권한 없는 메뉴는 숨김)"},
+            {"0.3.9", "2026-10-31", "• 버전 번호 바꿈: 끝자리가 9를 넘으면 앞자리로 올라가요(0.3.8 → 0.3.9 → 0.4.0). 지난 내역 번호도 같은 방식으로 고쳤어요(예전 0.0.38 = 0.3.8)\n• 물품요청: 요청한 사람·관리자가 수정·삭제 (품목·수량은 발송 전까지)\n• 재고 현황(재고 화면 또는 전체 → 재고): 품목별 보관지 수량·출고중·안전재고, 보관지·미달만 거르기, 이름·코드·수량·부족 순 정렬, 부족 품목 체크 → 물품요청 자동 채움\n• 권한 화면 단순화: 역할(멤버·운영자·관리자·최고관리자)을 고르면 끝, 세부 권한은 접어 두고 겹치는 항목은 하나로\n• 채팅 이름 색: 아무 색이나 직접 골라요(색·진하기)\n• 앱 잠금 지문: 지문이 등록돼 있어도 '없음'으로 나오던 것 고침\n• AI 다듬기: 구글 Gemini 무료로 바꿈"},
+            {"0.3.8", "2026-10-30", "• 보안: 서버 규칙을 화면 권한과 맞춤(만든 사람 표시·방장·최고관리자 표시·암호 보관 위치·변경 기록), 로그아웃 때 폰에 남은 자료 지움\n• 권한 단계: 최고관리자·운영자·멤버, '중요 자료 삭제' 권한(가맹점·계약·재고 삭제)\n• 가맹점: 멤버도 새 가맹점 등록(등록·최근 수정한 사람 표시), 대표자 성함\n• 채팅: 내 이름 색 바꾸기(전체 → 채팅), 채팅방 목록 '순서 편집'으로 끌어서 순서 바꾸기, 입력창 다듬기, ✦ AI 다듬기\n• 업무 종류: 카드사서류·큐밴등록 / 지난 업무를 나중에 가맹점 응대 기록에 남기기\n• 계약: 수정·삭제, 장비 구분·전자계약서·리드관리·기존 VAN사\n• 실적 → 종합 보고서 / 단체 문자: 계약 만료로 거르기\n• 카드에 입체감"},
+            {"0.3.7", "2026-10-26", "• 보안: 가맹점 정보 쓰기는 '가맹점 등록·수정' 권한자·관리자만(서버 규칙), 목록의 전화·주소는 가려서 보이고 상세에서만 전체\n• 보안: 가맹점 상세 열람·등록·수정·삭제·엑셀 가져오기·백업을 감사 로그로(관리자 → 가맹점 조회 기록), 하루 조회 한도(넘으면 막고 관리자에게 알림)\n• 앱 잠금(PIN·지문): 내 계정·설정 → 앱 잠금\n• 채팅: 쓰던 메시지 임시 저장(방마다, 다른 화면 갔다 와도 이어서)\n• 가맹점 조회 창: '새 가맹점 등록'은 등록 권한자에게만, 아래 '새 가맹점 등록' 버튼 정리 / 엑셀 가져오기는 관리자 전용\n• 업무 요청 빠른 선택 버튼 작게(버튼 안 글자 한 줄, 많으면 다음 줄로)\n• 최고관리자(양문희·가태현): 모든 권한 항상 켜짐"},
+            {"0.3.6", "2026-10-26", "• 홈페이지 서류접수·상담신청을 '서류접수'·'상담신청' 채팅방으로 받을 준비(글쓴이 '📮 홈페이지 접수', 사진 함께)"},
+            {"0.3.5", "2026-10-26", "• 대화방: 맨 아래를 보고 있으면 새 글을 따라 내려가고, 위쪽(안 읽은 글 등)을 읽는 중에 새 글이 오면 아래에 '새 메시지 ↓' 버튼 — 누르면 맨 아래로. 내가 보낸 글은 항상 맨 아래로"},
+            {"0.3.4", "2026-10-26", "• 전체 메뉴에 '채팅' 묶음: 채팅 알림 및 소리 설정 / 업무 묶음: 업무 알림 및 소리 설정 (따로 분리)\n• 가맹점 찾기: 대표자명·전화번호·핸드폰번호(하이픈 없이도)로도 찾아요"},
+            {"0.3.3", "2026-10-26", "• 알림 및 소리 설정에 '업무 알림 받기'·'채팅 알림 받기' 켜기·끄기\n• 채팅 알림은 방마다 1개만(새 글이 오면 그 방 알림이 바뀌고 개수 표시), 누르면 그 채팅방이 바로 열려요\n• 대화방을 열면 안 읽은 첫 글부터 보여요('여기까지 읽었어요' 줄)"},
+            {"0.3.2", "2026-10-26", "• 안 읽은 채팅 알림띠: 다른 화면에서도 위쪽에 읽을 때까지 떠 있고, 누르면 그 채팅방으로 바로 가요\n• 가맹점 등록·수정의 주소: 인터넷 주소 검색처럼 찾아서 고르기(도로명·지번·건물명), 상세 주소는 이어 적기"},
+            {"0.3.1", "2026-10-26", "• 일일보고의 (자동 집계)는 쓰는 사람 화면에만 보여요. 대표님께 가는 보고(종합 보기)에는 직접 쓴 내용만 보여요"},
+            {"0.3.0", "2026-10-26", "• 업무 탭(첫 화면)에서 폰 뒤로가기를 누르면 ‘나인패밀리를 종료할까요?’ 확인 창이 떠요 (종료 / 취소)"},
+            {"0.2.9", "2026-10-26", "• 화면 왼쪽 위 ‹ 뒤로가기 버튼: 하위 화면과 업무 외 탭에서 보이고, 누르면 한 단계씩 뒤로(하위 화면 → 전체 → 업무)\n• 폰 뒤로가기: 다른 탭에서는 업무 탭으로"},
+            {"0.2.8", "2026-10-26", "• 가맹점 업로드 양식에 응대 기록 열(응대일자·응대종류·요청사항·처리결과): 이카운트의 요청사항·처리완료를 가맹점 응대 기록으로 한꺼번에 올려요. 한 가맹점에 여러 건이면 상호만 같게 줄을 여러 개, 같은 날 같은 내용은 건너뜀"},
+            {"0.2.7", "2026-10-26", "• 업무 종류: AS 를 방문AS · 원격AS 로 나눔 (완료하면 응대 기록 종류도 방문A/S · 원격A/S 로)\n• 가맹점 요청사항 빠른 버튼: 누르면 뒤에 쉼표가 자동으로 붙고 커서가 끝으로 가서 바로 이어 쓸 수 있어요"},
+            {"0.2.6", "2026-10-26", "• 채팅 순서: 서버가 받은 순서대로 보여요 (폰·PC 시계가 조금 달라도 나중에 쓴 글이 아래로). 이번 버전부터 보내는 메시지에 적용돼요"},
+            {"0.2.5", "2026-10-26", "• 상품 바코드: 상품 목록에 바코드 칸(상자에 찍힌 바코드, 스캔 가능). 입고 때 상품 바코드를 찍으면 그 상품이 골라지고, 재고 검색칸에 찍으면 그 상품이 걸러져요\n• 재고 업로드 양식에 '상품 바코드' 열 추가, 시리얼 열은 '시리얼(장비 바코드)'로 이름 정리"},
+            {"0.2.4", "2026-10-26", "• 업무·일정 시간 고르기를 30분 단위로 (오전 9:00, 오전 9:30 …)"},
+            {"0.2.3", "2026-10-25", "• 전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도)\n• 직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정·사진 바꾸기·권한 설정·완전 삭제가 따로\n• 권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기\n• 직책 목록(관리자가 추가·수정·삭제): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순\n• 직원 완전 삭제와 가맹점·재고·응대 기록·자료실 삭제에 삭제 비밀번호 (전체 → 관리자 → 삭제 비밀번호)"},
+            {"0.2.2", "2026-10-25", "• 가맹점 등급 표기를 직원들이 부르는 대로: 0코드·1코드·2코드·3코드, 그다음 해지가맹점·신규가맹점·협력사 (목록·단체 문자·등록 화면·업로드 양식)"},
+            {"0.2.1", "2026-10-25", "• 물품요청: … 를 누르면 재고 품목(상품코드·보관지별 재고 수)에서 고르고, 목록에 없는 물품은 이름만 적어도 요청돼요('새 물품' 표시). 본사가 주문·발송을 표시할 때 상품 목록에 올라가고 상품코드가 붙어요"},
+            {"0.2.0", "2026-10-25", "• 가맹점 일괄 가져오기에 업로드 양식(.xlsx) 받기 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요\n• 재고 일괄 등록(엑셀, 관리자): 상품코드/상품명·시리얼·수량·현재위치 — 본사·광주지사는 우리 재고, 가맹점 상호는 이미 설치된 장비로 기록만(재고 수 제외)\n• (PC 웹에는 위쪽 메뉴 끝에 메모가 생겼어요)"},
+            {"0.1.9", "2026-10-25", "• 상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 계약·재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요\n• 재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색\n• 목록에 없는 상품은 관리자가 입고·요청할 때 새 코드로 바로 등록돼요"},
+            {"0.1.8", "2026-10-25", "• 전체 → 내 계정·설정 → '알림 및 소리 설정' 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기, 화면 꺼져도 알림 받기도 여기서"},
+            {"0.1.7", "2026-10-25", "• 아래 탭의 안 본 개수를 빨간 동그라미 숫자로 (업무·채팅·☰), 전체 메뉴·채팅 목록도 같은 모양\n• 아래 탭 '전체'를 ☰ 로\n• 업무 요청 '가맹점 요청사항' 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)\n• 직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)"},
+            {"0.1.6", "2026-10-25", "• 화면이 꺼져 있거나 앱을 닫아도 새 업무·채팅 알림이 와요: 상단에 '알림 받는 중' 표시가 작게 남고, 알림이 오면 화면이 켜지며 음성이 나와요. 처음 한 번 '배터리 절약에서 빼기'를 허용해 주세요 (전체 → 내 계정·설정 → 화면 꺼져도 알림 받기)\n• 폰을 다시 켜도 알림 받기가 저절로 다시 시작돼요\n• '업무 지시'를 '업무 요청'으로 이름 바꿈"},
+            {"0.1.5", "2026-10-25", "• 로그인: 시작 화면이 뜨는 동안 사람 확인(로봇 확인)을 미리 준비해, 인증번호 받기를 누른 뒤 기다리는 시간을 줄임 (웹과 같은 방식)"},
+            {"0.1.4", "2026-10-25", "• 채팅 알림 음성을 밝은 여자 목소리 \"나인톡!\"으로 바꿈, 다른 알림 음성도 같은 목소리로"},
+            {"0.1.3", "2026-10-25", "• 채팅 알림 소리를 카톡처럼 짧게 \"나톡!\"으로 바꾸고, 업무는 '띵동' + \"업무가 배정되었습니다\"로 따로 울려요\n• 전체 → 내 계정·설정에 '업무 알림 소리'·'채팅 알림 소리(나톡)'를 따로 켜고 끄는 칸과 각각 들어 보기"},
+            {"0.1.2", "2026-10-25", "• 알림 음성이 안 나던 문제 고침: 미리 녹음한 음성 파일을 앱에 넣어, 폰에 한국어 음성 엔진이 없어도 \"업무가 배정되었습니다\"·\"나인톡\"이 들려요 (전체 → 내 계정·설정 → 알림 소리 들어 보기)"},
+            {"0.1.1", "2026-10-25", "• 알림 음성: 업무가 배정되면 \"업무가 배정되었습니다\", 채팅은 \"나인톡\", 물품요청·발송·공지도 '띵동' 소리와 음성으로 알려요 (전체 → 내 계정·설정 → 알림 소리 들어 보기)\n• 물품이 발송되면 요청한 사람에게 알림\n• 전체 메뉴에서 '내 계정·설정'을 맨 앞으로\n• 사용설명서를 시작하기 → 아래 탭 → 전체 메뉴 묶음 순서로 정리, 물품요청·알림 음성 설명 추가"},
+            {"0.1.0", "2026-10-24", "• 재고 보관지(본사·광주지사): 입고 때 보관지 선택, 보관지별 보기, 보관지 바꾸면 '이동' 이력\n• 물품요청(지사 → 본사): 품목·수량·받을 곳·본사 담당자 → 담당자에게 알림 → 주문함·발송(발주처리, 송장 메모)·반려 → 요청한 사람이 '입고 확인'하면 그 보관지 재고에 자동 입고\n• 전체 메뉴를 업무·가맹점·계약·재고·실적·보고·회사·내 계정·설정·관리자로 나눔 (권한 없는 메뉴는 숨김)"},
             {"0.0.9", "2026-10-24", "• 채팅 읽음 표시: 카톡처럼 말풍선 옆에 아직 안 읽은 사람 수(노란 숫자)가 보이고, 다 읽으면 사라져요 (상대가 웹 또는 앱 v0.0.4 이상을 쓸 때 정확해요)"},
             {"0.0.8", "2026-10-24", "• 업무 지시: 가맹점 요청사항 빠른 선택 '용지신청' (직접 입력과 같이 써요). 완료하면 응대 기록에 '용지신청'으로 남아요\n• 업무 지시·가맹점 조회에서 못 찾은 가맹점은 '새 가맹점 등록'으로 바로 등록 → 저장하면 이 업무에 자동 연결 (권한·암호 규칙 그대로)\n• 가맹점: 계약시작일·계약종료일 추가 (상세에 D-day 표시)\n• 가맹점 목록: 계약 만료 예정 필터 (1·2·3개월 이내, 만료됨) — 종료일 빠른 순, 검색과 같이 써요\n• VAN사 목록을 취급사로 정리: 다우데이타, 다우데이타PG, KIS정보통신, KIS정보통신PG, NHN KCP, KOVAN, KOPAY PG (그 밖은 직접 입력)\n• 응대 종류에 '용지신청' 추가"},
             {"0.0.7", "2026-10-24", "• 직원과 권한: '영업 실적·순위에서 빼기' 표시 추가 — 대표님처럼 켜 둔 계정은 실적 합계·직원별 순위·월별 비교·직원별 수익에 들어가지 않아요"},
@@ -7369,7 +7652,7 @@ public class MainActivity extends Activity {
         buildMain();
     }
 
-    // ---------- AI 다듬기: 쓰던 글을 서버 함수(polish — 직원 로그인 확인 후 Claude)로 보내 맞춤법·말투를 다듬는다. 키는 서버에만 (웹과 같음) ----------
+    // ---------- AI 다듬기: 쓰던 글을 서버 함수(polish — 직원 로그인 확인 후 구글 Gemini 무료)로 보내 맞춤법·말투를 다듬는다. 키는 서버에만 (웹과 같음) ----------
     private static final String POLISH_URL = "https://asia-northeast3-nine-family.cloudfunctions.net/polish";
     private boolean polishing = false;
 

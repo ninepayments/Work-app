@@ -127,7 +127,7 @@ input[type=checkbox]{width:auto;margin:0}
 .pctop .logo img{width:30px;height:30px;border-radius:8px}
 .pcnav{display:flex;gap:4px;flex:1;flex-wrap:wrap}
 .pcnav button{border:0;background:none;color:#f1ede3;font-size:17px;font-weight:700;padding:10px 18px;border-radius:10px;cursor:pointer;display:flex;align-items:center;gap:6px}
-.pcnav button.on{background:linear-gradient(#dcbc66,#c49e43);color:var(--dark);font-weight:800;box-shadow:0 2px 0 #8f6b14,0 4px 10px rgba(205,170,82,.35)}
+.pcnav button.on{background:var(--gold);color:var(--dark);font-weight:800}
 .pcnav button .badge{margin:0}
 .pctop .me{color:#e9e6df;font-size:14px;padding:0 6px}
 .pcinst{border:0;background:#3a3424;color:#fff;border-radius:10px;padding:9px 14px;font-weight:700;cursor:pointer}
@@ -362,11 +362,11 @@ details.man[open]{padding-bottom:12px}
 .mav .avimg,.mav .avtxt{border-radius:14px}
 .mcol{display:flex;flex-direction:column;min-width:0;max-width:76%}.m.me .mcol{align-items:flex-end}.mcol .bub{max-width:100%}
 .nm{font-size:12.5px;font-weight:700;color:#3b3f46;margin:2px 0 3px 2px}.m.run{margin-top:1px}
-.bub{box-shadow:0 1px 2px rgba(20,22,26,.08)}.m:not(.me) .bub{border-top-left-radius:6px}.m.me .bub{border-top-right-radius:6px;background:linear-gradient(#e2c56f,#cdaa52)}
+.bub{box-shadow:0 1px 2px rgba(20,22,26,.08)}.m:not(.me) .bub{border-top-left-radius:6px}.m.me .bub{border-top-right-radius:6px}
 .ncgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}.ncsw{border:2px solid #eceef1;background:#fff;border-radius:12px;padding:12px;cursor:pointer;font-size:15px}.ncsw.on{border-color:var(--gold);background:var(--tint)}
 /* 입력창 (시안): 둥근 칸, 보내기 버튼 입체 */
 .send textarea{background:var(--field);border:0;border-radius:14px;padding:11px 13px}
-.send>button[data-act=send]{background:linear-gradient(#dcbc66,#c49e43);box-shadow:0 2px 0 var(--deep);font-weight:800}
+.send>button[data-act=send]{font-weight:800}
 .send .plus{border-radius:12px}
 /* 채팅방 순서 편집: ≡ 잡고 끌기 */
 .rgrip{flex:none;width:30px;height:40px;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--gray);cursor:grab;touch-action:none;user-select:none}
@@ -389,10 +389,14 @@ details.man[open]{padding-bottom:12px}
 .pcnav button.navadd:hover{background:rgba(255,255,255,.08)}
 /* 입체감: 카드·버튼에 그림자, 금색 버튼은 아래 테두리 */
 .card{box-shadow:0 1px 2px rgba(20,22,26,.06),0 6px 16px rgba(20,22,26,.08)}
-.btn.gold{background:linear-gradient(#dcbc66,#c49e43);box-shadow:0 2px 0 #8f6b14}
-.btn.gold:active{transform:translateY(1px);box-shadow:0 1px 0 #8f6b14}
-.pctop{background:linear-gradient(#262117,#1b1710);box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.pctop{box-shadow:0 2px 10px rgba(0,0,0,.25)}
 .card.flat{box-shadow:none}
 .pcnav{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;align-items:center}
 .pcnav::-webkit-scrollbar{display:none}
 .pcnav button{padding:10px 14px;white-space:nowrap;flex:none}
+.pdet{margin:6px 0 10px;border-radius:12px;background:var(--field);padding:4px 12px}
+.pdet summary{cursor:pointer;font-weight:700;padding:8px 0;color:var(--deep)}
+.pill.rolep.on{background:var(--gold);color:var(--dark);font-weight:800}
+.sstbl{background:var(--card);border-radius:14px;overflow:hidden}
+.sstbl tr.low td{background:#fdf1ef}
+.sstbl td input{margin:0;width:18px;height:18px}

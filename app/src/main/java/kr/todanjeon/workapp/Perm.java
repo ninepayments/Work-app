@@ -22,6 +22,11 @@ final class Perm {
     static final String[] LABELS = {"업무 만들기", "다른 직원에게 업무 배정", "전체 업무 보기",
             "전체 이력 보기", "공지 작성", "실적 보기 (본부장·대표님)", "일일보고·실적보고 종합 보기 (대표님)", "가맹점 정보 수정 (암호 필요)", "중요 자료 삭제 (가맹점·계약·재고)", "직원 정보 보기 (부서·직책·생년월일·연락처·주소)", "직원 관리 (관리자 전용)"};
 
+    // 권한 창에 보이는 묶음(겹치는 항목을 하나로) — 저장 값(KEYS)은 그대로. 웹 PERM_GROUPS 와 같음
+    static final String[][] GROUPS = {{TASK_ASSIGN}, {TASK_VIEW_ALL, HISTORY_ALL}, {NOTICE_WRITE}, {PERF_VIEW, REPORT_VIEW}, {MERCHANT_EDIT}, {DATA_DELETE}, {STAFF_VIEW}, {STAFF_MANAGE}};
+    static final String[] GROUP_LABELS = {"다른 직원에게 업무 맡기기", "모든 직원의 업무·지난 기록 보기", "공지 쓰기", "실적·보고서 보기 (전체 실적·수익·종합 보고서·일일보고 종합)",
+            "가맹점 정보 고치기 (암호)", "중요 자료 삭제 (가맹점·계약·재고)", "직원 정보 보기 (연락처·생일 등)", "직원 관리 (직원 추가·권한)"};
+
     // 권한 체계: 역할 3단계 + 항목별 체크(세부 조정) — 웹 PRESETS 와 같음
     // 최고관리자 = 모든 권한 + super 표시(최고관리자만 줄 수 있음) / 운영자 = 등록·수정·실적·보고서(중요 자료 삭제·직원 관리 제외) / 멤버 = 기본
     static final String[] PRESET_NAMES = {"멤버", "운영자", "최고관리자"};

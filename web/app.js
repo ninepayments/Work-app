@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.62';
+const VERSION = '웹 0.6.3';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
@@ -445,6 +445,7 @@ function viewBody(k) {
     case 'notice': return viewNotices();
     case 'logs': return viewAllLogs();
     case 'stock': return viewStock();
+    case 'stockstat': return viewStockStat();
     case 'stocklog': return viewStockLog();
     case 'products': return viewProducts();
     case 'memo': return viewMemo();
@@ -994,7 +995,7 @@ ACT.send = () => {
   if (S.replyTo) { m.rto = S.replyTo; S.replyTo = null; }
   put('msgs', m); inp.value = ''; render(); setTimeout(() => { const i = $('#msgin'); if (i) i.focus(); }, 0);
 };
-// AI 다듬기: 쓰던 글을 서버 함수(polish — 직원 로그인 확인 후 Claude)로 보내 맞춤법·말투를 다듬고, 바꿀지 고른다. 키는 서버에만 있다
+// AI 다듬기: 쓰던 글을 서버 함수(polish — 직원 로그인 확인 후 구글 Gemini 무료)로 보내 맞춤법·말투를 다듬고, 바꿀지 고른다. 키는 서버에만 있다
 const POLISH_URL = 'https://asia-northeast3-nine-family.cloudfunctions.net/polish';
 ACT.polish = async () => {
   const inp = $('#msgin'); const text = inp ? inp.value.trim() : ''; if (!text) return toast('다듬을 글을 먼저 써 주세요');
@@ -1491,11 +1492,47 @@ function viewStock() {
   }
   return '<h1>재고</h1><div class="sub">입고·출고·수량 정정을 하면 이력이 남아요. 계약에서 장비를 고르면 ‘출고중’이 되고, 설치 완료하면 재고에서 빠집니다. 검색칸에 바코드 스캐너로 찍으면 그 장비가 바로 열려요.</div>' +
     '<div class="pills"><span class="sub" style="align-self:center;margin:0">보관지</span>' + ['', ...LOCS].map(l => '<button class="pill ' + ((S.sloc || '') === l ? 'on' : '') + '" data-act="sloc" data-arg="' + l + '">' + (l || '전체') + '</button>').join('') + '</div>' +
-    '<div class="stkacts"><button class="btn gold" data-act="newStock">＋ 입고</button><button class="btn tint" data-act="outStock">− 출고</button><button class="btn tint" data-act="adjStock">± 수량 정정</button><button class="btn" data-nav="all" data-sub="stocklog">이력</button></div>' + (prodAdmin() ? '<button class="btn full" data-act="importStock">📥 재고 일괄 등록 (엑셀)</button>' : '') + asset +
+    '<div class="stkacts"><button class="btn gold" data-act="newStock">＋ 입고</button><button class="btn tint" data-act="outStock">− 출고</button><button class="btn tint" data-act="adjStock">± 수량 정정</button><button class="btn" data-nav="all" data-sub="stocklog">이력</button></div><button class="btn tint full" data-nav="all" data-sub="stockstat">📋 재고 현황 (품목별 · 필터 · 정렬 · 부족 품목 주문)</button>' + (prodAdmin() ? '<button class="btn full" data-act="importStock">📥 재고 일괄 등록 (엑셀)</button>' : '') + asset +
     '<div class="row" style="gap:8px"><input id="sq" data-q="sq" placeholder="🔍 상품코드·상품명·시리얼 (초성)" value="' + esc(S.sq || '') + '" autocomplete="off"><button class="btn tint" data-act="scanInto" data-arg="sq" style="flex:none" aria-label="카메라로 바코드 찍기">📷 바코드</button></div>' +
     '<div class="qres" data-for="sq">' + stockGroups() + '</div>' + preqSection();
 }
 ACT.sloc = l => { S.sloc = l; render(); };
+// ---------- 재고 현황: 품목(상품)마다 보관지별 수량·출고중·안전재고 — 거르기·정렬, 안전재고 미달 품목을 체크해 바로 물품요청 (앱과 같음) ----------
+function stockStatRows() {
+  const m = new Map(); const get = k => { if (!m.has(k)) m.set(k, {model: k, code: codeOf(k) || '', loc: {}, have: 0, out: 0, safe: 0}); return m.get(k); };
+  products().forEach(p => get(p.name));
+  list('stock').filter(r => r.status !== '설치완료' && r.model).forEach(r => { const x = get(r.model); const q = r.qty || 1;
+    if (r.status === '출고중') x.out += q; else { x.loc[locOf(r)] = (x.loc[locOf(r)] || 0) + q; x.have += q; } x.safe = Math.max(x.safe, r.safe || 0); });
+  return [...m.values()].map(x => Object.assign(x, {cnt: S.ssLoc ? (x.loc[S.ssLoc] || 0) : x.have})).map(x => Object.assign(x, {lack: x.safe > 0 ? Math.max(0, x.safe - x.cnt) : 0}));
+}
+function viewStockStat() {
+  S.ssSel = S.ssSel || new Set(); const srt = S.ssSort || 'name';
+  const pill = (act, v, cur, lb) => '<button class="pill' + (cur === v ? ' on' : '') + '" data-act="' + act + '" data-arg="' + v + '">' + lb + '</button>';
+  return '<h1>재고 현황</h1><div class="sub">품목마다 보관지별 재고·출고중·안전재고를 한눈에 봐요. ‘안전재고 미달’로 거르고 체크한 뒤 ‘선택 품목 물품요청’을 누르면 부족한 수만큼 채워진 요청 창이 열려요. (안전재고는 재고 줄을 눌러 정해요)</div>' +
+    '<div class="pills"><span class="sub" style="align-self:center;margin:0">보관지</span>' + ['', ...LOCS].map(l => pill('ssLoc', l, S.ssLoc || '', l || '전체')).join('') + '</div>' +
+    '<div class="pills"><span class="sub" style="align-self:center;margin:0">보기</span>' + pill('ssLow', '', S.ssLow ? '1' : '', '전체 품목') + pill('ssLow', '1', S.ssLow ? '1' : '', '⚠ 안전재고 미달만') + '</div>' +
+    '<div class="pills"><span class="sub" style="align-self:center;margin:0">정렬</span>' + [['name', '이름순'], ['code', '상품코드순'], ['few', '재고 적은 순'], ['many', '재고 많은 순'], ['lack', '부족 많은 순']].map(([v, l]) => pill('ssSort', v, srt, l)).join('') + '</div>' +
+    '<input id="ssq" data-q="ssq" placeholder="🔍 상품코드·상품명 (초성)" value="' + esc(S.ssq || '') + '" autocomplete="off"><div class="qres" data-for="ssq">' + stockStatList() + '</div>';
+}
+function stockStatList() {
+  const srt = S.ssSort || 'name';
+  const rows = stockStatRows().filter(x => (!S.ssLow || x.lack > 0) && kmatch(x.model + ' ' + x.code, S.ssq || ''))
+    .sort((a, b) => srt === 'code' ? (a.code || '~').localeCompare(b.code || '~') : srt === 'few' ? a.cnt - b.cnt : srt === 'many' ? b.cnt - a.cnt : srt === 'lack' ? b.lack - a.lack || a.cnt - b.cnt : a.model.localeCompare(b.model));
+  const nsel = [...S.ssSel].filter(k => rows.some(x => x.model === k)).length;
+  return '<div class="row" style="align-items:center;margin:6px 0"><div class="grow sub" style="margin:0;font-weight:700">' + rows.length + '개 품목 · 선택 ' + nsel + '</div><button class="btn" style="margin:0" data-act="ssAll">' + (S.ssLow ? '미달 전체 선택' : '보이는 전체 선택') + '</button><button class="btn" style="margin:0 0 0 6px" data-act="ssNone">선택 해제</button></div>' +
+    (rows.length ? '<div style="overflow-x:auto"><table class="sumt sstbl"><tr><th></th><th>상품코드</th><th>품목</th>' + (S.ssLoc ? '<th>' + esc(S.ssLoc) + '</th>' : LOCS.map(l => '<th>' + l + '</th>').join('') + '<th>합계</th>') + '<th>출고중</th><th>안전재고</th><th>부족</th></tr>' +
+      rows.map(x => '<tr' + (x.lack ? ' class="low"' : '') + '><td><input type="checkbox" data-act="ssTog" data-arg="' + esc(x.model) + '"' + (S.ssSel.has(x.model) ? ' checked' : '') + ' aria-label="' + esc(x.model) + ' 선택"></td><td>' + esc(x.code || '-') + '</td><td><b>' + esc(x.model) + '</b></td>' + (S.ssLoc ? '<td>' + x.cnt + '</td>' : LOCS.map(l => '<td>' + (x.loc[l] || 0) + '</td>').join('') + '<td><b>' + x.have + '</b></td>') + '<td>' + (x.out || '') + '</td><td>' + (x.safe || '-') + '</td><td>' + (x.lack ? '<b style="color:var(--red)">' + x.lack + '</b>' : '') + '</td></tr>').join('') + '</table></div>' : '<div class="empty">' + (S.ssLow ? '안전재고에 못 미치는 품목이 없어요.' : '품목이 없어요.') + '</div>') +
+    '<button class="btn gold full" data-act="ssOrder" style="margin-top:12px">📦 선택 품목 물품요청 (' + nsel + ')</button>';
+}
+ACT.ssLoc = v => { S.ssLoc = v; render(); }; ACT.ssLow = v => { S.ssLow = !!v; render(); }; ACT.ssSort = v => { S.ssSort = v; render(); };
+ACT.ssTog = (k, el) => { if (el.checked) S.ssSel.add(k); else S.ssSel.delete(k); refreshResults(); };
+ACT.ssAll = () => { stockStatRows().filter(x => (!S.ssLow || x.lack > 0) && kmatch(x.model + ' ' + x.code, S.ssq || '')).forEach(x => S.ssSel.add(x.model)); render(); };
+ACT.ssNone = () => { S.ssSel.clear(); render(); };
+ACT.ssOrder = () => {
+  const rows = stockStatRows().filter(x => S.ssSel.has(x.model)); if (!rows.length) return toast('주문할 품목을 체크해 주세요.');
+  S.preqPre = rows.map(x => ({model: x.code ? '[' + x.code + '] ' + x.model : x.model, qty: Math.max(1, x.lack)})); ACT.newPreq();
+  if (S.ssLoc) { const t = $('#f_to'); if (t) t.value = S.ssLoc; }
+};
 function stockGroups() {
   const g = new Map();
   list('stock').filter(r => r.status !== '설치완료' && (!S.sloc || locOf(r) === S.sloc) && kmatch((r.model || '') + ' ' + codeOf(r.model) + ' ' + barcodeOf(r.model) + ' ' + (r.serial || '') + ' ' + locOf(r), S.sq || '')).sort((a, b) => (a.model || '').localeCompare(b.model || '') || (a.serial || '').localeCompare(b.serial || ''))
@@ -1777,10 +1814,11 @@ function viewPreqs() {
 }
 ACT.newPreq = () => {
   const staff = list('users').filter(u => u.active !== false).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  const row = () => '<div class="row prow2" style="gap:6px"><input class="pm" list="prodlist" placeholder="재고 품목 검색 또는 새 물품 이름" style="flex:3" autocomplete="off"><input class="pq" inputmode="numeric" placeholder="수량" style="flex:1"></div>';
+  const pre = S.preqPre || []; S.preqPre = null; // 재고 현황에서 고른 부족 품목
+  const row = x => '<div class="row prow2" style="gap:6px"><input class="pm" list="prodlist" placeholder="재고 품목 검색 또는 새 물품 이름" style="flex:3" autocomplete="off"' + (x && x.model ? ' value="' + esc(x.model) + '"' : '') + '><input class="pq" inputmode="numeric" placeholder="수량" style="flex:1"' + (x && x.qty ? ' value="' + x.qty + '"' : '') + '></div>';
   formModal('본사에 물품요청', '<div class="sub" style="margin-top:0">본사 담당자에게 알림이 가요. 담당자가 주문·발송을 표시하고, 물건이 오면 ‘입고 확인’을 누르면 받은 곳 재고에 들어가요.</div>' +
     '<label class="fl" for="f_to">받을 곳</label><select id="f_to">' + LOCS.map(l => '<option' + (l === '광주지사' ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
-    '<div class="lb">요청 품목</div><div class="sub" style="margin:0 0 4px">칸을 누르면 재고 품목(상품코드·보관지별 재고)이 떠요. 목록에 없는 물품은 이름을 그대로 적으면 돼요 — 본사가 확인할 때 상품 목록에 올라가요.</div>' + prodOptions(true) + '<div id="prows">' + row() + row() + '</div><button type="button" class="btn full" id="paddr">＋ 품목 줄 추가</button>' +
+    '<div class="lb">요청 품목</div><div class="sub" style="margin:0 0 4px">칸을 누르면 재고 품목(상품코드·보관지별 재고)이 떠요. 목록에 없는 물품은 이름을 그대로 적으면 돼요 — 본사가 확인할 때 상품 목록에 올라가요.</div>' + prodOptions(true) + '<div id="prows">' + (pre.length ? pre.map(row).join('') : row() + row()) + '</div><button type="button" class="btn full" id="paddr">＋ 품목 줄 추가</button>' +
     '<label class="fl" for="f_as">본사 담당자 (알림이 가요)</label><select id="f_as">' + staff.map(u => '<option value="' + u.id + '">' + esc(u.name) + '</option>').join('') + '</select>' +
     '<label class="fl" for="f_d">희망 도착일 (선택)</label><input id="f_d" type="date"><label class="fl" for="f_m">메모 (선택)</label><textarea id="f_m" placeholder="예: 다음 주 설치 3건 예정"></textarea>', () => {
     const raw = [...document.querySelectorAll('#prows .prow2')].map(r => ({v: r.querySelector('.pm').value.trim(), qty: numOf(r.querySelector('.pq').value)})).filter(x => x.v);
@@ -1814,7 +1852,29 @@ ACT.preq = id => {
     (hq && st === '요청' ? '<button class="btn tint" data-act="preqGo" data-arg="' + id + '|주문함">주문함</button>' : '') +
     (hq && (st === '요청' || st === '주문함') ? '<button class="btn gold" data-act="preqShip" data-arg="' + id + '">발송(발주처리)</button><button class="btn red" data-act="preqNo" data-arg="' + id + '">반려</button>' : '') +
     (rq && st === '발송함' ? '<button class="btn gold" data-act="preqIn" data-arg="' + id + '">입고 확인</button>' : '') +
-    '<button class="btn" data-act="close">닫기</button></div>');
+    '<button class="btn" data-act="close">닫기</button></div>' +
+    (rq ? '<div class="btns"><button class="btn" data-act="preqEdit" data-arg="' + id + '">✎ 수정</button><button class="btn red" data-act="preqDel" data-arg="' + id + '">삭제</button></div>' : ''));
+};
+// 물품요청 수정·삭제: 요청한 사람·관리자 (앱과 같음). 품목·수량은 발송 전(요청·주문함)에만, 그 뒤엔 메모·희망 도착일만
+ACT.preqEdit = id => {
+  const t = byId('tasks', id); if (!t || !t.preq) return; const P = t.preq, early = P.stage === '요청' || P.stage === '주문함';
+  const row = x => '<div class="row prow2" style="gap:6px"><input class="pm" list="prodlist" placeholder="재고 품목 검색 또는 새 물품 이름" style="flex:3" autocomplete="off" value="' + esc(x ? x.model : '') + '"><input class="pq" inputmode="numeric" placeholder="수량" style="flex:1" value="' + (x ? x.qty : '') + '"></div>';
+  formModal('물품요청 수정', (early ? '<label class="fl" for="f_to">받을 곳</label><select id="f_to">' + LOCS.map(l => '<option' + (l === P.to ? ' selected' : '') + '>' + l + '</option>').join('') + '</select><div class="lb">요청 품목 (지우려면 칸을 비워요)</div>' + prodOptions(true) + '<div id="prows">' + (P.items || []).map(row).join('') + '</div><button type="button" class="btn full" id="paddr">＋ 품목 줄 추가</button>' : '<div class="sub" style="margin-top:0">이미 ' + esc(P.stage) + ' 상태라 품목·수량은 바꿀 수 없어요. 메모·희망 도착일만 고쳐요.</div>') +
+    '<label class="fl" for="f_d">희망 도착일</label><input id="f_d" type="date" value="' + esc((t.due || '').slice(0, 10)) + '"><label class="fl" for="f_m">메모</label><textarea id="f_m">' + esc(t.memo || '') + '</textarea>', () => {
+    if (early) {
+      const raw = [...document.querySelectorAll('#prows .prow2')].map(r => ({v: r.querySelector('.pm').value.trim(), qty: numOf(r.querySelector('.pq').value)})).filter(x => x.v);
+      if (!raw.length) return warn('품목이 하나는 있어야 해요. 요청을 없애려면 ‘삭제’를 눌러 주세요.');
+      if (raw.some(x => x.qty < 1)) return warn('품목마다 수량을 적어 주세요.');
+      P.items = raw.map(x => Object.assign(preqProd(x.v), {qty: x.qty})); P.to = $('#f_to').value; t.client = P.to;
+      t.title = '물품요청 · ' + P.to + ' · ' + P.items.map(x => x.model + ' ' + x.qty).join(', ');
+    }
+    t.due = $('#f_d').value; t.memo = $('#f_m').value.trim(); tlog(t, '물품요청 수정'); put('tasks', t); render(); setTimeout(() => ACT.preq(id), 0); toast('고쳤어요.'); return true;
+  }, '저장');
+  const ad = $('#paddr'); if (ad) ad.onclick = () => $('#prows').insertAdjacentHTML('beforeend', row());
+};
+ACT.preqDel = id => {
+  const t = byId('tasks', id); if (!t) return;
+  askConfirm('물품요청을 삭제할까요?', t.title + (t.preq && t.preq.stage === '입고완료' ? '\n이미 입고된 재고는 그대로예요(재고 화면에서 따로 정정).' : ''), '삭제', () => { t.deleted = true; tlog(t, '삭제'); put('tasks', t); closeModal(); render(); toast('삭제했어요.'); }, true);
 };
 ACT.preqGo = a => { const [id, st] = a.split('|'); const t = byId('tasks', id); preqStage(t, st); render(); ACT.preq(id); toast(st + '(으)로 표시했어요.'); };
 ACT.preqShip = id => formModal('발송 (발주처리)', '<div class="sub" style="margin-top:0">' + esc(byId('tasks', id).preq.to) + '로 보냈다고 표시해요. 받는 쪽에 ‘입고 확인’ 알림이 떠요.</div><label class="fl" for="f_s">발송 메모 (선택 — 택배사·송장번호 등)</label><input id="f_s" placeholder="예: 한진 1234-5678-9012">', () => {
@@ -2264,11 +2324,15 @@ ACT.contactEdit = id => { const c = byId('contacts', id); formModal('연락처 �
 // ---------- 프로필 (사진·상태 메시지 — 앱과 같은 profiles 문서: pic=256px JPEG base64, status) ----------
 // 채팅에 보이는 내 이름 색(프로필 ncolor) — 흰 바탕에서 잘 읽히는 색만 고르게 한다
 const NAME_COLORS = ['#3b3f46', '#8f6b14', '#2a5d8f', '#1d6b4a', '#9a3d1c', '#7a3e9d', '#b02a5b', '#0f6f7a'];
-const nameColor = uid => { const p = byId('profiles', uid); return p && NAME_COLORS.includes(p.ncolor) ? p.ncolor : ''; };
+const nameColor = uid => { const p = byId('profiles', uid); return p && /^#[0-9a-fA-F]{6}$/.test(p.ncolor || '') ? p.ncolor : ''; }; // 아무 색이나 (#rrggbb) — 앱과 같음
 ACT.nameColor = () => {
-  const cur = nameColor(S.uid) || NAME_COLORS[0];
-  modal('<h3>채팅에 보이는 내 이름 색</h3><div class="sub" style="margin-top:0">다른 직원 화면의 채팅에서 내 이름이 이 색으로 보여요.</div><div class="ncgrid">' + NAME_COLORS.map(c => '<button type="button" class="ncsw' + (c === cur ? ' on' : '') + '" data-c="' + c + '" style="color:' + c + '" aria-label="' + c + '"><b>' + esc(S.me ? S.me.name : '') + '</b></button>').join('') + '</div><button class="btn full" data-act="close">닫기</button>');
-  document.querySelectorAll('#modal .ncsw').forEach(b => b.onclick = () => { const pr = Object.assign({}, myProf() || {id: S.uid}); pr.ncolor = b.dataset.c; put('profiles', pr); closeModal(); render(); toast('이름 색을 바꿨어요.'); });
+  const cur = nameColor(S.uid) || NAME_COLORS[0], nm = esc(S.me ? S.me.name : '');
+  modal('<h3>채팅에 보이는 내 이름 색</h3><div class="sub" style="margin-top:0">다른 직원 화면의 채팅에서 내 이름이 이 색으로 보여요. 아래 색을 누르거나, ‘직접 고르기’로 아무 색이나 골라요.</div><div class="ncgrid">' + NAME_COLORS.map(c => '<button type="button" class="ncsw' + (c === cur ? ' on' : '') + '" data-c="' + c + '" style="color:' + c + '" aria-label="' + c + '"><b>' + nm + '</b></button>').join('') + '</div>' +
+    '<div class="row" style="gap:10px;align-items:center;margin:10px 0"><label for="ncpick" class="sub" style="margin:0">직접 고르기</label><input type="color" id="ncpick" value="' + cur + '" style="width:56px;height:40px;padding:0;border:0;background:none;margin:0"><b id="ncprev" style="color:' + cur + ';font-size:17px">' + nm + '</b></div>' +
+    '<div class="btns"><button class="btn" data-act="close">닫기</button><button class="btn gold" id="ncsave">이 색으로</button></div>');
+  const save = c => { const pr = Object.assign({}, myProf() || {id: S.uid}); pr.ncolor = c; put('profiles', pr); closeModal(); render(); toast('이름 색을 바꿨어요.'); };
+  document.querySelectorAll('#modal .ncsw').forEach(b => b.onclick = () => save(b.dataset.c));
+  const pk = $('#ncpick'); pk.oninput = () => { $('#ncprev').style.color = pk.value; }; $('#ncsave').onclick = () => save(pk.value);
 };
 function avatarHTML(uid, size) {
   const pr = byId('profiles', uid), u = user(uid); const s = 'width:' + size + 'px;height:' + size + 'px';
@@ -2307,6 +2371,11 @@ const PERMS = [['task_create', '업무 만들기'], ['task_assign', '다른 직�
 // 권한 체계: 역할 3단계 + 항목별 체크(세부 조정). 최고관리자 = 모든 권한 + super 표시(최고관리자만 줄 수 있음)
 // 운영자 = 등록·수정·실적·보고서 / 중요 자료 삭제·직원 관리 제외. 멤버 = 내 업무·채팅·일정·가맹점 조회·내 보고(+ 가맹점 신규 등록)
 const PRESETS = {'멤버': ['task_create'], '운영자': PERMS.map(x => x[0]).filter(k => k !== 'staff_manage' && k !== 'data_delete'), '최고관리자': PERMS.map(x => x[0])};
+// 권한 창에 보이는 묶음(겹치는 항목을 하나로) — 저장 값(perms 키)은 그대로. 일부만 켜진 옛 계정은 손대지 않으면 그대로 둔다. 앱 PERM_GROUPS 와 같음
+const PERM_GROUPS = [[['task_assign'], '다른 직원에게 업무 맡기기'], [['task_view_all', 'history_all'], '모든 직원의 업무·지난 기록 보기'], [['notice_write'], '공지 쓰기'],
+  [['perf_view', 'report_view'], '실적·보고서 보기 (전체 실적·수익·종합 보고서·일일보고 종합)'], [['merchant_edit'], '가맹점 정보 고치기 (암호)'], [['data_delete'], '중요 자료 삭제 (가맹점·계약·재고)'],
+  [['staff_view'], '직원 정보 보기 (연락처·생일 등)'], [['staff_manage'], '직원 관리 (직원 추가·권한)']];
+const ROLE_SET = {'멤버': PRESETS['멤버'], '운영자': PRESETS['운영자'], '관리자': PRESETS['최고관리자'], '최고관리자': PRESETS['최고관리자']};
 const roleName = u => isSuper(u) ? '최고관리자' : hasP(u, 'staff_manage') ? '관리자' : PRESETS['운영자'].every(k => hasP(u, k)) ? '운영자' : '멤버';
 const canDelete = () => can('data_delete') || can('staff_manage'); // 가맹점·계약·재고 삭제
 const hasP = (u, k) => (u.perms || []).includes(k);
@@ -2422,18 +2491,31 @@ ACT.newStaff = () => formModal('직원 추가', '<label class="fl" for="f_n">직
 ACT.staffEdit = id => {
   const u = byId('users', id); if (!u) return; const active = u.active !== false;
   if (isSuper(u) && !isSuper(S.me)) return toast(u.name + '님은 최고관리자라 모든 권한이 항상 켜져 있어요(최고관리자만 바꿀 수 있어요).');
-  formModal(u.name + ' 권한 설정', '<div class="sub" style="margin-top:0">역할로 한 번에 맞추고, 아래 항목으로 세부 조정해요. 지금: <b>' + esc(roleName(u)) + '</b></div><div class="pills" style="margin:6px 0 10px">' + ['멤버', '운영자'].concat(isSuper(S.me) ? ['최고관리자'] : []).map(r => '<button type="button" class="pill rolep" data-r="' + r + '">' + r + '로 맞추기</button>').join('') + '</div>' +
-    (isSuper(S.me) && u.id !== S.uid ? '<label class="chk"><input type="checkbox" id="f_sup"' + (isSuper(u) ? ' checked' : '') + '><span><b>최고관리자</b> (모든 권한 고정 · 최고관리자만 바꿈)</span></label>' : '') + PERMS.map(([k, lb]) => '<label class="chk"><input type="checkbox" class="pm" value="' + k + '"' + (hasP(u, k) ? ' checked' : '') + '><span>' + lb + '</span></label>').join('') +
-    '<label class="chk" style="margin-top:8px"><input type="checkbox" id="f_np"' + (u.noPerf ? ' checked' : '') + '><span>영업 실적·순위에서 빼기 (대표님 등)</span></label>' +
-    '<label class="chk"><input type="checkbox" id="f_nr"' + (u.noReport ? '' : ' checked') + '><span>일일보고·실적보고 명단에 넣기</span></label>' +
+  const roles = ['멤버', '운영자', '관리자'].concat(isSuper(S.me) && u.id !== S.uid ? ['최고관리자'] : []), r0 = roleName(u);
+  formModal(u.name + ' 권한 설정', '<div class="lb" style="margin-top:0">역할</div><div class="pills" style="margin:4px 0 6px">' + roles.map(r => '<button type="button" class="pill rolep' + (r === r0 ? ' on' : '') + '" data-r="' + r + '">' + r + '</button>').join('') + '</div>' +
+    '<div class="sub" id="f_rdesc" style="margin-top:0"></div>' +
+    '<details class="pdet"' + (r0 === '멤버' || r0 === '운영자' || r0 === '관리자' || r0 === '최고관리자' ? '' : ' open') + '><summary>세부 권한 (필요할 때만)</summary>' + PERM_GROUPS.map(([ks, lb], i) => { const n = ks.filter(k => hasP(u, k)).length;
+      return '<label class="chk"><input type="checkbox" class="pg" data-i="' + i + '"' + (n === ks.length ? ' checked' : '') + (n && n < ks.length ? ' data-part="1"' : '') + '><span>' + lb + '</span></label>'; }).join('') +
+    '<div class="lb">명단</div><label class="chk"><input type="checkbox" id="f_np"' + (u.noPerf ? ' checked' : '') + '><span>영업 실적·순위에서 빼기 (대표님 등)</span></label>' +
+    '<label class="chk"><input type="checkbox" id="f_nr"' + (u.noReport ? '' : ' checked') + '><span>일일보고·실적보고 명단에 넣기</span></label></details>' +
     '<button class="btn ' + (active ? 'red' : 'tint') + ' full" id="f_act">' + (active ? '사용 중지 (퇴사 등)' : '다시 사용') + '</button>', () => {
-    const np = [...document.querySelectorAll('.pm:checked')].map(c => c.value);
-    if (hasP(u, 'staff_manage') && !np.includes('staff_manage') && adminCount() <= 1) return warn('마지막 관리자의 직원 관리 권한은 끌 수 없습니다.');
-    if ($('#f_sup')) u.super = $('#f_sup').checked; // 최고관리자 표시는 최고관리자만 바꿈(서버 규칙도 같음)
-    if (isSuper(u)) np.splice(0, np.length, ...PERMS.map(p => p[0])); // 최고관리자는 모든 권한 고정
-    u.perms = np; u.noPerf = $('#f_np').checked; u.noReport = !$('#f_nr').checked; put('users', u); syncPhone(u); if (u.id === S.uid) refreshMe(); render(); toast('저장했어요.'); return true;
+    const np = new Set(['task_create']); // 업무 만들기(내 업무)는 누구나
+    document.querySelectorAll('#modal .pg').forEach(c => { const ks = PERM_GROUPS[c.dataset.i][0];
+      if (c.indeterminate) ks.forEach(k => { if (hasP(u, k)) np.add(k); }); else if (c.checked) ks.forEach(k => np.add(k)); });
+    const sup = S.role === '최고관리자' || (S.role === undefined && isSuper(u));
+    if (hasP(u, 'staff_manage') && !np.has('staff_manage') && adminCount() <= 1) return warn('마지막 관리자의 직원 관리 권한은 끌 수 없습니다.');
+    if (isSuper(S.me) && u.id !== S.uid) u.super = sup; // 최고관리자 표시는 최고관리자만 바꿈(서버 규칙도 같음)
+    u.perms = isSuper(u) ? PERMS.map(p => p[0]) : [...np]; // 최고관리자는 모든 권한 고정
+    u.noPerf = $('#f_np').checked; u.noReport = !$('#f_nr').checked; put('users', u); syncPhone(u); if (u.id === S.uid) refreshMe(); render(); toast('저장했어요.'); return true;
   }, '저장');
-  document.querySelectorAll('#modal .rolep').forEach(b => b.onclick = () => { const ks = PRESETS[b.dataset.r]; document.querySelectorAll('#modal .pm').forEach(c => { c.checked = ks.includes(c.value); }); const sp = $('#f_sup'); if (sp) sp.checked = b.dataset.r === '최고관리자'; });
+  S.role = undefined;
+  document.querySelectorAll('#modal .pg[data-part]').forEach(c => { c.indeterminate = true; });
+  const RD = {'멤버': '내 업무·채팅·일정·가맹점 조회·새 가맹점 등록·내 보고', '운영자': '멤버 + 업무 맡기기·전체 업무·공지·실적·보고서·가맹점 고치기 (삭제·직원 관리 빼고)', '관리자': '모든 권한 (직원 관리·중요 자료 삭제 포함)', '최고관리자': '모든 권한 고정 · 다른 관리자가 바꿀 수 없음'};
+  const desc = r => { $('#f_rdesc').textContent = RD[r] || '세부 권한을 따로 맞춘 계정이에요.'; };
+  desc(r0);
+  document.querySelectorAll('#modal .rolep').forEach(b => b.onclick = () => { const ks = ROLE_SET[b.dataset.r]; S.role = b.dataset.r;
+    document.querySelectorAll('#modal .rolep').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('#modal .pg').forEach(c => { c.indeterminate = false; c.checked = PERM_GROUPS[c.dataset.i][0].every(k => ks.includes(k)); }); desc(b.dataset.r); });
   $('#f_act').onclick = () => {
     if (active && hasP(u, 'staff_manage') && adminCount() <= 1) return toast('마지막 관리자는 중지할 수 없습니다.');
     askConfirm(active ? u.name + '님 사용을 멈출까요?' : u.name + '님을 다시 사용할까요?', active ? '이 번호로 더는 로그인할 수 없어요. 자료는 그대로 남아요.' : '', active ? '사용 중지' : '다시 사용', () => { u.active = !active; put('users', u); syncPhone(u); render(); }, active);
@@ -2847,6 +2929,7 @@ function menuItems() {
   add('계약', '계약 관리 (설치 완료·만료 알림)', '계약 설치 완료 만료 알림 장비', 'nav:all:contracts', ex ? '만료 ' + ex : '');
   add('계약', '입금 확인', '입금 확인 입금 내역 미납금 판매대금 정보변경수수료', 'nav:all:deposit');
   add('재고', '재고 (입고·출고·정정)', '재고 장비 바코드 시리얼 단가 입고 출고 수량 정정 스캔 본사 광주지사 보관지', 'nav:all:stock');
+  add('재고', '재고 현황 (품목별 · 부족 품목 주문)', '재고 현황 품목별 안전재고 부족 미달 주문 물품요청 목록 정렬', 'nav:all:stockstat');
   add('재고', '재고 이력', '재고 이력 입고 출고 정정 이동 실사 조사 반품 불량', 'nav:all:stocklog');
   add('재고', '상품 목록 (상품코드)', '상품 목록 상품코드 품목 코드 등록 물품요청 재고', 'nav:all:products');
   if (prodAdmin()) add('재고', '재고 일괄 등록 (엑셀 양식)', '재고 일괄 등록 엑셀 업로드 양식 옮기기 설치 가맹점', 'act:importStock');
@@ -2974,58 +3057,59 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
-  ['웹 0.0.62', '2026-10-30', ['보안: 서버 규칙을 화면 권한과 맞춤(만든 사람 표시·방장·최고관리자 표시·암호 보관 위치·변경 기록), 로그아웃 때 이 기기에 남은 자료 지움', '권한 단계: 최고관리자·운영자·멤버 (직원 수정 창에서 한 번에), ‘중요 자료 삭제’ 권한 — 가맹점·계약·재고 삭제는 이 권한자만', '가맹점: 멤버도 새 가맹점 등록(등록한 사람·최근 수정한 사람 표시), 대표자 성함 칸', '채팅: 남의 글은 사진+이름(카톡처럼), 내 이름 색 바꾸기, 채팅방 목록 끌어서 순서 바꾸기, 입력창 다듬기', '채팅: ✦ AI 다듬기 — 쓴 글의 맞춤법·말투를 다듬어 바꿀지 고르기', '업무 종류: 카드사서류·큐밴등록', '지난 업무를 나중에 가맹점 응대 기록에 남기기', '계약: 수정·삭제, 장비 구분·전자계약서·리드관리·기존 VAN사', '실적 → 종합 보고서(월별 신규·단말기/POS·전자계약·토스 프론트/포스·토스 리드·CMS 재계약, 엑셀로 받기)', '단체 문자: 계약 만료(1·2·3개월 이내·이미 만료)로 거르기', 'PC 상단바: + 로 자주 쓰는 메뉴 붙이기, 메뉴 글씨 크고 굵게, 화면 입체감']],
-  ['웹 0.0.61', '2026-10-26', ['보안: 가맹점 정보 쓰기는 ‘가맹점 등록·수정’ 권한자·관리자만(서버 규칙), 가맹점 목록의 전화·주소는 가려서 보이고 상세에서만 전체', '보안: 가맹점 상세 열람·등록·수정·삭제·엑셀 가져오기·백업 내려받기를 감사 로그로 남김(관리자 → 가맹점 조회 기록), 조회량 많은 계정 확인', '보안: 가맹점 상세 조회 하루 한도(기본 100곳, 관리자 → 한도 설정) — 넘으면 막히고 관리자에게 알림', '보안: 앱 잠금(PIN) — 내 계정·설정 → 앱 잠금. 새로 열거나 1분 넘게 다른 창에 있다 오면 PIN', '엑셀 가져오기는 관리자 전용', '채팅: 쓰던 메시지 임시 저장 — 다른 화면에 갔다 와도 이어서 쓰기(방마다)', '가맹점 조회 창: ‘새 가맹점 등록’은 등록 권한이 있는 직원에게만(조회·검색·선택·상세·응대 기록은 누구나 암호 없이)', '업무 요청 빠른 선택 버튼을 작게, 버튼 안 글자는 한 줄로', '최고관리자(양문희·가태현): 모든 권한이 항상 켜짐, 다른 관리자가 끄거나 삭제할 수 없음']],
-  ['웹 0.0.60', '2026-10-26', ['채팅을 보낼 때 위쪽에 ‘서버에 저장 중’이 잠깐씩 깜빡이던 것: 저장이 10초 넘게 안 될 때만 보이게 (인터넷 끊김은 바로 표시)']],
-  ['웹 0.0.58', '2026-10-26', ['홈페이지 서류접수·상담신청을 앱 ‘서류접수’·‘상담신청’ 채팅방으로 받을 준비(글쓴이 ‘📮 홈페이지 접수’, 사진 함께)']],
-  ['웹 0.0.57', '2026-10-26', ['PC 오른쪽 채팅창에서 스크린샷 붙여넣기(Ctrl+V)·파일 끌어 놓기가 안 되던 것 고침']],
-  ['웹 0.0.56', '2026-10-26', ['대화방에서 위쪽(안 읽은 글 등)을 읽는 중에 새 글이 오면 아래에 ‘새 메시지 ↓’ 버튼 — 누르면 맨 아래로. 맨 아래를 보고 있으면 새 글을 따라 내려가요']],
-  ['웹 0.0.55', '2026-10-26', ['PC 오른쪽 채팅창: 글 쓰는 칸을 한 줄 전체로 넓게(여러 줄 보임), + ☺ 보내기는 그 아래 줄로']],
-  ['웹 0.0.54', '2026-10-26', ['PC 프로그램(0.0.9): 위쪽 검은 줄 어디든(메뉴 버튼 위라도) 잡고 끌면 창이 옮겨져요(다른 모니터로도). 전체 모드에서 끌면 작은 창이 되어 따라와요. 빈 곳을 두 번 누르면 전체 ↔ 작은 창']],
-  ['웹 0.0.53', '2026-10-26', ['PC 프로그램 창 줄이기 때 위쪽 검은 줄(메뉴 사이 빈 곳·이름 쪽)을 끌어 다른 모니터로 옮길 수 있게 — 옮긴 뒤 ⋮ → 크게보기를 누르면 그 모니터에서 전체 모드']],
-  ['웹 0.0.52', '2026-10-26', ['PC 오른쪽 채팅창을 텔레그램 PC처럼: 처음엔 대화방 목록, 방에 들어가면 왼쪽 세로줄(대화방들)·오른쪽 대화. PC 위쪽 ‘채팅’ 메뉴는 없애고 ‘💬 채팅창’ 버튼으로', '⋮ 메뉴의 창 줄이기 아이콘을 화살표가 마주보는 모양으로']],
-  ['웹 0.0.51', '2026-10-26', ['전체 메뉴에 ‘채팅’ 묶음: 채팅 알림 및 소리 설정 / 업무 묶음: 업무 알림 및 소리 설정 (따로 분리)', '가맹점 찾기: 대표자명·전화번호·핸드폰번호(하이픈 없이도)로도 찾아요', 'PC(넓은 화면): 위쪽 ‘💬 채팅창’ 버튼으로 오른쪽에 채팅창을 열고 닫아요(텔레그램 데스크톱처럼) — 처음엔 대화방 목록, 방에 들어가면 왼쪽 세로줄에 대화방들·오른쪽에 대화(세로줄을 누르면 그 방으로). 위쪽 ‘채팅’ 메뉴는 없앴어요', 'PC 프로그램(0.0.8): ‘지금 업데이트’를 누르면 설치 파일을 받아 설치 창이 자동으로 열려요. 자동으로 못 받으면 ‘설치 파일 직접 받기’ 버튼']],
-  ['웹 0.0.50', '2026-10-26', ['PC 프로그램 새 버전 안내가 이미 최신을 설치했는데도 뜨던 것 고침(설치된 버전을 확실히 읽어요)']],
-  ['웹 0.0.49', '2026-10-26', ['업데이트는 위쪽 ‘새 버전 · 지금 업데이트’ 한 곳에서: 가벼운 업데이트는 새로고침, PC 프로그램 재설치가 필요하면 같은 버튼이 알아서 받아 덮어 설치하고 다시 켜요(PC 0.0.6부터)']],
-  ['웹 0.0.48', '2026-10-26', ['PC 프로그램이 옛 버전이면 위쪽에 ‘PC 프로그램 새 버전’ 안내(눌러서 설치 파일 받기)', 'PC 프로그램(0.0.5): ⋮ → 창 최소화를 누르면 화면 구석에 바로가기 아이콘(위젯) — 끌어서 옮기고, 더블클릭하면 다시 열려요. 안 읽은 개수는 빨간 숫자']],
-  ['웹 0.0.47', '2026-10-26', ['PC 프로그램(0.0.4): 윈도우 제목줄 없이 전체 모드로 실행, 창 조작은 오른쪽 위 ⋮ 메뉴로. 창 줄이기 때는 위쪽 검은 줄을 끌어 옮겨요']],
-  ['웹 0.0.46', '2026-10-26', ['알림 및 소리 설정에 ‘업무 알림 받기’·‘채팅 알림 받기’ 켜기·끄기', '채팅 알림은 방마다 1개만(새 글이 오면 그 방 알림이 바뀌어요)', '대화방을 열면 안 읽은 첫 글부터 보여요(‘여기까지 읽었어요’ 줄), 위로 올려 읽는 중에는 새 글이 와도 아래로 끌려가지 않아요']],
-  ['웹 0.0.45', '2026-10-26', ['안 읽은 채팅 알림띠: 다른 화면에서도 위쪽에 읽을 때까지 떠 있고, 누르면 그 채팅방으로', '가맹점 등록·수정의 주소 칸: 인터넷 주소 검색처럼 찾아서 고르기(도로명·지번·건물명), 상세 주소는 이어 적기', 'PC 프로그램(0.0.3): 오른쪽 위 ⋮ 메뉴(새로고침·다시시작·종료·창 최소화·창 줄이기·크게보기), X 를 누르면 트레이로 숨어 계속 실행']],
-  ['웹 0.0.44', '2026-10-26', ['일일보고의 (자동 집계)는 쓰는 사람 화면에만 보여요. 대표님께 가는 보고(종합 보기)에는 직접 쓴 내용만 보여요']],
-  ['웹 0.0.43', '2026-10-26', ['첫 화면(업무)에서 뒤로가기를 누르면 ‘종료할까요?’ 확인 창']],
-  ['웹 0.0.42', '2026-10-26', ['휴대폰 화면 왼쪽 위 ‹ 뒤로 버튼: 하위 화면과 업무 외 탭에서 보이고, 아래로 내려도 위에 붙어 있어요. 누르면 한 단계씩 뒤로(하위 화면 → 전체 메뉴 → 업무)']],
-  ['웹 0.0.41', '2026-10-26', ['가맹점 업로드 양식에 응대 기록 열(응대일자·응대종류·요청사항·처리결과): 이카운트의 요청사항·처리완료를 가맹점 응대 기록으로 한꺼번에 올려요. 한 가맹점 여러 건은 줄을 여러 개, 같은 날 같은 내용은 두 번 안 올라가요']],
-  ['웹 0.0.40', '2026-10-26', ['업무 종류: AS 를 방문AS · 원격AS 로 나눔 (완료하면 응대 기록 종류도 방문A/S · 원격A/S 로)', '가맹점 요청사항 빠른 버튼: 누르면 뒤에 쉼표가 자동으로 붙고 커서가 끝으로 가서 바로 이어 쓸 수 있어요']],
-  ['웹 0.0.39', '2026-10-26', ['채팅에 스크린샷 붙여넣기: 대화방에서 Ctrl+V 하면 사진을 미리 보여 주고 보내요. 파일을 대화방에 끌어다 놓아도 돼요']],
-  ['웹 0.0.38', '2026-10-26', ['채팅 줄바꿈: PC는 Shift+Enter 로 줄을 바꾸고 Enter 로 보내요. 휴대폰은 Enter 가 줄바꿈, 보내기 버튼으로 보내요. 입력칸은 여러 줄이면 늘어나요']],
-  ['웹 0.0.37', '2026-10-26', ['채팅 순서: 서버가 받은 순서대로 보여요 (폰·PC 시계가 조금 달라도 나중에 쓴 글이 아래로). 이번 버전부터 보내는 메시지에 적용돼요']],
-  ['웹 0.0.36', '2026-10-26', ['상품 바코드: 상품 목록에 바코드 칸(상자에 찍힌 바코드, 스캐너·카메라로 찍기). 입고 때 상품 바코드를 찍으면 그 상품이 골라지고, 재고 검색칸에 찍으면 그 상품이 걸러져요', '재고 업로드 양식에 ‘상품 바코드’ 열 추가, 시리얼 열은 ‘시리얼(장비 바코드)’로 이름 정리']],
-  ['웹 0.0.35', '2026-10-26', ['업무·일정 시간 고르기를 30분 단위로 (오전 9:00, 오전 9:30 …)']],
-  ['웹 0.0.34', '2026-10-25', ['전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도), 순서 정리', '직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정과 권한 설정 창이 따로', '권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기', '직책 목록(관리자가 추가·수정·삭제, 위에 있을수록 앞): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순 선택', '직원 완전 삭제(삭제 비밀번호 필요), 가맹점·재고·응대 기록·자료실 삭제도 삭제 비밀번호를 물어요 (☰ → 관리자 → 삭제 비밀번호)']],
-  ['웹 0.0.33', '2026-10-25', ['가맹점 등급 표기를 직원들이 부르는 대로: 0코드·1코드·2코드·3코드, 그다음 해지가맹점·신규가맹점·협력사 (목록·단체 문자·등록 화면·업로드 양식)']],
-  ['웹 0.0.32', '2026-10-25', ['물품요청: 칸을 누르면 재고 품목(상품코드·보관지별 재고 수)에서 고르고, 목록에 없는 물품은 이름만 적어도 요청돼요(‘새 물품’ 표시). 본사가 주문·발송을 표시할 때 상품 목록에 올라가고 상품코드가 붙어요']],
-  ['웹 0.0.31', '2026-10-25', ['가맹점 일괄 가져오기에 업로드 양식(.xlsx) 받기 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요', '재고 일괄 등록(엑셀, 관리자): 상품코드/상품명·시리얼·수량·현재위치 — 본사·광주지사는 우리 재고, 가맹점 상호는 이미 설치된 장비로 기록만(재고 수 제외)', 'PC 위쪽 메뉴 맨 끝에 ‘메모’: 업무 중 메모 추가·수정(자동 저장)·고정·삭제']],
-  ['웹 0.0.30', '2026-10-25', ['상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요', '재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색']],
-  ['웹 0.0.29', '2026-10-25', ['☰ → 내 계정·설정 → ‘알림 및 소리 설정’ 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기']],
-  ['웹 0.0.28', '2026-10-25', ['업무 요청 ‘가맹점 요청사항’ 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)', '직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)', '휴대폰 아래 탭: ‘전체’를 ☰ 로']],
-  ['웹 0.0.27', '2026-10-25', ['‘업무 지시’를 ‘업무 요청’으로 이름 바꿈 (요청하기·요청한 사람)']],
-  ['웹 0.0.26', '2026-10-25', ['채팅 알림 음성을 밝은 여자 목소리 “나인톡!”으로 바꿈, 다른 알림 음성도 같은 목소리로']],
-  ['웹 0.0.25', '2026-10-25', ['채팅 알림 소리를 카톡처럼 짧게 “나톡!”으로 바꾸고, 업무는 ‘띵동’ + “업무가 배정되었습니다”로 따로 울려요', '☰ → 내 계정·설정에 ‘업무 알림 소리’·‘채팅 알림 소리(나톡)’를 따로 켜고 끄는 칸과 각각 들어 보기', '채팅방 위 🔔 버튼으로 그 방만 알림 소리 끄기(🔕)']],
-  ['웹 0.0.24', '2026-10-25', ['알림 음성이 안 나던 문제 고침: 미리 녹음한 음성 파일을 틀어서, 기기에 한국어 음성이 없어도 “업무가 배정되었습니다”·“나인톡”이 들려요. 화면을 한 번 누른 뒤부터 소리가 나요(브라우저 규칙)']],
-  ['웹 0.0.23', '2026-10-25', ['알림 음성: 업무가 배정되면 “업무가 배정되었습니다”, 채팅은 “나인톡”, 물품요청·발송·공지도 소리와 음성으로 알려요 (☰ → 내 계정·설정 → 알림 소리 들어 보기)', '☰ 전체 메뉴에서 ‘내 계정·설정’을 맨 앞으로', '사용설명서를 시작하기 → 주 메뉴 → ☰ 메뉴 묶음 순서로 다시 정리, 물품요청 설명 추가']],
-  ['웹 0.0.22', '2026-10-24', ['재고 보관지(본사·광주지사): 입고 때 보관지 선택, 보관지별 보기·수량, 보관지 바꾸면 ‘이동’ 이력', '물품요청(지사 → 본사): 품목·수량·받을 곳·본사 담당자 → 담당자에게 알림 → 주문함·발송(발주처리, 송장 메모)·반려 → 받는 쪽 ‘입고 확인’하면 그 보관지 재고에 자동 입고', '☰ 전체 메뉴를 업무·가맹점·계약·재고·실적·보고·회사·내 계정·설정·관리자로 나누고 넓은 화면을 다 쓰게, 권한 없는 메뉴는 숨김']],
-  ['웹 0.0.21', '2026-10-24', ['채팅 읽음 표시: 카톡처럼 말풍선 옆에 아직 안 읽은 사람 수(노란 숫자)가 보이고, 다 읽으면 사라져요 (상대가 웹 또는 앱 v0.0.4 이상을 쓸 때 정확해요)']],
-  ['웹 0.0.20', '2026-10-24', ['업무 지시: 가맹점 요청사항 빠른 선택 ‘용지신청’(직접 입력과 같이). 완료하면 응대 기록 종류가 ‘용지신청’으로 남아요', '업무 지시: 찾는 가맹점이 없으면 ‘새 가맹점 등록’ → 저장하면 이 업무에 자동 연결 (권한·암호 규칙 그대로)', '가맹점: 계약시작일·계약종료일 (상세에 D-day)', '가맹점 목록: 계약 만료 예정 필터 1·2·3개월 이내·만료됨, 종료일 빠른 순, 검색과 같이', 'VAN사 목록을 취급사로 정리 (다우데이타·다우데이타PG·KIS정보통신·KIS정보통신PG·NHN KCP·KOVAN·KOPAY PG), 직접 입력한 이름도 다음부터 목록에', '응대 종류에 ‘용지신청’ 추가']],
-  ['웹 0.0.19', '2026-10-24', ['채팅: ‘+ 새 채팅’을 누르면 앱처럼 그룹 채팅방 / 1:1 대화 중에서 골라요 (1:1은 직원 검색해서 고르기)', '채팅: 직원 찾기 칸(이름·초성·번호)과 직원 줄 좌우 화살표 ‹ › 로 직원이 많아도 쉽게 찾기']],
-  ['웹 0.0.18', '2026-10-24', ['직원과 권한: ‘영업 실적·순위에서 빼기’ 추가 — 대표님처럼 켜 둔 계정은 실적 합계·직원별 순위·월별 비교·직원별 수익에 들어가지 않아요']],
-  ['웹 0.0.17', '2026-10-24', ['‘지금 업데이트’를 누르면 바로 새 버전이 열리게 고침(전에는 서버 임시 보관 때문에 최대 10분 늦게 바뀜)']],
-  ['웹 0.0.16', '2026-10-24', ['PC: 채팅처럼 화면 왼쪽 칸을 씀 — 업무(기한 지난·내 업무·최근 완료), 프로젝트(진행률), 일정(오늘부터 일주일), 가맹점·응대 기록(진행 중 가맹점 업무·최근 연 가맹점·최근 응대 기록), ☰에서 연 화면은 같은 묶음 메뉴']],
-  ['웹 0.0.15', '2026-10-24', ['업무 ↔ 응대 기록 연결: 업무를 올릴 때 가맹점을 고르고 ‘가맹점 요청사항’을 적으면, 완료할 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(다시 완료하면 같은 기록을 고침, 응대 종류 선택)', '가맹점 화면에 그 가맹점의 진행 중인 업무가 보여요', '응대 기록에 ‘📋 업무에서’ 표시']],
-  ['웹 0.0.14', '2026-10-24', ['재고: 입고(같은 모델은 수량에 더하기·입고처 메모), 출고(반품·불량·A/S 교체·분실 — 계약 없이), 수량 정정(재고 조사, 시리얼 스캔 확인), 재고 이력(입고·출고·계약 출고·정정, 날짜·직원·메모)', 'PC: ☰ 전체 메뉴 화면 바탕색을 구분하고 묶음별 카드로 정리', '업데이트: 새 버전이 나오면 위쪽에 ‘지금 업데이트’ 띠가 떠요. 새로고침·프로그램 재시작만 해도 새 버전이 바로 적용되고, 전체 → 회사 → 업데이트 확인으로 직접 확인할 수도 있어요']],
-  ['웹 0.0.13', '2026-10-24', ['사용설명서 전면 정리: 앱 사용설명서와 같은 순서로 모든 기능 설명, 항목을 눌러 펼치기, 검색(초성 가능), 자주 묻는 질문 추가']],
-  ['웹 0.0.12', '2026-10-24', ['로그인: 인증번호 받기를 누른 뒤 기다리는 시간 줄임(사람 확인을 화면이 열릴 때 미리 준비)']],
-  ['웹 0.0.11', '2026-10-24', ['윈도우 PC용 설치 프로그램(나인패밀리 설치 .exe) — 전체 → 계정 → PC 프로그램 설치 파일 받기. 토스포스처럼 설치해서 쓰고, 화면·기능은 웹앱과 같아요']],
-  ['웹 0.0.10', '2026-10-24', ['직원과 권한(최고관리자): 직원 추가(권한 묶음), 항목별 권한 켜고 끄기, 사용 중지·다시 사용 — 로그인 번호와 서버 권한도 같이 맞춰요', '가맹점 보호·복원(최고관리자): 삭제한 가맹점 복원, 가맹점별 변경 이력과 그 시점으로 되돌리기, 백업 파일로 복원, 되돌리기 기준점(위험한 작업 직전에 자동 저장)', '가맹점 일괄 가져오기: 엑셀(.xlsx)·CSV, 미리보기 후 등록·갱신(거래처코드·사업자번호·상호로 같은 곳 찾기)', '단체 문자: 내용({상호} 자동 바꿈)·등급별·검색으로 가맹점 고르기, 휴대폰에서 한 곳씩 문자 앱 열기 (PC는 알리고 연동 후 바로 발송 예정)', '이제 안드로이드 앱의 전체 메뉴 기능이 웹에도 모두 들어왔어요']],
+  ['웹 0.6.3', '2026-10-31', ['버전 번호 바꿈: 끝자리가 9를 넘으면 앞자리로 올라가요(0.6.2 → 0.6.3 → … → 0.7.0). 지난 내역 번호도 같은 방식으로 고쳤어요(예전 0.0.62 = 0.6.2)', '물품요청: 요청한 사람·관리자가 수정·삭제 (품목·수량은 발송 전까지)', '재고 현황(재고 화면 또는 ☰ → 재고): 품목별 보관지 수량·출고중·안전재고 표, 보관지·안전재고 미달만 거르기, 정렬, 부족 품목 체크 → 물품요청 자동 채움', '권한 화면 단순화: 역할(멤버·운영자·관리자·최고관리자)을 고르면 끝, 세부 권한은 접어 두고 겹치는 항목은 하나로', '채팅 이름 색: 아무 색이나 직접 골라요', '버튼·메뉴 색을 원래 단색으로(그라데이션 뺌)', 'AI 다듬기: 구글 Gemini 무료로 바꿈']],
+  ['웹 0.6.2', '2026-10-30', ['보안: 서버 규칙을 화면 권한과 맞춤(만든 사람 표시·방장·최고관리자 표시·암호 보관 위치·변경 기록), 로그아웃 때 이 기기에 남은 자료 지움', '권한 단계: 최고관리자·운영자·멤버 (직원 수정 창에서 한 번에), ‘중요 자료 삭제’ 권한 — 가맹점·계약·재고 삭제는 이 권한자만', '가맹점: 멤버도 새 가맹점 등록(등록한 사람·최근 수정한 사람 표시), 대표자 성함 칸', '채팅: 남의 글은 사진+이름(카톡처럼), 내 이름 색 바꾸기, 채팅방 목록 끌어서 순서 바꾸기, 입력창 다듬기', '채팅: ✦ AI 다듬기 — 쓴 글의 맞춤법·말투를 다듬어 바꿀지 고르기', '업무 종류: 카드사서류·큐밴등록', '지난 업무를 나중에 가맹점 응대 기록에 남기기', '계약: 수정·삭제, 장비 구분·전자계약서·리드관리·기존 VAN사', '실적 → 종합 보고서(월별 신규·단말기/POS·전자계약·토스 프론트/포스·토스 리드·CMS 재계약, 엑셀로 받기)', '단체 문자: 계약 만료(1·2·3개월 이내·이미 만료)로 거르기', 'PC 상단바: + 로 자주 쓰는 메뉴 붙이기, 메뉴 글씨 크고 굵게, 화면 입체감']],
+  ['웹 0.6.1', '2026-10-26', ['보안: 가맹점 정보 쓰기는 ‘가맹점 등록·수정’ 권한자·관리자만(서버 규칙), 가맹점 목록의 전화·주소는 가려서 보이고 상세에서만 전체', '보안: 가맹점 상세 열람·등록·수정·삭제·엑셀 가져오기·백업 내려받기를 감사 로그로 남김(관리자 → 가맹점 조회 기록), 조회량 많은 계정 확인', '보안: 가맹점 상세 조회 하루 한도(기본 100곳, 관리자 → 한도 설정) — 넘으면 막히고 관리자에게 알림', '보안: 앱 잠금(PIN) — 내 계정·설정 → 앱 잠금. 새로 열거나 1분 넘게 다른 창에 있다 오면 PIN', '엑셀 가져오기는 관리자 전용', '채팅: 쓰던 메시지 임시 저장 — 다른 화면에 갔다 와도 이어서 쓰기(방마다)', '가맹점 조회 창: ‘새 가맹점 등록’은 등록 권한이 있는 직원에게만(조회·검색·선택·상세·응대 기록은 누구나 암호 없이)', '업무 요청 빠른 선택 버튼을 작게, 버튼 안 글자는 한 줄로', '최고관리자(양문희·가태현): 모든 권한이 항상 켜짐, 다른 관리자가 끄거나 삭제할 수 없음']],
+  ['웹 0.6.0', '2026-10-26', ['채팅을 보낼 때 위쪽에 ‘서버에 저장 중’이 잠깐씩 깜빡이던 것: 저장이 10초 넘게 안 될 때만 보이게 (인터넷 끊김은 바로 표시)']],
+  ['웹 0.5.8', '2026-10-26', ['홈페이지 서류접수·상담신청을 앱 ‘서류접수’·‘상담신청’ 채팅방으로 받을 준비(글쓴이 ‘📮 홈페이지 접수’, 사진 함께)']],
+  ['웹 0.5.7', '2026-10-26', ['PC 오른쪽 채팅창에서 스크린샷 붙여넣기(Ctrl+V)·파일 끌어 놓기가 안 되던 것 고침']],
+  ['웹 0.5.6', '2026-10-26', ['대화방에서 위쪽(안 읽은 글 등)을 읽는 중에 새 글이 오면 아래에 ‘새 메시지 ↓’ 버튼 — 누르면 맨 아래로. 맨 아래를 보고 있으면 새 글을 따라 내려가요']],
+  ['웹 0.5.5', '2026-10-26', ['PC 오른쪽 채팅창: 글 쓰는 칸을 한 줄 전체로 넓게(여러 줄 보임), + ☺ 보내기는 그 아래 줄로']],
+  ['웹 0.5.4', '2026-10-26', ['PC 프로그램(0.0.9): 위쪽 검은 줄 어디든(메뉴 버튼 위라도) 잡고 끌면 창이 옮겨져요(다른 모니터로도). 전체 모드에서 끌면 작은 창이 되어 따라와요. 빈 곳을 두 번 누르면 전체 ↔ 작은 창']],
+  ['웹 0.5.3', '2026-10-26', ['PC 프로그램 창 줄이기 때 위쪽 검은 줄(메뉴 사이 빈 곳·이름 쪽)을 끌어 다른 모니터로 옮길 수 있게 — 옮긴 뒤 ⋮ → 크게보기를 누르면 그 모니터에서 전체 모드']],
+  ['웹 0.5.2', '2026-10-26', ['PC 오른쪽 채팅창을 텔레그램 PC처럼: 처음엔 대화방 목록, 방에 들어가면 왼쪽 세로줄(대화방들)·오른쪽 대화. PC 위쪽 ‘채팅’ 메뉴는 없애고 ‘💬 채팅창’ 버튼으로', '⋮ 메뉴의 창 줄이기 아이콘을 화살표가 마주보는 모양으로']],
+  ['웹 0.5.1', '2026-10-26', ['전체 메뉴에 ‘채팅’ 묶음: 채팅 알림 및 소리 설정 / 업무 묶음: 업무 알림 및 소리 설정 (따로 분리)', '가맹점 찾기: 대표자명·전화번호·핸드폰번호(하이픈 없이도)로도 찾아요', 'PC(넓은 화면): 위쪽 ‘💬 채팅창’ 버튼으로 오른쪽에 채팅창을 열고 닫아요(텔레그램 데스크톱처럼) — 처음엔 대화방 목록, 방에 들어가면 왼쪽 세로줄에 대화방들·오른쪽에 대화(세로줄을 누르면 그 방으로). 위쪽 ‘채팅’ 메뉴는 없앴어요', 'PC 프로그램(0.0.8): ‘지금 업데이트’를 누르면 설치 파일을 받아 설치 창이 자동으로 열려요. 자동으로 못 받으면 ‘설치 파일 직접 받기’ 버튼']],
+  ['웹 0.5.0', '2026-10-26', ['PC 프로그램 새 버전 안내가 이미 최신을 설치했는데도 뜨던 것 고침(설치된 버전을 확실히 읽어요)']],
+  ['웹 0.4.9', '2026-10-26', ['업데이트는 위쪽 ‘새 버전 · 지금 업데이트’ 한 곳에서: 가벼운 업데이트는 새로고침, PC 프로그램 재설치가 필요하면 같은 버튼이 알아서 받아 덮어 설치하고 다시 켜요(PC 0.0.6부터)']],
+  ['웹 0.4.8', '2026-10-26', ['PC 프로그램이 옛 버전이면 위쪽에 ‘PC 프로그램 새 버전’ 안내(눌러서 설치 파일 받기)', 'PC 프로그램(0.0.5): ⋮ → 창 최소화를 누르면 화면 구석에 바로가기 아이콘(위젯) — 끌어서 옮기고, 더블클릭하면 다시 열려요. 안 읽은 개수는 빨간 숫자']],
+  ['웹 0.4.7', '2026-10-26', ['PC 프로그램(0.0.4): 윈도우 제목줄 없이 전체 모드로 실행, 창 조작은 오른쪽 위 ⋮ 메뉴로. 창 줄이기 때는 위쪽 검은 줄을 끌어 옮겨요']],
+  ['웹 0.4.6', '2026-10-26', ['알림 및 소리 설정에 ‘업무 알림 받기’·‘채팅 알림 받기’ 켜기·끄기', '채팅 알림은 방마다 1개만(새 글이 오면 그 방 알림이 바뀌어요)', '대화방을 열면 안 읽은 첫 글부터 보여요(‘여기까지 읽었어요’ 줄), 위로 올려 읽는 중에는 새 글이 와도 아래로 끌려가지 않아요']],
+  ['웹 0.4.5', '2026-10-26', ['안 읽은 채팅 알림띠: 다른 화면에서도 위쪽에 읽을 때까지 떠 있고, 누르면 그 채팅방으로', '가맹점 등록·수정의 주소 칸: 인터넷 주소 검색처럼 찾아서 고르기(도로명·지번·건물명), 상세 주소는 이어 적기', 'PC 프로그램(0.0.3): 오른쪽 위 ⋮ 메뉴(새로고침·다시시작·종료·창 최소화·창 줄이기·크게보기), X 를 누르면 트레이로 숨어 계속 실행']],
+  ['웹 0.4.4', '2026-10-26', ['일일보고의 (자동 집계)는 쓰는 사람 화면에만 보여요. 대표님께 가는 보고(종합 보기)에는 직접 쓴 내용만 보여요']],
+  ['웹 0.4.3', '2026-10-26', ['첫 화면(업무)에서 뒤로가기를 누르면 ‘종료할까요?’ 확인 창']],
+  ['웹 0.4.2', '2026-10-26', ['휴대폰 화면 왼쪽 위 ‹ 뒤로 버튼: 하위 화면과 업무 외 탭에서 보이고, 아래로 내려도 위에 붙어 있어요. 누르면 한 단계씩 뒤로(하위 화면 → 전체 메뉴 → 업무)']],
+  ['웹 0.4.1', '2026-10-26', ['가맹점 업로드 양식에 응대 기록 열(응대일자·응대종류·요청사항·처리결과): 이카운트의 요청사항·처리완료를 가맹점 응대 기록으로 한꺼번에 올려요. 한 가맹점 여러 건은 줄을 여러 개, 같은 날 같은 내용은 두 번 안 올라가요']],
+  ['웹 0.4.0', '2026-10-26', ['업무 종류: AS 를 방문AS · 원격AS 로 나눔 (완료하면 응대 기록 종류도 방문A/S · 원격A/S 로)', '가맹점 요청사항 빠른 버튼: 누르면 뒤에 쉼표가 자동으로 붙고 커서가 끝으로 가서 바로 이어 쓸 수 있어요']],
+  ['웹 0.3.9', '2026-10-26', ['채팅에 스크린샷 붙여넣기: 대화방에서 Ctrl+V 하면 사진을 미리 보여 주고 보내요. 파일을 대화방에 끌어다 놓아도 돼요']],
+  ['웹 0.3.8', '2026-10-26', ['채팅 줄바꿈: PC는 Shift+Enter 로 줄을 바꾸고 Enter 로 보내요. 휴대폰은 Enter 가 줄바꿈, 보내기 버튼으로 보내요. 입력칸은 여러 줄이면 늘어나요']],
+  ['웹 0.3.7', '2026-10-26', ['채팅 순서: 서버가 받은 순서대로 보여요 (폰·PC 시계가 조금 달라도 나중에 쓴 글이 아래로). 이번 버전부터 보내는 메시지에 적용돼요']],
+  ['웹 0.3.6', '2026-10-26', ['상품 바코드: 상품 목록에 바코드 칸(상자에 찍힌 바코드, 스캐너·카메라로 찍기). 입고 때 상품 바코드를 찍으면 그 상품이 골라지고, 재고 검색칸에 찍으면 그 상품이 걸러져요', '재고 업로드 양식에 ‘상품 바코드’ 열 추가, 시리얼 열은 ‘시리얼(장비 바코드)’로 이름 정리']],
+  ['웹 0.3.5', '2026-10-26', ['업무·일정 시간 고르기를 30분 단위로 (오전 9:00, 오전 9:30 …)']],
+  ['웹 0.3.4', '2026-10-25', ['전체 메뉴: 계약과 재고를 따로 묶음(재고 묶음에 물품요청도), 순서 정리', '직원과 권한: 직원을 누르면 직원 정보 창(사진·부서·직책·생년월일·연락처·주소) — 정보 수정과 권한 설정 창이 따로', '권한 추가: 직원 정보 보기, 일일보고·실적보고 명단에 넣기', '직책 목록(관리자가 추가·수정·삭제, 위에 있을수록 앞): 직원 목록·일일보고 명단은 직책순, 전체 실적은 순위순/직책순 선택', '직원 완전 삭제(삭제 비밀번호 필요), 가맹점·재고·응대 기록·자료실 삭제도 삭제 비밀번호를 물어요 (☰ → 관리자 → 삭제 비밀번호)']],
+  ['웹 0.3.3', '2026-10-25', ['가맹점 등급 표기를 직원들이 부르는 대로: 0코드·1코드·2코드·3코드, 그다음 해지가맹점·신규가맹점·협력사 (목록·단체 문자·등록 화면·업로드 양식)']],
+  ['웹 0.3.2', '2026-10-25', ['물품요청: 칸을 누르면 재고 품목(상품코드·보관지별 재고 수)에서 고르고, 목록에 없는 물품은 이름만 적어도 요청돼요(‘새 물품’ 표시). 본사가 주문·발송을 표시할 때 상품 목록에 올라가고 상품코드가 붙어요']],
+  ['웹 0.3.1', '2026-10-25', ['가맹점 일괄 가져오기에 업로드 양식(.xlsx) 받기 — 이카운트 거래처 머리글과 같은 이름, VAN사·계약시작일·종료일도 읽어요', '재고 일괄 등록(엑셀, 관리자): 상품코드/상품명·시리얼·수량·현재위치 — 본사·광주지사는 우리 재고, 가맹점 상호는 이미 설치된 장비로 기록만(재고 수 제외)', 'PC 위쪽 메뉴 맨 끝에 ‘메모’: 업무 중 메모 추가·수정(자동 저장)·고정·삭제']],
+  ['웹 0.3.0', '2026-10-25', ['상품 목록(상품코드): 재고 입고와 물품요청이 같은 상품코드·상품명을 써요 (☰ → 재고 → 상품 목록). 관리자가 처음 열면 기존 재고 상품에 코드(P0001…)를 붙여요', '재고·재고 이력·물품요청 화면에 [상품코드] 표시, 상품코드로도 검색']],
+  ['웹 0.2.9', '2026-10-25', ['☰ → 내 계정·설정 → ‘알림 및 소리 설정’ 한 곳에서 업무 소리·채팅 소리를 각각 켜고 끄고 들어 보기']],
+  ['웹 0.2.8', '2026-10-25', ['업무 요청 ‘가맹점 요청사항’ 빠른 선택 버튼을 관리자가 바꿀 수 있어요 (☰ → 관리자 → 업무 요청 빠른 선택 버튼)', '직원 이름은 이름만 표시 (직함은 빼고, 권한으로 구분)', '휴대폰 아래 탭: ‘전체’를 ☰ 로']],
+  ['웹 0.2.7', '2026-10-25', ['‘업무 지시’를 ‘업무 요청’으로 이름 바꿈 (요청하기·요청한 사람)']],
+  ['웹 0.2.6', '2026-10-25', ['채팅 알림 음성을 밝은 여자 목소리 “나인톡!”으로 바꿈, 다른 알림 음성도 같은 목소리로']],
+  ['웹 0.2.5', '2026-10-25', ['채팅 알림 소리를 카톡처럼 짧게 “나톡!”으로 바꾸고, 업무는 ‘띵동’ + “업무가 배정되었습니다”로 따로 울려요', '☰ → 내 계정·설정에 ‘업무 알림 소리’·‘채팅 알림 소리(나톡)’를 따로 켜고 끄는 칸과 각각 들어 보기', '채팅방 위 🔔 버튼으로 그 방만 알림 소리 끄기(🔕)']],
+  ['웹 0.2.4', '2026-10-25', ['알림 음성이 안 나던 문제 고침: 미리 녹음한 음성 파일을 틀어서, 기기에 한국어 음성이 없어도 “업무가 배정되었습니다”·“나인톡”이 들려요. 화면을 한 번 누른 뒤부터 소리가 나요(브라우저 규칙)']],
+  ['웹 0.2.3', '2026-10-25', ['알림 음성: 업무가 배정되면 “업무가 배정되었습니다”, 채팅은 “나인톡”, 물품요청·발송·공지도 소리와 음성으로 알려요 (☰ → 내 계정·설정 → 알림 소리 들어 보기)', '☰ 전체 메뉴에서 ‘내 계정·설정’을 맨 앞으로', '사용설명서를 시작하기 → 주 메뉴 → ☰ 메뉴 묶음 순서로 다시 정리, 물품요청 설명 추가']],
+  ['웹 0.2.2', '2026-10-24', ['재고 보관지(본사·광주지사): 입고 때 보관지 선택, 보관지별 보기·수량, 보관지 바꾸면 ‘이동’ 이력', '물품요청(지사 → 본사): 품목·수량·받을 곳·본사 담당자 → 담당자에게 알림 → 주문함·발송(발주처리, 송장 메모)·반려 → 받는 쪽 ‘입고 확인’하면 그 보관지 재고에 자동 입고', '☰ 전체 메뉴를 업무·가맹점·계약·재고·실적·보고·회사·내 계정·설정·관리자로 나누고 넓은 화면을 다 쓰게, 권한 없는 메뉴는 숨김']],
+  ['웹 0.2.1', '2026-10-24', ['채팅 읽음 표시: 카톡처럼 말풍선 옆에 아직 안 읽은 사람 수(노란 숫자)가 보이고, 다 읽으면 사라져요 (상대가 웹 또는 앱 v0.0.4 이상을 쓸 때 정확해요)']],
+  ['웹 0.2.0', '2026-10-24', ['업무 지시: 가맹점 요청사항 빠른 선택 ‘용지신청’(직접 입력과 같이). 완료하면 응대 기록 종류가 ‘용지신청’으로 남아요', '업무 지시: 찾는 가맹점이 없으면 ‘새 가맹점 등록’ → 저장하면 이 업무에 자동 연결 (권한·암호 규칙 그대로)', '가맹점: 계약시작일·계약종료일 (상세에 D-day)', '가맹점 목록: 계약 만료 예정 필터 1·2·3개월 이내·만료됨, 종료일 빠른 순, 검색과 같이', 'VAN사 목록을 취급사로 정리 (다우데이타·다우데이타PG·KIS정보통신·KIS정보통신PG·NHN KCP·KOVAN·KOPAY PG), 직접 입력한 이름도 다음부터 목록에', '응대 종류에 ‘용지신청’ 추가']],
+  ['웹 0.1.9', '2026-10-24', ['채팅: ‘+ 새 채팅’을 누르면 앱처럼 그룹 채팅방 / 1:1 대화 중에서 골라요 (1:1은 직원 검색해서 고르기)', '채팅: 직원 찾기 칸(이름·초성·번호)과 직원 줄 좌우 화살표 ‹ › 로 직원이 많아도 쉽게 찾기']],
+  ['웹 0.1.8', '2026-10-24', ['직원과 권한: ‘영업 실적·순위에서 빼기’ 추가 — 대표님처럼 켜 둔 계정은 실적 합계·직원별 순위·월별 비교·직원별 수익에 들어가지 않아요']],
+  ['웹 0.1.7', '2026-10-24', ['‘지금 업데이트’를 누르면 바로 새 버전이 열리게 고침(전에는 서버 임시 보관 때문에 최대 10분 늦게 바뀜)']],
+  ['웹 0.1.6', '2026-10-24', ['PC: 채팅처럼 화면 왼쪽 칸을 씀 — 업무(기한 지난·내 업무·최근 완료), 프로젝트(진행률), 일정(오늘부터 일주일), 가맹점·응대 기록(진행 중 가맹점 업무·최근 연 가맹점·최근 응대 기록), ☰에서 연 화면은 같은 묶음 메뉴']],
+  ['웹 0.1.5', '2026-10-24', ['업무 ↔ 응대 기록 연결: 업무를 올릴 때 가맹점을 고르고 ‘가맹점 요청사항’을 적으면, 완료할 때 적는 ‘처리결과’와 함께 그 가맹점 응대 기록에 자동으로 남아요(다시 완료하면 같은 기록을 고침, 응대 종류 선택)', '가맹점 화면에 그 가맹점의 진행 중인 업무가 보여요', '응대 기록에 ‘📋 업무에서’ 표시']],
+  ['웹 0.1.4', '2026-10-24', ['재고: 입고(같은 모델은 수량에 더하기·입고처 메모), 출고(반품·불량·A/S 교체·분실 — 계약 없이), 수량 정정(재고 조사, 시리얼 스캔 확인), 재고 이력(입고·출고·계약 출고·정정, 날짜·직원·메모)', 'PC: ☰ 전체 메뉴 화면 바탕색을 구분하고 묶음별 카드로 정리', '업데이트: 새 버전이 나오면 위쪽에 ‘지금 업데이트’ 띠가 떠요. 새로고침·프로그램 재시작만 해도 새 버전이 바로 적용되고, 전체 → 회사 → 업데이트 확인으로 직접 확인할 수도 있어요']],
+  ['웹 0.1.3', '2026-10-24', ['사용설명서 전면 정리: 앱 사용설명서와 같은 순서로 모든 기능 설명, 항목을 눌러 펼치기, 검색(초성 가능), 자주 묻는 질문 추가']],
+  ['웹 0.1.2', '2026-10-24', ['로그인: 인증번호 받기를 누른 뒤 기다리는 시간 줄임(사람 확인을 화면이 열릴 때 미리 준비)']],
+  ['웹 0.1.1', '2026-10-24', ['윈도우 PC용 설치 프로그램(나인패밀리 설치 .exe) — 전체 → 계정 → PC 프로그램 설치 파일 받기. 토스포스처럼 설치해서 쓰고, 화면·기능은 웹앱과 같아요']],
+  ['웹 0.1.0', '2026-10-24', ['직원과 권한(최고관리자): 직원 추가(권한 묶음), 항목별 권한 켜고 끄기, 사용 중지·다시 사용 — 로그인 번호와 서버 권한도 같이 맞춰요', '가맹점 보호·복원(최고관리자): 삭제한 가맹점 복원, 가맹점별 변경 이력과 그 시점으로 되돌리기, 백업 파일로 복원, 되돌리기 기준점(위험한 작업 직전에 자동 저장)', '가맹점 일괄 가져오기: 엑셀(.xlsx)·CSV, 미리보기 후 등록·갱신(거래처코드·사업자번호·상호로 같은 곳 찾기)', '단체 문자: 내용({상호} 자동 바꿈)·등급별·검색으로 가맹점 고르기, 휴대폰에서 한 곳씩 문자 앱 열기 (PC는 알리고 연동 후 바로 발송 예정)', '이제 안드로이드 앱의 전체 메뉴 기능이 웹에도 모두 들어왔어요']],
   ['웹 0.0.9', '2026-10-24', ['일일보고 쓰기: 날짜별로 쓰고 제출(완료 업무·올린 계약 자동 집계), 내가 낸 보고', '일일보고 종합 보기(보고 열람 권한자): 직원별 제출·미제출', '실적 보고서: 실적 권한자는 이달 실적 자동 집계를 고쳐서 대표님께 보고, 보고 열람 권한자는 올라온 보고서 보기', '자료실: 분류·검색, 자료 올리기(파일 5개·3MB, 사진은 자동으로 줄여서), 받기, 수정·삭제(올린 사람·관리자)', '비상연락망: 구분별 목록, 눌러서 전화, 추가·수정·삭제', '내 프로필: 사진 변경·상태 메시지, 다른 직원 프로필에서 1:1 대화·전화, 채팅 직원 줄에 프로필 사진']],
   ['웹 0.0.8', '2026-10-24', ['내 실적: 이번 달 신규 계약·판매금액, 지난달과 비교(성장률), 최근 6개월, 올린 계약', '전체 실적·직원별 순위(실적 권한자): 직원별 대수·판매·CMS·렌탈·판매금액 순위, 직원별 지난달→이번 달 막대', '수익 현황(실적 권한자): 총 수익·월 수익·최근 6개월·직원별 수익, 단가 안 적은 출고 장비 바로 입력', '지난 업무 기록: 완료된 업무 검색(전체 이력 권한이 있으면 모두, 없으면 내 것)']],
   ['웹 0.0.7', '2026-10-24', ['안드로이드 앱과 맞춤: 업무 상태 변경은 담당자·최고관리자, 업무 삭제는 만든 사람·최고관리자', '서류 업무(서류 접수·카드사 서류)를 지시하면 ‘서류접수’ 채팅방에 자동으로 알림', '계약 만료 3개월 이내 계약이 있으면 업무 화면 위에 알림 카드', '일정: 다가오는 일정 목록, 일정을 누르면 내용·가맹점 정보 보기, 관리자는 일정 삭제', '가맹점 등급 코드(0~7) 입력·표시', '공지: 작성 권한자·관리자는 읽은 사람 목록', '채팅: 나인이 프렌즈 스티커 80종·이모지, 말풍선 누르면 반응·답장·복사·내 메시지 삭제, 두 번 누르면 ❤️, 글 속 웹 주소 누르면 열림', '가맹점 응대 기록: 종류·날짜로 걸러 보기']],
