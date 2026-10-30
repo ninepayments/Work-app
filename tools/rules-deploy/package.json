@@ -1,0 +1,8 @@
+{
+  "name": "nine-rules-deploy",
+  "private": true,
+  "description": "firestore.rules 를 서버에 게시 (.github/workflows/rules.yml 에서 손으로 실행)",
+  "dependencies": {
+    "firebase-admin": "13.0.2"
+  }
+}

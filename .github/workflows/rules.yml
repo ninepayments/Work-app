@@ -1,0 +1,25 @@
+name: Publish Firestore rules
+# 저장소의 firestore.rules 를 서버에 게시한다. 자동으로는 돌지 않고, Actions → 이 워크플로 → Run workflow 로만 실행.
+# 비밀값 FIREBASE_SERVICE_ACCOUNT(백업과 같은 것)를 쓴다. 게시 전 최고관리자 표시를 확인한다(tools/rules-deploy/deploy.js).
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: rules
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Publish
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then echo "::error::FIREBASE_SERVICE_ACCOUNT 비밀값이 없습니다."; exit 1; fi
+          cd tools/rules-deploy
+          npm install --no-audit --no-fund --silent
+          node deploy.js
