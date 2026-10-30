@@ -6,7 +6,7 @@ const VERSION = '웹 0.0.61';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
-const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사 서류', '기타']; // 예전 업무의 'AS' 는 그대로 보여요
+const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사서류', '큐밴등록', '기타']; // 예전 업무의 'AS'·'카드사 서류' 는 그대로 보여요
 const KINDS = ['방문A/S', '원격A/S', '전화응대', '용지신청', '기타'];
 // 업무 요청 '가맹점 요청사항' 빠른 선택 버튼 — 관리자가 ☰ → 관리자 → 빠른 선택 버튼에서 바꾼다 (config key 'req_quick')
 const reqQuickDoc = () => list('config').find(c => c.key === 'req_quick');
@@ -386,7 +386,7 @@ function render() {
   if (wide) {
     const top = '<header class="pctop"><button class="hamb" data-act="menu" aria-label="' + (S.menu ? '전체 메뉴 닫기' : '전체 메뉴 열기') + '">' + (S.menu ? '✕' : '☰') + (!S.menu && badges.all ? '<span class="badge">' + badges.all + '</span>' : '') + '</button>' +
       '<div class="logo" data-act="home" title="홈으로"><img src="icon-192.png" alt="">나인패밀리</div><nav class="pcnav">' + NAVPC.map(btn).join('') + '</nav>' +
-      '<button data-act="installApp" class="inst pcinst" style="display:none">PC에 설치하기</button><div class="me">' + esc(S.me.name) + ' · ' + (can('staff_manage') ? '관리자' : '직원') + '</div>' + '<button class="pcdock' + (LS('dock_' + S.uid) === '1' ? ' on' : '') + '" data-act="dockToggle" title="오른쪽 채팅창 열기·닫기">💬 채팅창' + (badges.chat ? '<span class="badge">' + badges.chat + '</span>' : '') + '</button>' + (window.nineWin ? '<button class="pcwin" data-act="pcWin" aria-label="창 메뉴">⋮</button>' : '') + '</header>';
+      '<button data-act="installApp" class="inst pcinst" style="display:none">PC에 설치하기</button><div class="me">' + esc(S.me.name) + ' · ' + roleName(S.me) + '</div>' + '<button class="pcdock' + (LS('dock_' + S.uid) === '1' ? ' on' : '') + '" data-act="dockToggle" title="오른쪽 채팅창 열기·닫기">💬 채팅창' + (badges.chat ? '<span class="badge">' + badges.chat + '</span>' : '') + '</button>' + (window.nineWin ? '<button class="pcwin" data-act="pcWin" aria-label="창 메뉴">⋮</button>' : '') + '</header>';
     root.innerHTML = '<div class="app pc' + (dockOn() ? ' dockon' : '') + '">' + top + chatBarHTML() + '<div class="main">' + body + '</div></div>' + (S.menu ? '' : fab());
   } else {
     root.innerHTML = '<div class="app">' + chatBarHTML() + '<div class="main">' + body + '</div><nav class="nav">' + NAVPHONE.map(btn).join('') + '</nav></div>' + fab();
@@ -436,6 +436,7 @@ function viewBody(k) {
     case 'myperf': return viewPerf(true);
     case 'perf': return canPerf() ? viewPerf(false) : '<div class="empty">실적 보기 권한이 있어야 볼 수 있어요.</div>';
     case 'profit': return viewProfit();
+    case 'summary': return viewSummary();
     case 'history': return viewHistory();
     case 'daily': return viewDaily();
     case 'reportview': return viewReportView();
@@ -455,7 +456,7 @@ function viewBody(k) {
 }
 function fab() {
   const k = S.sub || S.tab;
-  const map = {task: 'newTask', project: 'newProject', merchants: canEditMerchant() ? 'newMerchant' : '', calendar: can('staff_manage') ? 'newEvent' : '', notice: can('notice_write') ? 'newNotice' : '', stock: 'newStock', contracts: 'newContract', deposit: 'newDeposit', library: 'newLib', contacts: 'newContact', staff: can('staff_manage') ? 'newStaff' : ''};
+  const map = {task: 'newTask', project: 'newProject', merchants: 'newMerchant', calendar: can('staff_manage') ? 'newEvent' : '', notice: can('notice_write') ? 'newNotice' : '', stock: 'newStock', contracts: 'newContract', deposit: 'newDeposit', library: 'newLib', contacts: 'newContact', staff: can('staff_manage') ? 'newStaff' : ''};
   return map[k] ? '<button class="fab" data-act="' + map[k] + '">+</button>' : '';
 }
 function bind(root) {
@@ -522,7 +523,7 @@ function viewTasks(noHero) {
 }
 function taskCard(t) {
   const s = ST[t.status] || t.status; const c = stColor(t.status === '확인함' ? '진행중' : t.status);
-  const ty = (t.type || '기타').replace('신규 ', '').replace('영업 방문', '영업').replace('서류 접수', '서류').replace('카드사 서류', '카드').slice(0, 2);
+  const ty = (t.type || '기타').replace('신규 ', '').replace('영업 방문', '영업').replace('서류 접수', '서류').replace('카드사 서류', '카드').replace('카드사서류', '카드').replace('큐밴등록', '큐밴').slice(0, 2);
   return '<div class="card" data-act="task" data-arg="' + t.id + '"><div class="row"><div class="tile">' + esc(ty) + '</div><div class="grow"><div class="t1">' + esc(t.title) + '</div><div class="t2">' + esc((t.client ? t.client + ' · ' : '') + uname(t.assignee) + (t.due ? ' · ' + t.due : '')) + '</div></div><span class="chip" style="background:' + c[0] + ';color:' + c[1] + '">' + s + '</span></div></div>';
 }
 ACT.scope = a => { S.showAll = a === '1'; render(); };
@@ -540,6 +541,7 @@ ACT.task = id => {
     '<h2>처리 이력</h2>' + (t.history || []).map(h => '<div class="hist">' + esc(h.t + '  ' + uname(h.who) + '\n' + h.text) + '</div>').join('') +
     (own && t.status !== '완료' ? '<div class="btns" style="margin-top:12px">' + (t.status !== '진행중' && t.status !== '확인함' ? '<button class="btn tint" data-act="tstatus" data-arg="' + id + '|진행중">진행 시작</button>' : '') + '<button class="btn" data-act="thold" data-arg="' + id + '">보류·연기</button><button class="btn gold" data-act="tdone" data-arg="' + id + '">완료</button></div>' : '') +
     (own && t.status === '완료' ? '<button class="btn full" data-act="tstatus" data-arg="' + id + '|진행중">진행중으로 되돌리기</button>' : '') +
+    (t.status === '완료' && !(t.mlog && byId('mlogs', t.mlog)) && (own || t.creator === S.uid) ? '<button class="btn tint full" data-act="tlink" data-arg="' + id + '">🏪 가맹점 응대 기록에 남기기</button>' : '') +
     (own && t.status === '보류' ? '<button class="btn tint full" data-act="tresched" data-arg="' + id + '">일정 다시 잡기</button>' : '') +
     '<div class="btns">' + (t.creator === S.uid || can('staff_manage') ? '<button class="btn red" data-act="tdel" data-arg="' + id + '">삭제</button>' : '') + '<button class="btn" data-act="close">닫기</button></div>');
 };
@@ -561,6 +563,20 @@ ACT.tresched = id => formModal('일정 다시 잡기', '<label class="fl" for="f
 // 업무 ↔ 응대 기록: 가맹점이 연결된 업무를 완료하면 요청사항·처리결과가 그 가맹점 응대 기록에 남는다(다시 완료하면 같은 기록을 고침)
 const taskMerchant = t => (t.merchant && byId('merchants', t.merchant)) || (t.client ? list('merchants').find(m => (m.name || '').trim() === t.client.trim()) : null);
 const kindOfTask = t => /용지신청/.test((t.req || '') + (t.title || '')) ? '용지신청' : /원격/.test((t.type || '') + (t.title || '')) ? '원격A/S' : /전화/.test(t.title || '') ? '전화응대' : /AS|A\/S|설치|방문/.test(t.type || '') ? '방문A/S' : '기타';
+// 가맹점 이력 연동: 가맹점 없이 끝낸 지난 업무를 나중에 가맹점에 붙여 응대 기록으로 남긴다 (앱과 같음)
+ACT.tlink = id => {
+  const t = byId('tasks', id); if (!t) return; let mer = taskMerchant(t);
+  formModal('가맹점 응대 기록에 남기기', '<div class="sub" style="margin-top:0">‘' + esc(t.title) + '’ 업무의 요청사항·처리결과를 고른 가맹점 응대 기록으로 남겨요.</div>' + MP_HTML +
+    '<label class="fl" for="f_k">응대 종류</label><select id="f_k">' + KINDS.map(k => '<option' + (k === kindOfTask(t) ? ' selected' : '') + '>' + k + '</option>').join('') + '</select>', () => {
+    if (!mer) return warn('가맹점을 골라 주세요.');
+    const req = t.req || t.title, res = t.doneMsg || '';
+    const g = create('mlogs', {merchant: mer.id, mname: mer.name, who: S.uid, task: t.id, date: (t.doneAt || todayStr()).slice(0, 10), kind: $('#f_k').value, req, res, text: req + (res ? '\n→ 처리: ' + res : '')});
+    put('mlogs', g); t.mlog = g.id; t.merchant = mer.id; tlog(t, '가맹점 응대 기록에 연결 → ' + mer.name); put('tasks', t);
+    render(); toast('‘' + mer.name + '’ 응대 기록에 남겼어요.'); return true;
+  }, '남기기');
+  const pick = wireMerchantPicker(m => { mer = m; });
+  if (mer) pick(mer);
+};
 ACT.tdone = id => {
   const t0 = byId('tasks', id); const mer = t0 && taskMerchant(t0); const k0 = t0 && t0.mlog && byId('mlogs', t0.mlog) ? logKind(byId('mlogs', t0.mlog).kind) : kindOfTask(t0 || {});
   formModal('완료 처리', (t0 && t0.req ? '<div class="lb">가맹점 요청사항</div><div class="sub" style="margin-top:0;white-space:pre-wrap">' + esc(t0.req) + '</div>' : '') +
@@ -751,8 +767,30 @@ function dmOther(r) { return (r.members || []).find(x => x !== S.uid) || 0; }
 function roomTitle(r) { return r.dm ? (dmOther(r) ? uname(dmOther(r)) : '나와의 대화') : (r.name || ''); }
 function lastMsg(rid) { let b = null; list('msgs').forEach(m => { if (m.room === rid && (!b || m.ts > b.ts)) b = m; }); return b; }
 function msgText(m) { if (m.kind === 'img') return '📷 사진'; if (m.kind === 'stk') return '스티커 (앱에서 보여요)'; if (m.kind === 'file') return '📎 ' + (m.fname || '파일'); return m.text || ''; }
+// 채팅방 목록 순서: 직원마다 끌어서 정한다(프로필 rorder 에 방 번호 순서로 저장 → PC·폰 같은 순서)
+const roomOrder = () => { const p = myProf(); return p && Array.isArray(p.rorder) ? p.rorder.map(Number) : []; };
+ACT.roomEdit = () => { S.roomEdit = !S.roomEdit; render(); };
+ACT.roomOrderReset = () => { const pr = Object.assign({}, myProf() || {id: S.uid}); pr.rorder = []; put('profiles', pr); S.roomEdit = false; render(); toast('최근 대화순으로 되돌렸어요.'); };
+let rdrag = null;
+document.addEventListener('pointerdown', e => {
+  const g = e.target.closest && e.target.closest('.rgrip'); if (!g) return;
+  const card = g.closest('.card'), box = card.parentElement; e.preventDefault();
+  rdrag = {card, box, id: e.pointerId}; card.classList.add('dragging'); try { g.setPointerCapture(e.pointerId); } catch (x) {}
+});
+document.addEventListener('pointermove', e => {
+  if (!rdrag || e.pointerId !== rdrag.id) return; e.preventDefault();
+  const sib = [...rdrag.box.querySelectorAll('.card[data-rid]')].filter(c => c !== rdrag.card);
+  const after = sib.find(c => { const r = c.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+  if (after) rdrag.box.insertBefore(rdrag.card, after); else rdrag.box.appendChild(rdrag.card);
+});
+document.addEventListener('pointerup', e => {
+  if (!rdrag || e.pointerId !== rdrag.id) return; rdrag.card.classList.remove('dragging');
+  const ids = [...rdrag.box.querySelectorAll('.card[data-rid]')].map(c => Number(c.dataset.rid)); rdrag = null;
+  const pr = Object.assign({}, myProf() || {id: S.uid}); pr.rorder = ids; put('profiles', pr); // 방 목록 순서 저장
+});
 function viewChat(dock) { // dock: PC 오른쪽 채팅창(좁은 한 줄 모양)
-  const rooms = list('rooms').map(r => ({r, last: lastMsg(r.id)})).filter(x => x.last || x.r.id === S.room).sort((a, b) => (b.last ? b.last.ts : 0) - (a.last ? a.last.ts : 0));
+  const ro = roomOrder(), rix = id => ro.indexOf(id); // 내가 끌어서 정한 순서(프로필 rorder) — 정하지 않은 방은 위에 최근 대화순
+  const rooms = list('rooms').map(r => ({r, last: lastMsg(r.id)})).filter(x => x.last || x.r.id === S.room).sort((a, b) => (rix(a.r.id) < 0 || rix(b.r.id) < 0 ? (rix(a.r.id) < 0 ? 0 : 1) - (rix(b.r.id) < 0 ? 0 : 1) || ((b.last ? b.last.ts : 0) - (a.last ? a.last.ts : 0)) : rix(a.r.id) - rix(b.r.id)));
   const un = unreadMap();
   const staff = list('users').filter(u => u.id !== S.uid && u.active !== false).sort((a, b) => a.name.localeCompare(b.name));
   const pq = S.peopleQ || '', ps = staff.filter(u => kmatch((u.name || '') + ' ' + (u.phone || '').replace('+82', '0'), pq));
@@ -762,10 +800,11 @@ function viewChat(dock) { // dock: PC 오른쪽 채팅창(좁은 한 줄 모양)
     '<div class="qres" data-for="peopleQ"><div class="avwrap"><button class="avnav" data-act="avScroll" data-arg="-1" aria-label="앞 직원">‹</button><div class="avs" id="avs">' +
     (ps.length ? ps.map(u => '<div class="av" data-act="dm" data-arg="' + u.id + '">' + avatarHTML(u.id, 52) + esc(u.name) + '</div>').join('') : '<div class="sub" style="padding:14px 4px">찾는 직원이 없어요.</div>') +
     '</div><button class="avnav" data-act="avScroll" data-arg="1" aria-label="다음 직원">›</button></div></div>' +
-    '<input id="chq" data-q="chatQ" placeholder="🔍 대화방 검색 (초성 가능)" value="' + esc(S.chatQ) + '">' +
-    '<div class="qres" data-for="chatQ">' + rooms.filter(x => kmatch(roomTitle(x.r), S.chatQ)).map(x => {
+    '<div class="row" style="gap:8px;margin-top:10px"><input id="chq" data-q="chatQ" placeholder="🔍 대화방 검색 (초성 가능)" value="' + esc(S.chatQ) + '" style="margin:0"><button class="btn' + (S.roomEdit ? ' gold' : '') + '" style="flex:none;margin:0" data-act="roomEdit">' + (S.roomEdit ? '완료' : '순서 편집') + '</button></div>' +
+    (S.roomEdit ? '<div class="sub">≡ 를 잡고 끌어서 순서를 바꿔요. <button class="btn" style="margin:0 0 0 6px;padding:3px 10px" data-act="roomOrderReset">최근 대화순으로 되돌리기</button></div>' : '') +
+    '<div class="qres' + (S.roomEdit ? ' redit' : '') + '" data-for="chatQ" id="roomlist">' + rooms.filter(x => kmatch(roomTitle(x.r), S.chatQ)).map(x => {
       const l = x.last; const c = un[x.r.id] || 0;
-      return '<div class="card" data-act="room" data-arg="' + x.r.id + '"><div class="row"><div class="tile">' + esc((roomTitle(x.r) || '?').slice(0, 1)) + '</div><div class="grow"><div class="t1">' + esc(roomTitle(x.r)) + '</div><div class="t2">' + esc(l ? (l.who === S.uid ? '나' : wname(l)) + ': ' + msgText(l) : '아직 대화가 없어요') + '</div></div><div style="text-align:right;font-size:11px;color:var(--gray)">' + (l ? new Date(l.ts).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false}) : '') + (c ? '<br><span class="badge">' + c + '</span>' : '') + '</div></div></div>';
+      return '<div class="card" data-act="' + (S.roomEdit ? '' : 'room') + '" data-arg="' + x.r.id + '" data-rid="' + x.r.id + '"><div class="row">' + (S.roomEdit ? '<span class="rgrip" aria-label="끌어서 순서 바꾸기">≡</span>' : '') + '<div class="tile">' + esc((roomTitle(x.r) || '?').slice(0, 1)) + '</div><div class="grow"><div class="t1">' + esc(roomTitle(x.r)) + '</div><div class="t2">' + esc(l ? (l.who === S.uid ? '나' : wname(l)) + ': ' + msgText(l) : '아직 대화가 없어요') + '</div></div><div style="text-align:right;font-size:11px;color:var(--gray)">' + (l ? new Date(l.ts).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false}) : '') + (c ? '<br><span class="badge">' + c + '</span>' : '') + '</div></div></div>';
     }).join('') + '</div>' + (rooms.length ? '' : '<div class="empty">아직 채팅방이 없어요.</div>') + '<div style="height:90px"></div></div>';
   const wide = !dock && isWide();
   if (!S.room) { S.openRoom = 0; return wide ? '<div class="chatwrap">' + lst + '<div class="chatroom"><div class="empty" style="margin:auto">대화방을 골라 주세요.</div></div></div>' : lst; }
@@ -776,14 +815,18 @@ function viewChat(dock) { // dock: PC 오른쪽 채팅창(좁은 한 줄 모양)
   const ms = list('msgs').filter(m => m.room === S.room).sort((a, b) => msgOrder(a) - msgOrder(b) || (a.ts || 0) - (b.ts || 0));
   const mem = roomMemberIds(room);
   let lastDay = '', html = '', ul = false;
+  let pv = null; // 바로 앞 글 — 같은 사람이 같은 분에 이어 쓰면 프사·이름은 한 번만(카톡처럼)
   ms.forEach(m => {
     if (!ul && m.ts > S.openRead && m.who !== S.uid) { ul = true; html += '<div class="unreadline" id="unreadline"><span>여기까지 읽었어요</span></div>'; }
     const d = new Date(m.ts); const day = d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
     if (day !== lastDay) { lastDay = day; html += '<div class="day"><span>' + day + '</span></div>'; }
     const me = m.who === S.uid; const un = unreadOf(m, mem);
-    html += '<div class="m ' + (me ? 'me' : '') + '"><div>' + (me || room.dm ? '' : '<div class="who">' + esc(wname(m)) + '</div>') + '<div class="bub' + (m.kind === 'img' ? ' pic' : m.kind === 'stk' ? ' pic' : '') + '" data-mid="' + m.id + '">' + (m.rto ? '<div class="rto">' + esc((uname(m.rto.who)) + ': ' + (m.rto.text || '')) + '</div>' : '') + msgBody(m) + '</div>' + reactLine(m) + '<div class="who" style="' + (me ? 'text-align:right' : '') + '">' + (un && me ? '<b class="unr">' + un + '</b> ' : '') + pad(d.getHours()) + ':' + pad(d.getMinutes()) + (un && !me ? ' <b class="unr">' + un + '</b>' : '') + '</div></div></div>';
+    const sameRun = pv && pv.who === m.who && Math.floor((pv.ts || 0) / 60000) === Math.floor((m.ts || 0) / 60000) && !html.endsWith('</span></div>'); pv = m;
+    const av = me ? '' : '<div class="mav">' + (sameRun ? '' : '<button type="button" class="mavb" data-act="profile" data-arg="' + m.who + '" aria-label="' + esc(wname(m)) + ' 프로필">' + avatarHTML(m.who, 38) + '</button>') + '</div>';
+    const nc = nameColor(m.who);
+    html += '<div class="m ' + (me ? 'me' : '') + (sameRun ? ' run' : '') + '">' + av + '<div class="mcol">' + (me || sameRun ? '' : '<div class="nm"' + (nc ? ' style="color:' + nc + '"' : '') + '>' + esc(wname(m)) + '</div>') + '<div class="bub' + (m.kind === 'img' ? ' pic' : m.kind === 'stk' ? ' pic' : '') + '" data-mid="' + m.id + '">' + (m.rto ? '<div class="rto">' + esc((uname(m.rto.who)) + ': ' + (m.rto.text || '')) + '</div>' : '') + msgBody(m) + '</div>' + reactLine(m) + '<div class="who" style="' + (me ? 'text-align:right' : '') + '">' + (un && me ? '<b class="unr">' + un + '</b> ' : '') + pad(d.getHours()) + ':' + pad(d.getMinutes()) + (un && !me ? ' <b class="unr">' + un + '</b>' : '') + '</div></div></div>';
   });
-  const roomView = '<div class="chatroom"><div class="hdr"><button data-act="leave">‹</button><div class="grow t1">' + esc(roomTitle(room)) + (room.grp ? ' <span class="sub">(' + (room.members || []).length + '명)</span>' : '') + '</div><button data-act="roomMute" title="이 채팅방 알림 소리" aria-label="이 채팅방 알림 소리 ' + (roomMuted(room.id) ? '켜기' : '끄기') + '">' + (roomMuted(room.id) ? '🔕' : '🔔') + '</button></div><div class="msgs" id="msgbox">' + (html || '<div class="empty">첫 메시지를 남겨 보세요.</div>') + '</div>' + (S.replyTo ? '<div class="replybar"><span>↩ ' + esc(uname(S.replyTo.who)) + '에게 답장: ' + esc(S.replyTo.text) + '</span><button data-act="replyOff" aria-label="답장 취소">✕</button></div>' : '') + stkPanelHTML() + '<div class="send"><button class="plus" data-act="attach" aria-label="사진·파일 보내기">+</button><textarea id="msgin" rows="1" placeholder="' + (coarse() ? '메시지 입력' : '메시지 입력 (Shift+Enter 줄바꿈)') + '" autocomplete="off"></textarea><button class="plus" data-act="stkPanel" aria-label="이모지·스티커">☺</button><button data-act="send">보내기</button></div><input type="file" id="fpick" hidden></div>';
+  const roomView = '<div class="chatroom"><div class="hdr"><button data-act="leave">‹</button><div class="grow t1">' + esc(roomTitle(room)) + (room.grp ? ' <span class="sub">(' + (room.members || []).length + '명)</span>' : '') + '</div><button data-act="roomMute" title="이 채팅방 알림 소리" aria-label="이 채팅방 알림 소리 ' + (roomMuted(room.id) ? '켜기' : '끄기') + '">' + (roomMuted(room.id) ? '🔕' : '🔔') + '</button></div><div class="msgs" id="msgbox">' + (html || '<div class="empty">첫 메시지를 남겨 보세요.</div>') + '</div>' + (S.replyTo ? '<div class="replybar"><span>↩ ' + esc(uname(S.replyTo.who)) + '에게 답장: ' + esc(S.replyTo.text) + '</span><button data-act="replyOff" aria-label="답장 취소">✕</button></div>' : '') + stkPanelHTML() + '<div class="send"><button class="plus" data-act="attach" aria-label="사진·파일 보내기">+</button><textarea id="msgin" rows="1" placeholder="' + (coarse() ? '메시지 입력' : '메시지 입력 (Shift+Enter 줄바꿈)') + '" autocomplete="off"></textarea><button class="plus" data-act="stkPanel" aria-label="이모지·스티커">☺</button><button class="plus ai" data-act="polish" title="AI 다듬기 — 맞춤법·말투를 고쳐 줘요" aria-label="AI 다듬기">✦</button><button data-act="send">보내기</button></div><input type="file" id="fpick" hidden></div>';
   if (dock) { // PC 오른쪽 채팅창: 텔레그램 PC처럼 왼쪽 세로줄에 대화방들, 오른쪽에 대화. 세로줄을 누르면 그 방으로 바뀐다
     const bar = '<nav class="dockbar"><button class="dtile dlist" data-act="leave" title="대화방 목록"><span class="av">☰</span><span class="nm">목록</span></button>' +
       rooms.map(x => { const r = x.r, c = un[r.id] || 0, t = roomTitle(r) || '?';
@@ -933,6 +976,30 @@ ACT.send = () => {
   if (S.replyTo) { m.rto = S.replyTo; S.replyTo = null; }
   put('msgs', m); inp.value = ''; render(); setTimeout(() => { const i = $('#msgin'); if (i) i.focus(); }, 0);
 };
+// AI 다듬기: 쓰던 글을 서버 함수(polish — 직원 로그인 확인 후 Claude)로 보내 맞춤법·말투를 다듬고, 바꿀지 고른다. 키는 서버에만 있다
+const POLISH_URL = 'https://asia-northeast3-nine-family.cloudfunctions.net/polish';
+ACT.polish = async () => {
+  const inp = $('#msgin'); const text = inp ? inp.value.trim() : ''; if (!text) return toast('다듬을 글을 먼저 써 주세요');
+  if (S.polishing) return; S.polishing = true; toast('✦ 다듬는 중…');
+  let out = '', err = '';
+  try {
+    if (DEMO) { await new Promise(r => setTimeout(r, 400)); out = text.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.') + ' 감사합니다!'; }
+    else {
+      const tok = await auth.currentUser.getIdToken();
+      const r = await fetch(POLISH_URL, {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + tok}, body: JSON.stringify({text})});
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.text) out = j.text; else err = j.error || ('다듬기에 실패했어요 (' + r.status + ')');
+    }
+  } catch (e) { err = '인터넷 연결을 확인해 주세요'; }
+  S.polishing = false;
+  if (!out) return toast(err || '다듬기에 실패했어요');
+  S.polished = out;
+  modal('<h3>✦ AI 다듬기</h3><div class="sub" style="margin-top:0">원래 글</div><div class="aiold">' + esc(text) + '</div><div class="sub">다듬은 글</div><div class="ainew">' + esc(out) + '</div><button class="btn gold full" data-act="polishUse">바꾸기</button><button class="btn full" data-act="close">그대로 두기</button>');
+};
+ACT.polishUse = () => {
+  const inp = $('#msgin'); closeModal(); if (!inp || !S.polished) return;
+  inp.value = S.polished; S.polished = ''; growMsg(inp); if (S.room) LS('draft_' + S.uid + '_' + S.room, inp.value); inp.focus();
+};
 // PC: Enter 보내기 · Shift+Enter 줄바꿈 / 휴대폰: Enter 는 줄바꿈, 보내기 버튼으로 보냄(카톡과 같음)
 const coarse = () => matchMedia('(pointer: coarse)').matches;
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.target.id === 'msgin' && !coarse()) { e.preventDefault(); ACT.send(); } });
@@ -1053,14 +1120,15 @@ ACT.merchant = id => {
   const ln = (k, v) => v ? '<div class="line"><b>' + k + '</b><div>' + esc(v) + '</div></div>' : '';
   const nm = mNums(m); const ph = nm.phone.replace(/[^0-9+*#]/g, ''); const mp = nm.mobile.replace(/[^0-9+*#]/g, '');
   const callBtn = (num, raw, lb) => num ? '<a class="btn tint full" style="display:block;text-align:center;text-decoration:none;margin-top:6px" href="tel:' + num + '">📞 ' + lb + ' ' + esc(raw) + ' 전화 걸기</a>' : '';
-  modal('<h3>' + esc(m.name) + '</h3>' + ln('사업자번호', m.bizno) + ln('전화번호', nm.phone) + ln('휴대폰번호', nm.mobile) + ln('이메일', m.email) + ln('주소', m.addr) + ln('VAN사', m.van) + ln('계약조건', termsText(m)) + ln('계약기간', m.cstart || m.cend ? (m.cstart || '') + ' ~ ' + (m.cend || '') + (m.cend ? '  (' + dday(daysLeft(m.cend)) + ')' : '') : '') + ln('등급', gradeFull(m.grade)) + ln('메모', m.memo) +
+  const who = [m.regBy ? '등록 ' + uname(m.regBy) + (m.regAt ? ' ' + m.regAt : '') : '', m.editBy ? '최근 수정 ' + uname(m.editBy) + (m.editAt ? ' ' + m.editAt : '') : ''].filter(Boolean).join(' · ');
+  modal('<h3>' + esc(m.name) + '</h3>' + (who ? '<div class="sub" style="margin-top:0">' + esc(who) + '</div>' : '') + ln('대표자', m.owner) + ln('사업자번호', m.bizno) + ln('전화번호', nm.phone) + ln('휴대폰번호', nm.mobile) + ln('이메일', m.email) + ln('주소', m.addr) + ln('VAN사', m.van) + ln('계약조건', termsText(m)) + ln('계약기간', m.cstart || m.cend ? (m.cstart || '') + ' ~ ' + (m.cend || '') + (m.cend ? '  (' + dday(daysLeft(m.cend)) + ')' : '') : '') + ln('등급', gradeFull(m.grade)) + ln('메모', m.memo) +
     callBtn(ph, nm.phone, '전화') + callBtn(mp, nm.mobile, '휴대폰') +
     openTasksOf(m) +
     '<h2>📝 응대 기록 (' + logs.length + '건)</h2><button class="btn gold full" data-act="newLog" data-arg="' + m.id + '">+ 응대 기록 남기기</button>' +
     '<div class="pills">' + [''].concat(KINDS).map(k => '<button class="pill ' + (S.logKindF === k ? 'on' : '') + '" data-act="logKindF" data-arg="' + m.id + '|' + k + '">' + (k || '전체') + '</button>').join('') + '</div>' +
     '<div class="row" style="gap:8px"><input type="date" id="logDateF" value="' + esc(S.logDateF || '') + '" data-mid="' + m.id + '" aria-label="날짜로 찾기">' + (S.logDateF ? '<button class="btn" style="flex:none" data-act="logDateOff" data-arg="' + m.id + '">날짜 해제</button>' : '') + '</div>' +
     logs.slice(0, S.logLimit).map(g => logCard(g, 'editLog|' + g.id + '|' + m.id)).join('') + (logs.length > S.logLimit ? '<button class="btn full" data-act="logmore" data-arg="' + m.id + '">더 보기 (' + (logs.length - S.logLimit) + '건 남음)</button>' : '') +
-    '<div class="btns" style="margin-top:10px">' + (canEditMerchant() ? '<button class="btn" data-act="editMerchant" data-arg="' + m.id + '">정보 수정</button><button class="btn red" data-act="delMerchant" data-arg="' + m.id + '">삭제</button>' : '') + (can('staff_manage') ? '<button class="btn" data-act="mhist" data-arg="' + m.id + '">🕘 변경 이력</button>' : '') + '<button class="btn" data-act="close">닫기</button></div>');
+    '<div class="btns" style="margin-top:10px">' + (canEditMerchant() ? '<button class="btn" data-act="editMerchant" data-arg="' + m.id + '">정보 수정</button>' : '') + (canDelete() ? '<button class="btn red" data-act="delMerchant" data-arg="' + m.id + '">삭제</button>' : '') + (can('staff_manage') ? '<button class="btn" data-act="mhist" data-arg="' + m.id + '">🕘 변경 이력</button>' : '') + '<button class="btn" data-act="close">닫기</button></div>');
 };
 function openTasksOf(m) { // 이 가맹점에 걸린 아직 안 끝난 업무
   const ts = list('tasks').filter(t => t.status !== '완료' && (t.merchant === m.id || (!t.merchant && t.client && t.client.trim() === (m.name || '').trim())));
@@ -1105,7 +1173,7 @@ const gradeLabel = g => (g == null || g === '' || !GRADES[g]) ? '' : (Number(g) 
 const gradeFull = g => (g == null || g === '' || !GRADES[g]) ? '' : (Number(g) <= 3 ? g + '코드 · ' + GRADES[g] : GRADES[g]); // 고를 때·상세
 function merchantForm(m) {
   m = m || {}; const nm = mNums(m);
-  return mfield('f_n', '상호 (필수)', '예: 토스단말기 전문', m.name) + mfield('f_b', '사업자번호', '예: 123-45-67890', m.bizno) +
+  return mfield('f_n', '상호 (필수)', '예: 토스단말기 전문', m.name) + mfield('f_ow', '대표자 성함', '예: 홍길동', m.owner) + mfield('f_b', '사업자번호', '예: 123-45-67890', m.bizno) +
     mfield('f_p', '전화번호', '예: 062-123-4567', nm.phone, 'tel') + mfield('f_mo', '휴대폰번호', '예: 010-1234-5678', nm.mobile, 'tel') +
     mfield('f_e', '이메일', '예: name@example.com', m.email, 'email') + '<label class="fl" for="f_a">주소</label><div class="addrrow"><input id="f_a" placeholder="🔍 눌러서 주소 검색" value="' + esc(m.addr || '') + '" autocomplete="off"><button type="button" class="btn tint" id="f_asr">주소 검색</button></div>' +
     '<label class="fl" for="f_v">VAN사</label><input id="f_v" list="vanlist" placeholder="목록에서 고르거나 직접 입력" value="' + esc(m.van || '') + '"><datalist id="vanlist">' + [...new Set(VANS.concat(list('merchants').map(x => (x.van || '').trim()).filter(Boolean)))].map(v => '<option value="' + esc(v) + '">').join('') + '</datalist>' +
@@ -1142,7 +1210,7 @@ function addrSearch(onPick) { // 입력 팝업 위에 따로 띄운다(가맹점
   }).catch(() => { ov.querySelector('#addrw').innerHTML = '<div class="sub" style="padding:30px;text-align:center">주소 검색을 불러오지 못했어요. 인터넷 연결을 확인하거나 주소를 직접 적어 주세요.</div>'; });
 }
 function readMerchant(o) {
-  o.name = $('#f_n').value.trim(); o.bizno = $('#f_b').value.trim(); o.phone = $('#f_p').value.trim(); o.mobile = $('#f_mo').value.trim(); o.email = $('#f_e').value.trim();
+  o.name = $('#f_n').value.trim(); o.owner = $('#f_ow').value.trim(); o.bizno = $('#f_b').value.trim(); o.phone = $('#f_p').value.trim(); o.mobile = $('#f_mo').value.trim(); o.email = $('#f_e').value.trim();
   o.addr = $('#f_a').value.trim(); o.van = $('#f_v').value.trim(); o.ctype = $('#f_ct').value; o.camt = $('#f_ca').value.replace(/[^0-9]/g, ''); o.terms = $('#f_t').value.trim(); o.grade = Number($('#f_g').value); o.memo = $('#f_m').value.trim(); o.cstart = $('#f_cs').value; o.cend = $('#f_ce').value; return o;
 }
 // ---------- 가맹점 수정 암호 (화면 잠금) ----------
@@ -1162,8 +1230,8 @@ function watchLocks() { // 삭제 비밀번호는 전 직원(본인 기록 삭�
 const lockDoc = () => lockOf('merchant_lock');
 const canEditMerchant = () => can('merchant_edit') || can('staff_manage');
 async function sha(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
-function needLock(then) {
-  if (!canEditMerchant()) { toast('가맹점 수정 권한이 없어요. 관리자에게 요청해 주세요.'); return; }
+function needLock(then, isCreate) { // isCreate: 신규 등록은 멤버도 할 수 있다(암호는 수정 권한자에게만 묻는다)
+  if (!canEditMerchant()) { if (isCreate) return then(); toast('가맹점 수정 권한이 없어요. 관리자에게 요청해 주세요.'); return; }
   const L = lockDoc(); if (!L || Date.now() - unlockedAt < LOCK_MS) return then();
   formModal('암호 확인', '<div class="sub">가맹점 정보를 고치려면 암호가 필요해요.</div><input id="f_pw" type="password" autocomplete="off" placeholder="암호">', () => {
     const v = $('#f_pw').value; sha(L.salt + v).then(h => { if (h === L.hash) { unlockedAt = Date.now(); closeModal(); then(); } else { toast('암호가 맞지 않아요.'); } }); return false;
@@ -1190,18 +1258,17 @@ ACT.newMerchant = () => needLock(() => { let dupOk = false; formModal('가맹점
   if (!$('#f_n').value.trim()) return warn('상호를 입력해 주세요.');
   const bd = $('#f_b').value.replace(/\D/g, ''); const dup = bd.length >= 10 && list('merchants').find(m => (m.bizno || '').replace(/\D/g, '') === bd);
   if (dup && !dupOk) { dupOk = true; return warn('같은 사업자번호의 가맹점 ‘' + dup.name + '’이(가) 이미 있어요. 그래도 등록하려면 저장을 한 번 더 누르세요.'); }
-  const o = readMerchant(create('merchants', {grade: 5})); put('merchants', o); alog('new', o); render(); toast('저장했어요.'); return true;
-}, '저장'); wireMerchantForm(); });
+  const o = readMerchant(create('merchants', {grade: 5, regBy: S.uid, regAt: nowStr()})); put('merchants', o); alog('new', o); render(); toast('저장했어요.'); return true;
+}, '저장'); wireMerchantForm(); }, true);
 // 다른 창(업무 요청)에서 가맹점을 새로 등록하고 돌아간다 — 권한·암호 규칙은 그대로
 function newMerchantThen(q, done, back) {
-  if (!canEditMerchant()) { toast('가맹점 등록·수정 권한이 없어요. 관리자에게 요청해 주세요.'); return back(); }
   const pre = {}; if ((q || '').replace(/\D/g, '').length >= 10) pre.bizno = q; else pre.name = q || '';
   needLock(() => { let dupOk = false; formModal('가맹점 등록', merchantForm(pre), () => {
     if (!$('#f_n').value.trim()) return warn('상호를 입력해 주세요.');
     const bd = $('#f_b').value.replace(/\D/g, ''); const dup = bd.length >= 10 && list('merchants').find(m => (m.bizno || '').replace(/\D/g, '') === bd);
     if (dup && !dupOk) { dupOk = true; return warn('같은 사업자번호의 가맹점 ‘' + dup.name + '’이(가) 이미 있어요. 그래도 등록하려면 저장을 한 번 더 누르세요.'); }
-    const o = readMerchant(create('merchants', {grade: 5})); put('merchants', o); alog('new', o); toast('가맹점을 등록하고 업무에 연결했어요.'); setTimeout(() => done(o), 0); return true;
-  }, '저장'); wireMerchantForm(); $('#m_cancel').onclick = () => { closeModal(); back(); }; });
+    const o = readMerchant(create('merchants', {grade: 5, regBy: S.uid, regAt: nowStr()})); put('merchants', o); alog('new', o); toast('가맹점을 등록하고 업무에 연결했어요.'); setTimeout(() => done(o), 0); return true;
+  }, '저장'); wireMerchantForm(); $('#m_cancel').onclick = () => { closeModal(); back(); }; }, true);
 }
 function toggleWord(s, w) { // 빠른 선택: 누르면 넣고 뒤에 ', ' 를 붙여 바로 이어 쓸 수 있게, 다시 누르면 뺀다
   const parts = String(s || '').split(',').map(x => x.trim()).filter(Boolean);
@@ -1209,13 +1276,13 @@ function toggleWord(s, w) { // 빠른 선택: 누르면 넣고 뒤에 ', ' 를 �
   return parts.length ? parts.join(', ') + ', ' : '';
 }
 const reqClean = v => String(v || '').replace(/[\s,]+$/, '').trim(); // 끝에 남은 쉼표는 빼고 저장
-ACT.delMerchant = id => needLock(() => {
+ACT.delMerchant = id => { if (!canDelete()) return toast('가맹점 삭제는 ‘중요 자료 삭제’ 권한이 있어야 해요.'); needLock(() => {
   const m = byId('merchants', id); if (!m) return; needDelPw('‘' + m.name + '’ 가맹점 삭제', () => {
   const c = list('mlogs').filter(g => g.merchant === m.id).length;
   askConfirm('‘' + m.name + '’ 가맹점을 삭제할까요?', '목록에서만 지워지고, 응대 기록 ' + c + '건과 서버의 기록은 그대로 남아요. (앱의 가맹점 보호·복원에서 되살릴 수 있어요)', '삭제', () => { m.deleted = true; put('merchants', m); alog('delete', m); render(); toast('삭제했어요.'); }, true);
   });
-});
-const MF = {grade: '등급', name: '상호', bizno: '사업자번호', phone: '전화번호', mobile: '휴대폰번호', email: '이메일', addr: '주소', van: 'VAN사', ctype: '계약구분', camt: '금액', terms: '계약조건', cstart: '계약시작일', cend: '계약종료일', memo: '메모', deleted: '삭제'};
+}); };
+const MF = {grade: '등급', name: '상호', owner: '대표자', bizno: '사업자번호', phone: '전화번호', mobile: '휴대폰번호', email: '이메일', addr: '주소', van: 'VAN사', ctype: '계약구분', camt: '금액', terms: '계약조건', cstart: '계약시작일', cend: '계약종료일', memo: '메모', deleted: '삭제'};
 ACT.editMerchant = id => needLock(() => {
   const key = 'merchants/' + Number(id), base = S.pushed[key], before = JSON.stringify(byId('merchants', id)); let forced = false;
   formModal('가맹점 정보 수정', merchantForm(byId('merchants', id)) + '<div id="f_conf"></div>', () => {
@@ -1226,7 +1293,7 @@ ACT.editMerchant = id => needLock(() => {
       $('#f_conf').innerHTML = '<div class="conf">⚠ 이 창을 연 뒤 다른 직원이 이 가맹점을 고쳤어요' + (ch.length ? ' (' + ch.join(', ') + ')' : '') + '.<br>지금 저장하면 그 내용을 내 입력으로 덮어써요. 그래도 저장하려면 <b>저장</b>을 한 번 더 누르고, 아니면 취소 후 다시 열어 최신 내용을 확인하세요.</div>';
       forced = true; return warn('다른 직원이 방금 고쳤어요. 아래 안내를 확인해 주세요.');
     }
-    const o = readMerchant(now); put('merchants', o); alog('edit', o); render(); toast('저장했어요.'); return true;
+    const o = readMerchant(now); o.editBy = S.uid; o.editAt = nowStr(); put('merchants', o); alog('edit', o); render(); toast('저장했어요.'); return true;
   }, '저장'); wireMerchantForm();
 });
 function viewAllLogs() {
@@ -1570,7 +1637,7 @@ ACT.editStock = id => {
     render(); toast('저장했어요.'); return true;
   }, '저장');
   if ($('#f_out')) $('#f_out').onclick = () => { closeModal(); setTimeout(() => ACT.outStock(r.id), 0); };
-  $('#f_del').onclick = () => needDelPw('재고 삭제', () => askConfirm('이 재고를 지울까요?', (r.model || '') + ' ' + (r.serial || '') + '\n잘못 넣은 것을 지울 때만 쓰세요. 실제로 나간 것은 ‘출고’, 수가 안 맞으면 ‘수량 정정’을 써야 이력이 남아요.', '지우기', () => { r.deleted = true; put('stock', r); render(); toast('삭제했어요.'); }, true));
+  $('#f_del').onclick = () => !canDelete() ? toast('재고 삭제는 ‘중요 자료 삭제’ 권한이 있어야 해요.') : needDelPw('재고 삭제', () => askConfirm('이 재고를 지울까요?', (r.model || '') + ' ' + (r.serial || '') + '\n잘못 넣은 것을 지울 때만 쓰세요. 실제로 나간 것은 ‘출고’, 수가 안 맞으면 ‘수량 정정’을 써야 이력이 남아요.', '지우기', () => { r.deleted = true; put('stock', r); render(); toast('삭제했어요.'); }, true));
 };
 
 // ---------- 재고 일괄 등록 (엑셀) — 처음 옮길 때: 상품코드/상품명 · 시리얼 · 수량 · 현재위치(본사|광주지사|가맹점 상호) ----------
@@ -1768,7 +1835,7 @@ function wireMerchantPicker(onPick) {
     const v = q.value.trim(); if (!v) { l.innerHTML = ''; return; }
     const hits = list('merchants').filter(m => kmatch(mHay(m), v)).sort((a, b) => (a.name || '').localeCompare(b.name || '')).slice(0, 8);
     l.innerHTML = hits.map(m => { const n = mNums(m); return '<button type="button" class="pick" data-id="' + m.id + '"><b>' + esc(m.name) + '</b><span>' + esc([m.bizno, maskPhone(n.phone || n.mobile)].filter(Boolean).join(' · ')) + '</span></button>'; }).join('') ||
-      ('<div class="sub">찾는 가맹점이 없어요.' + (S.mpNew && !canEditMerchant() ? ' 상호는 아래 거래처 칸에 직접 적어도 돼요.' : '') + '</div>' + (S.mpNew && canEditMerchant() ? '<button type="button" class="btn gold full" id="mpnew">＋ 새 가맹점 등록 (‘' + esc(v) + '’)</button>' : ''));
+      ('<div class="sub">찾는 가맹점이 없어요.</div>' + (S.mpNew ? '<button type="button" class="btn gold full" id="mpnew">＋ 새 가맹점 등록 (‘' + esc(v) + '’)</button>' : ''));
     const nb = $('#mpnew'); if (nb) nb.onclick = () => { const f = S.mpNew; S.mpNew = null; f(v); };
   };
   q.addEventListener('input', fill);
@@ -1845,9 +1912,39 @@ ACT.contract = id => {
   const ln = (k, v) => v ? '<div class="line"><b>' + k + '</b><div>' + esc(v) + '</div></div>' : '';
   modal('<h3>계약 정보</h3>' + ln('가맹점', c.client) + ln('구분', c.kind) + (c.amount ? ln(amountLabel(c.kind), wonFmt(c.amount)) : '') + ln('계약일', c.date) +
     (c.expire ? ln('만료일', c.expire + '  (' + dday(daysLeft(c.expire)) + ')') : '') + ln('결제 연동', ((c.linkType || '') + ' ' + (c.company || '')).trim()) + ln('담당', uname(c.who)) +
-    ln('상태', c.installed ? '설치 완료 ' + (c.installedAt || '') : '설치 대기') +
+    ln('상태', c.installed ? '설치 완료 ' + (c.installedAt || '') : '설치 대기') + ln('장비 구분', c.eqType) + ln('전자계약서', c.econ && c.econ !== '없음' ? c.econ : '') + ln('리드관리', c.lead ? (c.leadSt || '진행중') : '') + ln('기존 VAN사', c.prevVan) + ln('최근 수정', c.editBy ? uname(c.editBy) + ' ' + (c.editAt || '') : '') +
     '<h2>나간 장비</h2>' + ((c.equip || []).length ? c.equip.map(e => '<div class="bul">· ' + esc(e.model) + (e.serial ? '  /  ' + esc(e.serial) : '') + '</div>').join('') : '<div class="sub">없음</div>') + ln('장비 메모', c.memo) +
-    '<div class="btns" style="margin-top:12px"><button class="btn tint" data-act="contractEquip" data-arg="' + c.id + '">장비 추가</button>' + (c.installed ? '' : '<button class="btn gold" data-act="contractDone" data-arg="' + c.id + '">설치 완료</button>') + '<button class="btn" data-act="close">닫기</button></div>');
+    '<div class="btns" style="margin-top:12px"><button class="btn tint" data-act="contractEquip" data-arg="' + c.id + '">장비 추가</button>' + (c.installed ? '' : '<button class="btn gold" data-act="contractDone" data-arg="' + c.id + '">설치 완료</button>') + '<button class="btn" data-act="close">닫기</button></div>' +
+    (canEditContract(c) || canDelete() ? '<div class="btns">' + (canEditContract(c) ? '<button class="btn" data-act="contractEdit" data-arg="' + c.id + '">✎ 수정</button>' : '') + (canDelete() ? '<button class="btn red" data-act="contractDel" data-arg="' + c.id + '">삭제</button>' : '') + '</div>' : ''));
+};
+// 계약 추가 항목 (종합 보고서용) — 앱 MainActivity 계약 창과 같은 값
+const EQ_TYPES = ['단말기', 'POS', '단말기+POS', '기타'], ECON = ['없음', '요청', '완료'], LEAD_ST = ['진행중', '성공', '실패'];
+const opts = (arr, v) => arr.map(x => '<option' + (x === v ? ' selected' : '') + '>' + x + '</option>').join('');
+const cExtraHTML = c => '<label class="fl" for="f_et">장비 구분</label><select id="f_et">' + opts(EQ_TYPES, c.eqType || '단말기') + '</select>' +
+  '<label class="fl" for="f_ec">전자계약서</label><select id="f_ec">' + opts(ECON, c.econ || '없음') + '</select>' +
+  '<label class="chk"><input type="checkbox" id="f_ld"' + (c.lead ? ' checked' : '') + '> <span>리드관리 계약 (토스 리드 등)</span></label><select id="f_ls">' + opts(LEAD_ST, c.leadSt || '진행중') + '</select>' +
+  '<label class="fl" for="f_pv">기존 VAN사 (재계약·교체일 때만)</label><input id="f_pv" placeholder="예: 다우데이타, KIS정보통신, NHN KCP" value="' + esc(c.prevVan || '') + '">';
+const cExtraRead = c => { c.eqType = $('#f_et').value; c.econ = $('#f_ec').value; c.lead = $('#f_ld').checked; c.leadSt = c.lead ? $('#f_ls').value : ''; c.prevVan = $('#f_pv').value.trim(); };
+const canEditContract = c => canPerf() || c.who === S.uid; // 서버 규칙과 같음 (실적 권한자 또는 올린 사람)
+ACT.contractEdit = id => {
+  const c = byId('contracts', id); if (!c || !canEditContract(c)) return;
+  formModal('계약 수정 — ' + c.client,
+    '<label class="fl" for="f_lk">결제 연동</label><select id="f_lk">' + opts(['VAN사', 'PG사'], c.linkType) + '</select><input id="f_co" placeholder="VAN사·PG사 업체명" value="' + esc(c.company || '') + '">' +
+    '<label class="fl" for="f_k">구분</label><select id="f_k">' + opts(['판매', 'CMS', '렌탈'], c.kind) + '</select>' +
+    '<label class="fl" for="f_a" id="f_al">' + amountLabel(c.kind) + ' (원)</label><input id="f_a" inputmode="numeric" value="' + (c.amount || '') + '">' + cExtraHTML(c) +
+    '<label class="fl" for="f_m">장비 메모</label><textarea id="f_m">' + esc(c.memo || '') + '</textarea>' +
+    '<label class="fl" for="f_d">계약일</label><input id="f_d" type="date" value="' + esc(c.date || '') + '"><label class="fl" for="f_e">계약 만료일</label><input id="f_e" type="date" value="' + esc(c.expire || '') + '">', () => {
+    const dt = $('#f_d').value, ex = $('#f_e').value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dt) || !/^\d{4}-\d{2}-\d{2}$/.test(ex)) return warn('계약일과 만료일을 골라 주세요.');
+    if (ex < dt) return warn('만료일이 계약일보다 빨라요. 다시 확인해 주세요.');
+    Object.assign(c, {linkType: $('#f_lk').value, company: $('#f_co').value.trim(), kind: $('#f_k').value, amount: numOf($('#f_a').value), memo: $('#f_m').value.trim(), date: dt, expire: ex, editBy: S.uid, editAt: nowStr()});
+    cExtraRead(c); put('contracts', c); render(); setTimeout(() => ACT.contract(id), 0); toast('계약을 고쳤어요.'); return true;
+  }, '저장');
+  $('#f_k').onchange = () => { $('#f_al').textContent = amountLabel($('#f_k').value) + ' (원)'; };
+};
+ACT.contractDel = id => {
+  const c = byId('contracts', id); if (!c || !canDelete()) return;
+  askConfirm('계약을 삭제할까요?', c.client + ' · ' + c.kind + '\n실적·보고서에서 빠집니다. 나간 장비의 재고 상태는 그대로예요(재고 화면에서 따로 정리).', '삭제', () => { c.deleted = true; c.delBy = S.uid; c.delAt = nowStr(); put('contracts', c); closeModal(); render(); toast('삭제했어요.'); }, true);
 };
 ACT.contractDone = id => {
   const c = byId('contracts', id); if (!c) return;
@@ -1868,7 +1965,7 @@ ACT.newContract = () => {
   formModal('신규 계약 올리기', MP_HTML +
     '<label class="fl" for="f_lk">결제 연동</label><select id="f_lk"><option>VAN사</option><option>PG사</option></select><input id="f_co" placeholder="VAN사·PG사 업체명 (예: 다우데이타)">' +
     '<label class="fl" for="f_k">구분 (판매 / CMS / 렌탈)</label><select id="f_k"><option>판매</option><option>CMS</option><option>렌탈</option></select>' +
-    '<label class="fl" for="f_a" id="f_al">판매금액 (원)</label><input id="f_a" inputmode="numeric" placeholder="숫자만 (예: 450000)">' + EQ_HTML +
+    '<label class="fl" for="f_a" id="f_al">판매금액 (원)</label><input id="f_a" inputmode="numeric" placeholder="숫자만 (예: 450000)">' + cExtraHTML({}) + EQ_HTML +
     '<label class="fl" for="f_m">장비 메모 (선택)</label><textarea id="f_m" placeholder="장비 메모"></textarea>' +
     '<label class="fl" for="f_d">계약일</label><input id="f_d" type="date" value="' + todayStr() + '"><label class="fl" for="f_e">계약 만료일 (필수)</label><input id="f_e" type="date">' +
     '<div class="pills"><button type="button" class="pill" data-m="12">+12개월</button><button type="button" class="pill" data-m="24">+24개월</button><button type="button" class="pill" data-m="36">+36개월</button></div>', () => {
@@ -1877,7 +1974,7 @@ ACT.newContract = () => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dt) || !/^\d{4}-\d{2}-\d{2}$/.test(ex)) return warn('계약일과 만료일을 골라 주세요.');
     if (ex < dt) return warn('만료일이 계약일보다 빨라요. 다시 확인해 주세요.');
     const c = create('contracts', {date: dt, who: S.uid, merchant: mer.id, client: mer.name, linkType: $('#f_lk').value, company: $('#f_co').value.trim(), kind: $('#f_k').value, amount: numOf($('#f_a').value), memo: $('#f_m').value.trim(), expire: ex, installed: false, equip: [], qty: 1});
-    addEquip(c, sel); render(); toast('신규 계약을 올렸어요.'); return true;
+    cExtraRead(c); addEquip(c, sel); render(); toast('신규 계약을 올렸어요.'); return true;
   }, '올리기');
   wireMerchantPicker(m => { mer = m; }); wireEquipPicker(sel);
   $('#f_k').onchange = () => { $('#f_al').textContent = amountLabel($('#f_k').value) + ' (원)'; };
@@ -1936,6 +2033,55 @@ function viewPerf(mine) {
   const month = list('contracts').filter(c => (c.date || '').startsWith(ym) && (!mine || c.who === S.uid)).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
   return h + '<h2>올라온 계약</h2>' + (month.length ? month.map(contractCard).join('') : '<div class="empty">이 달에 올라온 계약이 없습니다.</div>');
 }
+// ---------- 종합 보고서: 계약서에서 자동 계산 (앱과 같은 계산) ----------
+const promoDoc = () => list('config').find(c => c.key === 'promo');
+const isToss = c => /토스|toss/i.test((c.company || '') + ' ' + (c.linkType || ''));
+const pct = (a, b) => b ? Math.round(a * 100 / b) + '%' : '-';
+const sumTable = (title, bg, head, rows, foot) => '<div class="sumcard"><div class="sumh" style="background:' + bg + '">' + title + '</div><table class="sumt"><tr>' + head.map(h => '<th>' + h + '</th>').join('') + '</tr>' +
+  (rows.length ? rows.map(r => '<tr>' + r.map((v, i) => i ? '<td>' + v + '</td>' : '<td><b>' + esc(v) + '</b></td>').join('') + '</tr>').join('') : '<tr><td colspan="' + head.length + '" class="sub">없음</td></tr>') + (foot ? '<tr class="foot">' + foot.map(v => '<td>' + v + '</td>').join('') + '</tr>' : '') + '</table></div>';
+function summaryData(ym) {
+  const yr = ym.slice(0, 4), staff = reportStaff(), C = list('contracts').filter(c => !noPerf(c.who));
+  const mon = C.filter(c => (c.date || '').startsWith(ym)), ytd = C.filter(c => (c.date || '').startsWith(yr) && (c.date || '').slice(0, 7) <= ym);
+  const cnt = (arr, f) => arr.filter(f).length, mine = u => c => c.who === u.id;
+  const tot = mon.length;
+  const T1 = staff.map(u => [u.name, cnt(mon, mine(u)), cnt(ytd, mine(u)), pct(cnt(mon, mine(u)), tot)]).filter(r => r[1] || r[2]);
+  const T2 = staff.map(u => { const m = mon.filter(mine(u)); const t = cnt(m, c => /단말기/.test(c.eqType || '단말기')), p = cnt(m, c => /POS/.test(c.eqType || '')); return [u.name, t, p, t + p]; }).filter(r => r[3]);
+  const T3 = staff.map(u => [u.name, cnt(mon, c => c.who === u.id && (c.econ === '요청' || c.econ === '완료')), cnt(mon, c => c.who === u.id && c.econ === '완료'), cnt(ytd, c => c.who === u.id && c.econ === '완료')]).filter(r => r[1] || r[3]);
+  const P = promoDoc() || {}; const inP = c => c.installed && P.from && P.to && (c.installedAt || '') >= P.from && (c.installedAt || '') <= P.to && isToss(c);
+  const T4 = staff.map(u => { const n = cnt(C, c => c.who === u.id && inP(c) && /단말기/.test(c.eqType || '단말기')); return [u.name, n, P.goalF ? pct(n, P.goalF) : '-']; }).filter(r => r[1]);
+  const T5 = staff.map(u => { const n = cnt(C, c => c.who === u.id && inP(c) && /POS/.test(c.eqType || '')); return [u.name, n, P.goalP ? pct(n, P.goalP) : '-']; }).filter(r => r[1]);
+  const T6 = []; let li = 0, ls = 0, lf = 0;
+  for (let i = -5; i <= 0; i++) { const k = monthKey(ym, i); const L = C.filter(c => c.lead && (c.date || '').startsWith(k)); const s = cnt(L, c => c.leadSt === '성공'), f = cnt(L, c => c.leadSt === '실패'); if (L.length) T6.push([Number(k.slice(5)) + '월', L.length, s, f, pct(s, s + f)]); li += L.length; ls += s; lf += f; }
+  const R = C.filter(c => c.kind === 'CMS' && c.prevVan && (c.date || '').startsWith(yr));
+  const van = (c, re) => re.test(c.prevVan) ? 1 : 0;
+  const T7 = staff.map(u => { const m = R.filter(mine(u)); const done = cnt(m, c => c.installed); return [u.name, m.length, m.reduce((s, c) => s + van(c, /다우/), 0), m.reduce((s, c) => s + van(c, /KIS/i), 0), m.reduce((s, c) => s + van(c, /KCP/i), 0), cnt(m, c => (c.company || '').trim() && c.company.trim() !== c.prevVan.trim()), done, pct(done, m.length)]; }).filter(r => r[1]);
+  return {P, T1, T2, T3, T4, T5, T6, T7, tot, ytd: ytd.length, lead: [li, ls, lf]};
+}
+function viewSummary() {
+  if (!canPerf()) return '<h1>종합 보고서</h1><div class="empty">실적 보기 권한이 있어야 볼 수 있어요.</div>';
+  const ym = perfYM(), D = summaryData(ym), P = D.P, pp = P.from ? P.from.slice(5).replace('-', '/') + '~' + (P.to || '').slice(5).replace('-', '/') : '기간 미설정';
+  return '<h1>종합 보고서</h1><div class="sub">계약서에서 자동 계산해요 — 따로 숫자를 적지 않아요. 장비 구분·전자계약·리드관리·기존 VAN사는 계약 ‘✎ 수정’에서 채워요.</div>' + monthNavHTML() +
+    '<div class="btns"><button class="btn gold" data-act="summaryXlsx">엑셀로 받기</button>' + (can('staff_manage') ? '<button class="btn" data-act="promoSet">프로모션 기간·목표</button>' : '') + '</div><div class="sumgrid">' +
+    sumTable('월별 신규 (직원별)', '#f6e7f3', ['담당', '이번 달', '누계', '비율'], D.T1, ['합계', D.tot, D.ytd, '']) +
+    sumTable('당월 신규 · 단말기 / POS', '#f6e7f3', ['담당', '단말기', 'POS', '합계'], D.T2) +
+    sumTable('전자계약서 (당월 · 누계)', '#e3effb', ['담당', '요청', '완료', '누계'], D.T3) +
+    sumTable('토스 프론트 · ' + esc(pp), '#e3effb', ['담당', '설치완료', '목표 대비'], D.T4) +
+    sumTable('토스 포스 · ' + esc(pp), '#e3effb', ['담당', '설치완료', '목표 대비'], D.T5) +
+    sumTable('토스 리드 (리드관리 계약, 최근 6개월)', '#fbf0d6', ['월', '인입', '성공', '실패', '성공률'], D.T6, ['합계', D.lead[0], D.lead[1], D.lead[2], pct(D.lead[1], D.lead[1] + D.lead[2])]) +
+    '</div>' + sumTable('CMS 재계약 (올해, 기존 VAN사 적은 CMS 계약) — 배정 · 기존 VAN → 교체 · 완료', '#f6efc9', ['담당', '배정', '기존 다우', '기존 KIS', '기존 KCP', '교체', '완료', '완료율'], D.T7);
+}
+ACT.summaryXlsx = () => {
+  const ym = perfYM(), D = summaryData(ym), rows = [];
+  const blk = (t, h, r) => { rows.push([t]); rows.push(h); r.forEach(x => rows.push(x.map(String))); rows.push(['']); };
+  blk('월별 신규 (직원별)', ['담당', '이번 달', '누계', '비율'], D.T1.concat([['합계', D.tot, D.ytd, '']])); blk('단말기 / POS', ['담당', '단말기', 'POS', '합계'], D.T2); blk('전자계약서', ['담당', '요청', '완료', '누계'], D.T3);
+  blk('토스 프론트', ['담당', '설치완료', '목표 대비'], D.T4); blk('토스 포스', ['담당', '설치완료', '목표 대비'], D.T5); blk('토스 리드', ['월', '인입', '성공', '실패', '성공률'], D.T6); blk('CMS 재계약', ['담당', '배정', '기존 다우', '기존 KIS', '기존 KCP', '교체', '완료', '완료율'], D.T7);
+  saveBytes('종합보고서_' + ym + '.xlsx', xlsxOf(['■ 나인패밀리 종합 보고서 ' + ym + ' (계약서에서 자동 계산)'], ['항목', '', '', '', '', '', '', ''], rows.map(r => r.concat(Array(8).fill('')).slice(0, 8)), [16, 10, 10, 10, 10, 10, 10, 10]), XLSX_MIME);
+};
+ACT.promoSet = () => { const P = promoDoc() || {};
+  formModal('토스 프로모션 기간·목표', '<div class="sub" style="margin-top:0">종합 보고서 ‘토스 프론트·포스’ 표에 쓰는 기간과 직원별 목표 대수예요. (모든 직원에게 똑같이 적용)</div><label class="fl" for="f_pf">시작일</label><input id="f_pf" type="date" value="' + esc(P.from || '') + '"><label class="fl" for="f_pt">종료일</label><input id="f_pt" type="date" value="' + esc(P.to || '') + '"><label class="fl" for="f_gf">프론트(단말기) 목표 대수</label><input id="f_gf" inputmode="numeric" value="' + (P.goalF || '') + '"><label class="fl" for="f_gp">포스 목표 대수</label><input id="f_gp" inputmode="numeric" value="' + (P.goalP || '') + '">', () => {
+    const f = $('#f_pf').value, t = $('#f_pt').value; if (!f || !t || t < f) return warn('시작일과 종료일을 바르게 골라 주세요.');
+    const o = promoDoc() || create('config', {key: 'promo'}); Object.assign(o, {from: f, to: t, goalF: numOf($('#f_gf').value), goalP: numOf($('#f_gp').value), changedBy: S.uid, changedAt: nowStr()}); put('config', o); render(); toast('저장했어요.'); return true;
+  }, '저장'); };
 function sales() { // 계약으로 출고된 장비(출고중·설치완료)의 단가 — 월은 계약일 기준
   return list('stock').filter(r => r.status === '출고중' || r.status === '설치완료').map(r => {
     const c = byId('contracts', r.contract); if (!c) return null; const cd = costOf(r.id);
@@ -2097,13 +2243,21 @@ ACT.newContact = () => formModal('연락처 추가', contactForm(null), () => co
 ACT.contactEdit = id => { const c = byId('contacts', id); formModal('연락처 수정', contactForm(c) + '<button class="btn red full" id="f_del">이 연락처 삭제</button>', () => contactSave(c), '저장'); $('#f_del').onclick = () => askConfirm('삭제할까요?', c.name, '삭제', () => { c.deleted = true; put('contacts', c); render(); }, true); };
 
 // ---------- 프로필 (사진·상태 메시지 — 앱과 같은 profiles 문서: pic=256px JPEG base64, status) ----------
+// 채팅에 보이는 내 이름 색(프로필 ncolor) — 흰 바탕에서 잘 읽히는 색만 고르게 한다
+const NAME_COLORS = ['#3b3f46', '#8f6b14', '#2a5d8f', '#1d6b4a', '#9a3d1c', '#7a3e9d', '#b02a5b', '#0f6f7a'];
+const nameColor = uid => { const p = byId('profiles', uid); return p && NAME_COLORS.includes(p.ncolor) ? p.ncolor : ''; };
+ACT.nameColor = () => {
+  const cur = nameColor(S.uid) || NAME_COLORS[0];
+  modal('<h3>채팅에 보이는 내 이름 색</h3><div class="sub" style="margin-top:0">다른 직원 화면의 채팅에서 내 이름이 이 색으로 보여요.</div><div class="ncgrid">' + NAME_COLORS.map(c => '<button type="button" class="ncsw' + (c === cur ? ' on' : '') + '" data-c="' + c + '" style="color:' + c + '" aria-label="' + c + '"><b>' + esc(S.me ? S.me.name : '') + '</b></button>').join('') + '</div><button class="btn full" data-act="close">닫기</button>');
+  document.querySelectorAll('#modal .ncsw').forEach(b => b.onclick = () => { const pr = Object.assign({}, myProf() || {id: S.uid}); pr.ncolor = b.dataset.c; put('profiles', pr); closeModal(); render(); toast('이름 색을 바꿨어요.'); });
+};
 function avatarHTML(uid, size) {
   const pr = byId('profiles', uid), u = user(uid); const s = 'width:' + size + 'px;height:' + size + 'px';
   return pr && pr.pic ? '<img class="avimg" style="' + s + '" src="data:image/jpeg;base64,' + pr.pic + '" alt="">' : '<b class="avtxt" style="' + s + ';font-size:' + Math.round(size * 0.4) + 'px">' + esc(((u && u.name) || '?').slice(0, 1)) + '</b>';
 }
 ACT.profile = uid => {
   uid = Number(uid); const u = user(uid); if (!u) return; const pr = byId('profiles', uid) || {}; const me = uid === S.uid; const ph = (u.phone || '').replace(/[^0-9+]/g, '');
-  modal('<div style="text-align:center">' + avatarHTML(uid, 96) + '<h3 style="margin-top:10px">' + esc(u.name) + '</h3><div class="sub">' + ((u.perms || []).includes('staff_manage') ? '관리자' : '직원') + '</div><div style="margin:10px 0;color:' + (pr.status ? 'var(--ink)' : 'var(--gray)') + '">' + esc(pr.status || '상태 메시지가 없어요') + '</div>' + (ph ? '<a class="tel" href="tel:' + ph + '">📞 ' + esc(u.phone) + '</a>' : '') + '</div>' +
+  modal('<div style="text-align:center">' + avatarHTML(uid, 96) + '<h3 style="margin-top:10px">' + esc(u.name) + '</h3><div class="sub">' + roleName(u) + '</div><div style="margin:10px 0;color:' + (pr.status ? 'var(--ink)' : 'var(--gray)') + '">' + esc(pr.status || '상태 메시지가 없어요') + '</div>' + (ph ? '<a class="tel" href="tel:' + ph + '">📞 ' + esc(u.phone) + '</a>' : '') + '</div>' +
     '<div class="btns" style="margin-top:14px">' + (me ? '<button class="btn tint" data-act="picPick">사진 변경</button><button class="btn tint" data-act="statusEdit">상태 메시지</button>' : '<button class="btn tint" data-act="dmFromProfile" data-arg="' + uid + '">1:1 대화</button>' + (ph ? '<a class="btn tint" style="text-align:center;text-decoration:none" href="tel:' + ph + '">전화하기</a>' : '')) + '<button class="btn" data-act="close">닫기</button></div><input type="file" id="f_pic" accept="image/*" hidden>');
 };
 ACT.myProfile = () => ACT.profile(S.uid);
@@ -2130,8 +2284,12 @@ function ensureSupers() {
   LS('supmig1_' + S.uid, '1');
 }
 const PERMS = [['task_create', '업무 만들기'], ['task_assign', '다른 직원에게 업무 배정'], ['task_view_all', '전체 업무 보기'], ['history_all', '전체 이력 보기'], ['notice_write', '공지 작성'],
-  ['perf_view', '실적 보기 (본부장·대표님)'], ['report_view', '일일보고·실적보고 종합 보기 (대표님)'], ['merchant_edit', '가맹점 등록·수정 (암호 필요)'], ['staff_view', '직원 정보 보기 (부서·직책·생년월일·연락처·주소)'], ['staff_manage', '직원 관리 (관리자 전용)']];
-const PRESETS = {'영업직': ['task_create', 'task_assign', 'task_view_all', 'history_all'], '사무직': ['task_create', 'task_assign', 'task_view_all', 'history_all', 'merchant_edit'], '관리자': PERMS.map(x => x[0])};
+  ['perf_view', '실적 보기 (본부장·대표님)'], ['report_view', '일일보고·실적보고 종합 보기 (대표님)'], ['merchant_edit', '가맹점 정보 수정 (암호 필요)'], ['data_delete', '중요 자료 삭제 (가맹점·계약·재고)'], ['staff_view', '직원 정보 보기 (부서·직책·생년월일·연락처·주소)'], ['staff_manage', '직원 관리 (관리자 전용)']];
+// 권한 체계: 역할 3단계 + 항목별 체크(세부 조정). 최고관리자 = 모든 권한 + super 표시(최고관리자만 줄 수 있음)
+// 운영자 = 등록·수정·실적·보고서 / 중요 자료 삭제·직원 관리 제외. 멤버 = 내 업무·채팅·일정·가맹점 조회·내 보고(+ 가맹점 신규 등록)
+const PRESETS = {'멤버': ['task_create'], '운영자': PERMS.map(x => x[0]).filter(k => k !== 'staff_manage' && k !== 'data_delete'), '최고관리자': PERMS.map(x => x[0])};
+const roleName = u => isSuper(u) ? '최고관리자' : hasP(u, 'staff_manage') ? '관리자' : PRESETS['운영자'].every(k => hasP(u, k)) ? '운영자' : '멤버';
+const canDelete = () => can('data_delete') || can('staff_manage'); // 가맹점·계약·재고 삭제
 const hasP = (u, k) => (u.perms || []).includes(k);
 const adminCount = () => list('users').filter(u => u.active !== false && hasP(u, 'staff_manage')).length;
 function syncPhone(u) { // 로그인 허용 번호와 서버 규칙용 권한 표시
@@ -2234,25 +2392,29 @@ ACT.reqQuickEdit = () => formModal('빠른 선택 버튼 관리', '<div class="s
   const o = reqQuickDoc() || create('config', {key: 'req_quick'}); o.items = items; o.changedBy = S.uid; o.changedAt = nowStr(); put('config', o); render(); toast('빠른 선택 버튼 ' + items.length + '개를 저장했어요.'); return true;
 }, '저장');
 ACT.newStaff = () => formModal('직원 추가', '<label class="fl" for="f_n">직원 이름 (이름만, 직함 없이)</label><input id="f_n" placeholder="예: 김영업"><label class="fl" for="f_p">휴대폰 번호</label><input id="f_p" type="tel" placeholder="예: 01012345678">' +
-  '<label class="fl" for="f_ps">권한 묶음 (추가 후 항목별로 바꿀 수 있어요)</label><select id="f_ps">' + Object.keys(PRESETS).map(k => '<option>' + k + '</option>').join('') + '</select>', () => {
+  '<label class="fl" for="f_ps">역할 (추가 후 항목별로 바꿀 수 있어요)</label><select id="f_ps">' + Object.keys(PRESETS).map(k => '<option>' + k + '</option>').join('') + '</select>', () => {
   const n = stripTitle($('#f_n').value), ph = e164($('#f_p').value);
   if (!n || ph.length < 12) return warn('이름과 휴대폰 번호를 입력해 주세요.');
   if (list('users').some(u => u.name === n)) return warn('같은 이름의 직원이 있습니다.');
   if (staffList().some(u => u.phone === ph)) return warn('이미 등록된 번호입니다.');
-  const u = {id: nextId(), name: n, phone: ph, active: true, perms: PRESETS[$('#f_ps').value].slice()}; put('users', u); syncPhone(u); render(); toast(n + '님을 등록했어요. 이 번호로 로그인할 수 있어요.'); return true;
+  const ps = $('#f_ps').value; if (ps === '최고관리자' && !isSuper(S.me)) return warn('최고관리자는 최고관리자만 정할 수 있어요.');
+  const u = {id: nextId(), name: n, phone: ph, active: true, perms: PRESETS[ps].slice()}; if (ps === '최고관리자') u.super = true; put('users', u); syncPhone(u); render(); toast(n + '님을 등록했어요. 이 번호로 로그인할 수 있어요.'); return true;
 }, '추가');
 ACT.staffEdit = id => {
   const u = byId('users', id); if (!u) return; const active = u.active !== false;
   if (isSuper(u) && !isSuper(S.me)) return toast(u.name + '님은 최고관리자라 모든 권한이 항상 켜져 있어요(최고관리자만 바꿀 수 있어요).');
-  formModal(u.name + ' 권한 설정', PERMS.map(([k, lb]) => '<label class="chk"><input type="checkbox" class="pm" value="' + k + '"' + (hasP(u, k) ? ' checked' : '') + '><span>' + lb + '</span></label>').join('') +
+  formModal(u.name + ' 권한 설정', '<div class="sub" style="margin-top:0">역할로 한 번에 맞추고, 아래 항목으로 세부 조정해요. 지금: <b>' + esc(roleName(u)) + '</b></div><div class="pills" style="margin:6px 0 10px">' + ['멤버', '운영자'].concat(isSuper(S.me) ? ['최고관리자'] : []).map(r => '<button type="button" class="pill rolep" data-r="' + r + '">' + r + '로 맞추기</button>').join('') + '</div>' +
+    (isSuper(S.me) && u.id !== S.uid ? '<label class="chk"><input type="checkbox" id="f_sup"' + (isSuper(u) ? ' checked' : '') + '><span><b>최고관리자</b> (모든 권한 고정 · 최고관리자만 바꿈)</span></label>' : '') + PERMS.map(([k, lb]) => '<label class="chk"><input type="checkbox" class="pm" value="' + k + '"' + (hasP(u, k) ? ' checked' : '') + '><span>' + lb + '</span></label>').join('') +
     '<label class="chk" style="margin-top:8px"><input type="checkbox" id="f_np"' + (u.noPerf ? ' checked' : '') + '><span>영업 실적·순위에서 빼기 (대표님 등)</span></label>' +
     '<label class="chk"><input type="checkbox" id="f_nr"' + (u.noReport ? '' : ' checked') + '><span>일일보고·실적보고 명단에 넣기</span></label>' +
     '<button class="btn ' + (active ? 'red' : 'tint') + ' full" id="f_act">' + (active ? '사용 중지 (퇴사 등)' : '다시 사용') + '</button>', () => {
     const np = [...document.querySelectorAll('.pm:checked')].map(c => c.value);
     if (hasP(u, 'staff_manage') && !np.includes('staff_manage') && adminCount() <= 1) return warn('마지막 관리자의 직원 관리 권한은 끌 수 없습니다.');
+    if ($('#f_sup')) u.super = $('#f_sup').checked; // 최고관리자 표시는 최고관리자만 바꿈(서버 규칙도 같음)
     if (isSuper(u)) np.splice(0, np.length, ...PERMS.map(p => p[0])); // 최고관리자는 모든 권한 고정
     u.perms = np; u.noPerf = $('#f_np').checked; u.noReport = !$('#f_nr').checked; put('users', u); syncPhone(u); if (u.id === S.uid) refreshMe(); render(); toast('저장했어요.'); return true;
   }, '저장');
+  document.querySelectorAll('#modal .rolep').forEach(b => b.onclick = () => { const ks = PRESETS[b.dataset.r]; document.querySelectorAll('#modal .pm').forEach(c => { c.checked = ks.includes(c.value); }); const sp = $('#f_sup'); if (sp) sp.checked = b.dataset.r === '최고관리자'; });
   $('#f_act').onclick = () => {
     if (active && hasP(u, 'staff_manage') && adminCount() <= 1) return toast('마지막 관리자는 중지할 수 없습니다.');
     askConfirm(active ? u.name + '님 사용을 멈출까요?' : u.name + '님을 다시 사용할까요?', active ? '이 번호로 더는 로그인할 수 없어요. 자료는 그대로 남아요.' : '', active ? '사용 중지' : '다시 사용', () => { u.active = !active; put('users', u); syncPhone(u); render(); }, active);
@@ -2500,10 +2662,16 @@ function viewSms() {
   return '<h1>단체 문자 보내기</h1><div class="sub">고른 가맹점에 한 곳씩 휴대폰의 문자 앱을 열어 드려요. 받는 분들끼리 번호가 보이지 않고, 문자 요금은 그 휴대폰 요금제로 나가요.' + (isWide() ? ' <b>PC에서는 문자 앱이 없어서 보낼 수 없어요 — 휴대폰(아이폰 웹앱·안드로이드 앱)에서 보내 주세요.</b> 알리고 연동 후에는 PC에서도 바로 보낼 수 있게 할게요.' : '') + '</div>' +
     '<label class="fl" for="f_sms">보낼 내용 ({상호} 는 가맹점 이름으로 바뀌어요)</label><textarea id="f_sms" data-keep="sms" placeholder="예: {상호} 사장님, 안녕하세요. 나인페이먼츠입니다.">' + esc(t) + '</textarea><div class="sub" id="smscnt">' + t.length + '자 · ' + by + '바이트' + (by > 90 ? ' (90바이트를 넘으면 장문 문자로 나가요)' : '') + '</div>' +
     '<h2>받는 가맹점</h2><div class="pills">' + GRADES.map((g, i) => g ? '<button class="pill" data-act="smsGrade" data-arg="' + i + '">' + gradeLabel(i) + '</button>' : '').join('') + '<button class="pill" data-act="smsAll">보이는 전체 선택</button><button class="pill" data-act="smsNone">선택 해제</button></div>' +
+    '<div class="pills"><span class="sub" style="margin:0 4px 0 0;align-self:center">계약 만료</span>' + [[0, '전체'], [1, '1개월 이내'], [2, '2개월 이내'], [3, '3개월 이내'], [9, '이미 만료']].map(([v, l]) => '<button class="pill' + ((S.smsExp || 0) === v ? ' on' : '') + '" data-act="smsExp" data-arg="' + v + '">' + l + '</button>').join('') + '</div>' +
     '<input id="smsq" data-q="smsq" placeholder="🔍 상호·초성·번호" value="' + esc(S.smsq || '') + '"><div class="qres" data-for="smsq">' + smsList() + '</div>' +
     '<button class="btn gold full" data-act="smsStart">문자 보내기 시작 (' + S.smsSel.size + '곳)</button>';
 }
-function smsVisible() { return list('merchants').filter(m => kmatch(mHay(m), S.smsq || '')).sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
+function smsVisible() { // 계약 만료 거르기는 가맹점 계약종료일 기준 (가맹점 목록의 만료 필터와 같음)
+  const ef = S.smsExp || 0, today = todayStr();
+  const okExp = m => !ef || (/^\d{4}-\d{2}-\d{2}$/.test(m.cend || '') && (ef === 9 ? m.cend < today : m.cend >= today && m.cend <= addMonths(today, ef)));
+  return list('merchants').filter(m => okExp(m) && kmatch(mHay(m), S.smsq || '')).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+}
+ACT.smsExp = v => { S.smsExp = Number(v); render(); };
 function smsList() {
   const vs = smsVisible();
   return '<div class="sub" style="font-weight:700">선택 ' + S.smsSel.size + '곳 · 보이는 가맹점 ' + vs.length + '곳 (유선 번호만 있는 곳은 고를 수 없어요)</div>' + vs.slice(0, 300).map(m => { const mo = mobileOf(m);
@@ -2665,7 +2833,7 @@ function menuItems() {
   if (prodAdmin()) add('재고', '재고 일괄 등록 (엑셀 양식)', '재고 일괄 등록 엑셀 업로드 양식 옮기기 설치 가맹점', 'act:importStock');
   add('재고', '물품요청 (본사 ← 지사)', '물품요청 구매 발주 주문 본사 지사 용지 장비 요청', 'nav:all:preqs', preqWaiting().length ? '입고 확인 ' + preqWaiting().length : '');
   add('실적', '내 실적', '내 실적 월별 성장률 계약', 'nav:all:myperf');
-  if (P) { add('실적', '전체 실적·직원별 순위', '전체 실적 직원별 순위 성장률', 'nav:all:perf'); add('실적', '수익 현황 (입고·출고 단가)', '수익 현황 입고 출고 단가 매출 매입', 'nav:all:profit'); }
+  if (P) { add('실적', '전체 실적·직원별 순위', '전체 실적 직원별 순위 성장률', 'nav:all:perf'); add('실적', '수익 현황 (입고·출고 단가)', '수익 현황 입고 출고 단가 매출 매입', 'nav:all:profit'); add('실적', '종합 보고서 (월별·단말기/POS·전자계약·토스·CMS)', '종합 보고서 월별 신규 단말기 포스 전자계약 토스 리드 프로모션 cms 재계약', 'nav:all:summary'); }
   add('보고', '일일보고 쓰기', '일일보고 보고 오늘 한 일', 'nav:all:daily');
   if (P) add('보고', '실적 보고서 올리기 (대표님께)', '실적 보고서 올리기 대표님 본부장', 'nav:all:perfreport');
   if (R) { add('보고', '일일보고 종합 보기', '일일보고 종합 대표님 직원별', 'nav:all:reportview'); if (!P) add('보고', '실적 보고서 보기', '실적 보고서 보기 대표님', 'nav:all:perfreport'); }
@@ -2675,6 +2843,7 @@ function menuItems() {
   add('내 계정·설정', '내 프로필 (사진·상태 메시지)', '프로필 사진 상태 메시지 내 정보', 'act:myProfile');
   const np = 'Notification' in window ? Notification.permission : 'none';
   add('업무', '업무 알림 및 소리 설정', '업무 알림 소리 음성 진동 끄기 켜기 업무 배정 푸시 들어 보기 물품요청 공지', 'nav:all:sound', !pushTaskOn() ? '알림 끔' : soundOn() ? '' : '소리 끔');
+  add('채팅', '내 이름 색상 (채팅에 보이는 이름)', '이름 색상 색깔 채팅 닉네임', 'act:nameColor', '');
   add('채팅', '채팅 알림 및 소리 설정', '채팅 알림 소리 나인톡 카톡 끄기 켜기 푸시 들어 보기 음소거', 'nav:all:soundchat', !pushChatOn() ? '알림 끔' : chatSndOn() ? '' : '소리 끔');
   add('내 계정·설정', '업데이트 확인 (새 버전 받기)', '업데이트 확인 새 버전 새로고침 최신', 'act:checkUpdate');
   add('내 계정·설정', '사용설명서', '사용설명서 매뉴얼 도움말 사용법 설치', 'nav:all:manual'); add('내 계정·설정', '버전·업데이트 내역', '버전 업데이트 내역 변경 이력', 'nav:all:about');
@@ -2713,7 +2882,7 @@ function viewMenu(wide) {
   const search = '<input id="aq" data-q="allQ" placeholder="🔍  기능 검색 (예: 재고, ㅈㄱ, 문자, 수익)" value="' + esc(S.allQ || '') + '">';
   const note = (wide ? '' : appSec) + '<div class="sub" style="margin-top:18px">‘앱에서’ 표시가 있는 기능은 아직 안드로이드 앱에서만 쓸 수 있어요. 웹에도 차례로 넣고 있어요.</div><div class="sub" style="text-align:center;margin:14px 0 30px">나인패밀리 ' + VERSION + '</div>';
   if (wide) return '<div class="mhead2"><h1>전체 메뉴</h1>' + search + '</div><div class="qres mgrid" data-for="allQ">' + (html || '<div class="empty">찾는 기능이 없어요.</div>') + '</div>' + appSec + note;
-  return '<h1>전체</h1><div class="card row prof" data-act="myProfile">' + avatarHTML(S.uid, 48) + '<div class="grow"><div class="t1">' + esc(S.me.name) + '</div><div class="t2">' + (can('staff_manage') ? '관리자' : '직원') + '</div><div class="t2" style="font-size:11px">눌러서 프로필 사진·상태 메시지 바꾸기</div></div></div>' +
+  return '<h1>전체</h1><div class="card row prof" data-act="myProfile">' + avatarHTML(S.uid, 48) + '<div class="grow"><div class="t1">' + esc(S.me.name) + '</div><div class="t2">' + roleName(S.me) + '</div><div class="t2" style="font-size:11px">눌러서 프로필 사진·상태 메시지 바꾸기</div></div></div>' +
     search + '<div class="qres" data-for="allQ">' + (html || '<div class="empty">찾는 기능이 없어요.</div>') + '</div>' + note;
 }
 const PC_SETUP = 'https://github.com/ninepayments/Work-app/releases/latest/download/NineFamily-Setup.exe';

@@ -142,7 +142,10 @@ final class Ui {
             case "서류 접수":
                 return tile(c, "서류", Color.rgb(255, 241, 219), AMBER);
             case "카드사 서류":
+            case "카드사서류":
                 return tile(c, "카드", Color.rgb(255, 241, 219), AMBER);
+            case "큐밴등록":
+                return tile(c, "큐밴", Color.rgb(224, 244, 246), Color.rgb(15, 111, 122));
             default:
                 return tile(c, "기타", Color.rgb(238, 240, 244), Color.rgb(74, 79, 94));
         }

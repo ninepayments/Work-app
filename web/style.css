@@ -357,3 +357,31 @@ details.man[open]{padding-bottom:12px}
 #lockov{position:fixed;inset:0;z-index:5000;background:#1f1a12;display:flex;align-items:center;justify-content:center;padding:20px;-webkit-app-region:no-drag}.lockbox{background:#fff;border-radius:20px;padding:24px;width:min(360px,100%);text-align:center}.lockbox input{text-align:center;font-size:22px;letter-spacing:6px}
 /* 업무 요청 빠른 선택 버튼: 작게, 버튼 안 글자는 한 줄 (버튼이 많으면 다음 줄로) */
 .pill.rqq{font-size:12px;padding:5px 10px;white-space:nowrap}
+/* 채팅: 카톡처럼 남의 글은 프사 + 이름, 그 아래 말풍선 (같은 사람이 같은 분에 이어 쓰면 한 번만) */
+.mav{width:38px;flex:none}.mavb{border:0;padding:0;background:none;cursor:pointer;display:block}
+.mav .avimg,.mav .avtxt{border-radius:14px}
+.mcol{display:flex;flex-direction:column;min-width:0;max-width:76%}.m.me .mcol{align-items:flex-end}.mcol .bub{max-width:100%}
+.nm{font-size:12.5px;font-weight:700;color:#3b3f46;margin:2px 0 3px 2px}.m.run{margin-top:1px}
+.bub{box-shadow:0 1px 2px rgba(20,22,26,.08)}.m:not(.me) .bub{border-top-left-radius:6px}.m.me .bub{border-top-right-radius:6px;background:linear-gradient(#e2c56f,#cdaa52)}
+.ncgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}.ncsw{border:2px solid #eceef1;background:#fff;border-radius:12px;padding:12px;cursor:pointer;font-size:15px}.ncsw.on{border-color:var(--gold);background:var(--tint)}
+/* 입력창 (시안): 둥근 칸, 보내기 버튼 입체 */
+.send textarea{background:var(--field);border:0;border-radius:14px;padding:11px 13px}
+.send>button[data-act=send]{background:linear-gradient(#dcbc66,#c49e43);box-shadow:0 2px 0 var(--deep);font-weight:800}
+.send .plus{border-radius:12px}
+/* 채팅방 순서 편집: ≡ 잡고 끌기 */
+.rgrip{flex:none;width:30px;height:40px;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--gray);cursor:grab;touch-action:none;user-select:none}
+.redit .card{cursor:default}.card.dragging{opacity:.85;box-shadow:0 10px 24px rgba(20,22,26,.18);transform:scale(1.01)}
+/* AI 다듬기 */
+.send .plus.ai{background:#f7efd9;color:#8f6b14;font-size:18px}
+.aiold,.ainew{border-radius:12px;padding:10px 12px;margin:4px 0 10px;white-space:pre-wrap;line-height:1.5}
+.aiold{background:var(--field);color:var(--gray,#6b7080)}
+.ainew{background:#f7efd9;color:#1f1b12;font-weight:600}
+/* 종합 보고서 */
+.sumgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin:12px 0}
+.sumcard{background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(20,22,26,.06),0 10px 24px rgba(20,22,26,.09);margin-bottom:14px}
+.sumh{padding:12px 16px;font-weight:800}
+.sumt{width:100%;border-collapse:collapse;font-size:14px}
+.sumt th{color:var(--gray,#5c6170);font-weight:500;text-align:left;padding:8px 10px}
+.sumt td{padding:6px 10px;border-top:1px solid #f0eee8}
+.sumt tr.foot td{font-weight:800}
+.sumgrid .sumcard{margin:0}

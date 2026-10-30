@@ -45,7 +45,9 @@ service cloud.firestore {
     match /library/{id} { allow read, create, update: if member(); allow delete: if false; }
     match /merchants/{id} {
       allow read: if member();
-      allow create, update: if canMerchant() && request.resource.data.keys().hasOnly(['j', 'u']) && request.resource.data.j is string && request.resource.data.j.size() > 20 && request.resource.data.j.size() < 200000 && request.resource.data.u is int;
+      // 신규 등록은 모든 직원(멤버도), 기존 가맹점 수정·삭제 표시는 가맹점 권한자·관리자만
+      allow create: if member() && request.resource.data.keys().hasOnly(['j', 'u']) && request.resource.data.j is string && request.resource.data.j.size() > 20 && request.resource.data.j.size() < 200000 && request.resource.data.u is int;
+      allow update: if canMerchant() && request.resource.data.keys().hasOnly(['j', 'u']) && request.resource.data.j is string && request.resource.data.j.size() > 20 && request.resource.data.j.size() < 200000 && request.resource.data.u is int;
       allow delete: if false;
     }
     // 비공개 대화방(1:1·그룹): 참가자(mem, 전화번호 목록)만. 방장 = 최상위 by(직원 번호), 없으면 처음 mem[0]
