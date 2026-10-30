@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.0.61';
+const VERSION = '웹 0.0.62';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
@@ -356,6 +356,24 @@ if (window.nineWin && window.nineWin.move) {
   document.addEventListener('pointerup', end, true); document.addEventListener('pointercancel', end, true);
   document.addEventListener('dblclick', e => { if (!e.target.closest('.pctop') || e.target.closest('button,.logo')) return; window.nineWin.state().then(st => window.nineWin.act(st && st.full ? 'shrink' : 'full')); }, true);
 }
+// PC 상단바에 내가 고른 메뉴 버튼 (프로필 topnav 에 메뉴 go 값 목록 — 직원마다, 이 계정 모든 PC 에 같게)
+const topNav = () => { const p = myProf(); return p && Array.isArray(p.topnav) ? p.topnav : []; };
+const shortLabel = l => l.replace(/\s*\(.*\)\s*$/, '');
+function topExtraHTML() {
+  const items = menuItems(); const k = S.sub || S.tab;
+  return topNav().map(go => items.find(e => e.go === go)).filter(Boolean).map(e => { const g = e.go.split(':');
+    return g[0] === 'nav' ? '<button data-nav="' + g[1] + '" data-sub="' + g[2] + '" class="' + (!S.menu && k === (g[2] || g[1]) ? 'on' : '') + '"><span class="t">' + esc(shortLabel(e.label)) + '</span></button>' : '<button data-act="' + g[1] + '"><span class="t">' + esc(shortLabel(e.label)) + '</span></button>'; }).join('');
+}
+function topAddAct() { // ACT 는 아래에서 만들어진다 → ACT.topAdd 는 ACT 다음에 붙인다
+  const cur = topNav(), fixed = NAVPC.map(n => 'nav:' + n[2] + ':' + n[3]);
+  const items = menuItems().filter(e => e.go && e.sec !== '바로가기' && !fixed.includes(e.go) && e.go !== 'act:logout');
+  formModal('상단바 메뉴 고르기', '<div class="sub" style="margin-top:0">자주 쓰는 메뉴를 체크하면 위쪽 상단바에 버튼이 생겨요(최대 6개, 체크한 순서대로). 이 계정으로 쓰는 모든 PC에 같게 보여요.</div><div style="max-height:55vh;overflow:auto">' +
+    items.map(e => '<label class="chk"><input type="checkbox" class="tnv" value="' + esc(e.go) + '"' + (cur.includes(e.go) ? ' checked' : '') + '><span class="grow">' + esc(e.label) + ' <small style="color:var(--gray)">' + esc(e.sec) + '</small></span></label>').join('') + '</div>', () => {
+    const on = [...document.querySelectorAll('.tnv:checked')].map(x => x.value); if (on.length > 6) return warn('6개까지 고를 수 있어요.');
+    const keep = cur.filter(g => on.includes(g)).concat(on.filter(g => !cur.includes(g)));
+    const pr = Object.assign({}, myProf() || {id: S.uid}); pr.topnav = keep; put('profiles', pr); render(); toast('상단바를 바꿨어요.'); return true;
+  }, '저장');
+}
 function newTaskCount() { return list('tasks').filter(t => t.assignee === S.uid && t.status === '지시됨').length + list('tasks').filter(t => t.preq && t.preq.stage === '발송함' && t.creator === S.uid).length; } // 물품요청이 발송되면 요청한 사람에게 '입고 확인' 알림
 function bodyHTML() {
   const k = S.sub || S.tab, wide = isWide();
@@ -385,7 +403,7 @@ function render() {
   const body = bodyHTML();
   if (wide) {
     const top = '<header class="pctop"><button class="hamb" data-act="menu" aria-label="' + (S.menu ? '전체 메뉴 닫기' : '전체 메뉴 열기') + '">' + (S.menu ? '✕' : '☰') + (!S.menu && badges.all ? '<span class="badge">' + badges.all + '</span>' : '') + '</button>' +
-      '<div class="logo" data-act="home" title="홈으로"><img src="icon-192.png" alt="">나인패밀리</div><nav class="pcnav">' + NAVPC.map(btn).join('') + '</nav>' +
+      '<div class="logo" data-act="home" title="홈으로"><img src="icon-192.png" alt="">나인패밀리</div><nav class="pcnav">' + NAVPC.map(btn).join('') + topExtraHTML() + '<button class="navadd" data-act="topAdd" title="상단바에 메뉴 추가·빼기" aria-label="상단바에 메뉴 추가">+</button></nav>' +
       '<button data-act="installApp" class="inst pcinst" style="display:none">PC에 설치하기</button><div class="me">' + esc(S.me.name) + ' · ' + roleName(S.me) + '</div>' + '<button class="pcdock' + (LS('dock_' + S.uid) === '1' ? ' on' : '') + '" data-act="dockToggle" title="오른쪽 채팅창 열기·닫기">💬 채팅창' + (badges.chat ? '<span class="badge">' + badges.chat + '</span>' : '') + '</button>' + (window.nineWin ? '<button class="pcwin" data-act="pcWin" aria-label="창 메뉴">⋮</button>' : '') + '</header>';
     root.innerHTML = '<div class="app pc' + (dockOn() ? ' dockon' : '') + '">' + top + chatBarHTML() + '<div class="main">' + body + '</div></div>' + (S.menu ? '' : fab());
   } else {
@@ -996,6 +1014,7 @@ ACT.polish = async () => {
   S.polished = out;
   modal('<h3>✦ AI 다듬기</h3><div class="sub" style="margin-top:0">원래 글</div><div class="aiold">' + esc(text) + '</div><div class="sub">다듬은 글</div><div class="ainew">' + esc(out) + '</div><button class="btn gold full" data-act="polishUse">바꾸기</button><button class="btn full" data-act="close">그대로 두기</button>');
 };
+ACT.topAdd = topAddAct;
 ACT.polishUse = () => {
   const inp = $('#msgin'); closeModal(); if (!inp || !S.polished) return;
   inp.value = S.polished; S.polished = ''; growMsg(inp); if (S.room) LS('draft_' + S.uid + '_' + S.room, inp.value); inp.focus();
@@ -2955,6 +2974,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.0.62', '2026-10-30', ['보안: 서버 규칙을 화면 권한과 맞춤(만든 사람 표시·방장·최고관리자 표시·암호 보관 위치·변경 기록), 로그아웃 때 이 기기에 남은 자료 지움', '권한 단계: 최고관리자·운영자·멤버 (직원 수정 창에서 한 번에), ‘중요 자료 삭제’ 권한 — 가맹점·계약·재고 삭제는 이 권한자만', '가맹점: 멤버도 새 가맹점 등록(등록한 사람·최근 수정한 사람 표시), 대표자 성함 칸', '채팅: 남의 글은 사진+이름(카톡처럼), 내 이름 색 바꾸기, 채팅방 목록 끌어서 순서 바꾸기, 입력창 다듬기', '채팅: ✦ AI 다듬기 — 쓴 글의 맞춤법·말투를 다듬어 바꿀지 고르기', '업무 종류: 카드사서류·큐밴등록', '지난 업무를 나중에 가맹점 응대 기록에 남기기', '계약: 수정·삭제, 장비 구분·전자계약서·리드관리·기존 VAN사', '실적 → 종합 보고서(월별 신규·단말기/POS·전자계약·토스 프론트/포스·토스 리드·CMS 재계약, 엑셀로 받기)', '단체 문자: 계약 만료(1·2·3개월 이내·이미 만료)로 거르기', 'PC 상단바: + 로 자주 쓰는 메뉴 붙이기, 메뉴 글씨 크고 굵게, 화면 입체감']],
   ['웹 0.0.61', '2026-10-26', ['보안: 가맹점 정보 쓰기는 ‘가맹점 등록·수정’ 권한자·관리자만(서버 규칙), 가맹점 목록의 전화·주소는 가려서 보이고 상세에서만 전체', '보안: 가맹점 상세 열람·등록·수정·삭제·엑셀 가져오기·백업 내려받기를 감사 로그로 남김(관리자 → 가맹점 조회 기록), 조회량 많은 계정 확인', '보안: 가맹점 상세 조회 하루 한도(기본 100곳, 관리자 → 한도 설정) — 넘으면 막히고 관리자에게 알림', '보안: 앱 잠금(PIN) — 내 계정·설정 → 앱 잠금. 새로 열거나 1분 넘게 다른 창에 있다 오면 PIN', '엑셀 가져오기는 관리자 전용', '채팅: 쓰던 메시지 임시 저장 — 다른 화면에 갔다 와도 이어서 쓰기(방마다)', '가맹점 조회 창: ‘새 가맹점 등록’은 등록 권한이 있는 직원에게만(조회·검색·선택·상세·응대 기록은 누구나 암호 없이)', '업무 요청 빠른 선택 버튼을 작게, 버튼 안 글자는 한 줄로', '최고관리자(양문희·가태현): 모든 권한이 항상 켜짐, 다른 관리자가 끄거나 삭제할 수 없음']],
   ['웹 0.0.60', '2026-10-26', ['채팅을 보낼 때 위쪽에 ‘서버에 저장 중’이 잠깐씩 깜빡이던 것: 저장이 10초 넘게 안 될 때만 보이게 (인터넷 끊김은 바로 표시)']],
   ['웹 0.0.58', '2026-10-26', ['홈페이지 서류접수·상담신청을 앱 ‘서류접수’·‘상담신청’ 채팅방으로 받을 준비(글쓴이 ‘📮 홈페이지 접수’, 사진 함께)']],

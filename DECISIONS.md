@@ -124,3 +124,11 @@
 - 2026-10-30: 로그아웃 때 Firestore 오프라인 보관(persistence)도 지움(웹 terminate+clearPersistence 후 새로고침, 앱 terminate 후 clearPersistence). 앱 잠금 PIN 은 화면 잠금일 뿐.
 - 2026-10-30: 저장소 비공개 전환은 하지 않음 — 무료 계정에선 Pages 가 꺼지고, 공개 릴리스(APK·PC 설치 파일·자동 업데이트·새 버전 확인)를 비로그인으로 못 받게 됨. 저장소에 비밀값은 없음(서비스 계정 키는 GitHub 비밀값·Apps Script 속성에만).
 - 2026-10-30: 규칙 테스트 tools/rules-test (Firestore 에뮬레이터, 36개). 빌드 워크플로는 main 일 때만 시험판 업로드(다른 브랜치는 컴파일 확인만).
+- 2026-10-30: 권한 단계 프리셋 — 최고관리자(전부)·운영자(직원 관리·중요 자료 삭제 빼고 전부)·멤버(업무 요청만 + 기본 화면). 새 권한 data_delete(가맹점·계약·재고 삭제). 웹 PRESETS = 앱 Perm.preset.
+- 2026-10-30: 새 가맹점 등록은 모든 직원(멤버 포함, 암호 없이) — 규칙 merchants create = member. 기존 가맹점 수정은 그대로 가맹점 권한자·관리자(+암호). 가맹점에 regBy/regAt·editBy/editAt, 대표자 성함 owner.
+- 2026-10-30: 채팅 이름 색 profiles.ncolor(8색 중), 방 목록 순서 profiles.rorder(방 번호 배열, 없는 방은 위에 최근순). PC 상단바 추가 메뉴 profiles.topnav(메뉴 go 값, 최대 6개).
+- 2026-10-30: AI 다듬기 = Cloud Functions polish(asia-northeast3, Node 22) → Claude(claude-opus-5-5, effort low, fallbacks default). 키는 Firebase 비밀값 ANTHROPIC_API_KEY 만. 직원 확인(ID 토큰 + phones active), 하루 100번(aiuse 컬렉션, 서버 전용). 배포는 지사장님이 docs/AI_DEPLOY.md 대로.
+- 2026-10-30: 업무 종류에 '카드사서류'·'큐밴등록' (새 업무용). 예전 '카드사 서류'·'서류 접수' 값은 그대로 둠. 큐밴등록은 서류접수 방 자동 알림 안 함(요청 없음).
+- 2026-10-30: 계약 추가 항목 eqType(단말기/POS/단말기+POS/기타)·econ(없음/요청/완료)·lead+leadSt(진행중/성공/실패)·prevVan, 수정 editBy/editAt, 삭제는 소프트(deleted+delBy) — 나간 장비 재고 상태는 그대로. 계약 수정 = 실적 권한자 또는 올린 사람, 삭제 = data_delete.
+- 2026-10-30: 종합 보고서 = 계약서에서 자동 계산. 토스 프론트/포스 = 업체명에 토스/toss + 설치완료일이 config 'promo' {from,to,goalF,goalP} 기간 안. CMS 재계약 = CMS + prevVan 적은 계약(올해). 엑셀은 웹에서.
+- 2026-10-30: 단체 문자 계약 만료 거르기 = 가맹점 계약종료일(cend) 기준 1·2·3개월 이내·이미 만료.

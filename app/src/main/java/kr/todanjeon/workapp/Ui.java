@@ -90,6 +90,7 @@ final class Ui {
         l.setOrientation(LinearLayout.VERTICAL);
         l.setBackground(round(CARD, 20, c));
         l.setPadding(dp(c, 16), dp(c, 16), dp(c, 16), dp(c, 16));
+        l.setElevation(dp(c, 2)); // 입체감 (웹 카드 그림자와 같게)
         return l;
     }
 
