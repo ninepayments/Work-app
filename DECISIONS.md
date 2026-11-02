@@ -140,3 +140,6 @@
 - 2026-10-31: 채팅 이름 색은 아무 색(#rrggbb) — 웹 색 고르개, 앱 색·진하기 막대. 버튼·상단 메뉴는 원래 단색(그라데이션 뺌), 카드 그림자는 둠.
 - 2026-10-31: 보안 규칙 게시 워크플로 rules.yml(손으로 실행, 최고관리자 표시 확인 후 게시) — 비밀값 FIREBASE_SERVICE_ACCOUNT 가 없어 아직 못 씀(백업도 같은 이유로 건너뛰는 중).
 - 2026-10-31: 보안 규칙 게시함(rules.yml, 최고관리자 표시 가태현·양문희 확인 후). FIREBASE_SERVICE_ACCOUNT 등록됨. 백업은 BACKUP_PASSWORD 가 아직 없어 건너뜀.
+- 2026-11-02: 나인패스 연동 = 서버 함수 npGo(POST → {url} 1회용 SSO 주소, 먼저 pending 으로 직원 확인해 불일치면 mismatch)·npPending(POST → {count}, 직원별 15초 캐시, 5초 제한, 실패는 {count:0,error:true}). 키·주소는 Firebase 비밀값 NINEPASS_KEY·NINEPASS_URL 만(GitHub 비밀값 → functions.yml 이 옮겨 넣음). 연락처 = 로그인 번호 + users.tel(숫자만, 82→0), 이름 = users.name.
+- 2026-11-02: 나인패스 메뉴 위치 — 웹 PC 상단 '메모' 오른쪽(로고+글자+배지), 휴대폰 웹 ☰ → 회사, 앱 전체 → 회사. 30초마다·창이 보일 때 새로 고침. 브라우저는 빈 창을 먼저 열고 주소를 넣음(팝업 차단 방지), PC 프로그램은 바깥 브라우저로.
+- 2026-11-02: 서버 함수 배포 워크플로 functions.yml(functions/ 바뀌면 자동 + 손으로). 비밀값이 없으면 'unset' 자리표시로 배포하고 함수가 '설정 안 됨'으로 답함.

@@ -897,12 +897,99 @@ public class MainActivity extends Activity {
     protected void onStop() {
         super.onStop();
         stoppedAt = System.currentTimeMillis();
+        npHandler.removeCallbacks(npTick);
     }
 
     @Override
     protected void onStart() {
         super.onStart();
         if (stoppedAt > 0 && System.currentTimeMillis() - stoppedAt > 60000) showAppLock();
+        npHandler.removeCallbacks(npTick);
+        npHandler.postDelayed(npTick, 3000);
+    }
+
+    // ---------- 나인패스(전자결재): 전체 탭 '회사' 메뉴 + 결재 대기 수. 키는 서버 함수(npGo·npPending)에만 — 웹과 같음 ----------
+    private static final String NP_FN = "https://asia-northeast3-nine-family.cloudfunctions.net/";
+    private static final String NP_MISMATCH = "나인패스에 등록된 직원 정보와 일치하지 않습니다. 관리자에게 문의하세요";
+    private int npCount = 0;
+    private final android.os.Handler npHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable npTick = new Runnable() {
+        @Override
+        public void run() {
+            npPoll();
+            npHandler.postDelayed(this, 30000);
+        }
+    };
+
+    /** 서버 함수에 POST — 로그인 토큰을 붙여 보내고 {code, json} 을 돌려준다 (UI 스레드 밖에서 부른다). */
+    private Object[] npCall(String fn, String tok, String body) throws Exception {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(NP_FN + fn).openConnection();
+        c.setConnectTimeout(8000);
+        c.setReadTimeout(15000);
+        c.setRequestMethod("POST");
+        c.setDoOutput(true);
+        c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+        c.setRequestProperty("Authorization", "Bearer " + tok);
+        c.getOutputStream().write(body.getBytes("UTF-8"));
+        int code = c.getResponseCode();
+        java.io.InputStream is = code < 400 ? c.getInputStream() : c.getErrorStream();
+        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[4096];
+        for (int n; is != null && (n = is.read(buf)) > 0; ) bo.write(buf, 0, n);
+        String t = bo.toString("UTF-8");
+        return new Object[]{code, new JSONObject(t.isEmpty() ? "{}" : t)};
+    }
+
+    private void npPoll() { // 실패하면 숫자만 숨긴다(오류 안내 없음)
+        com.google.firebase.auth.FirebaseUser fu = Cloud.auth().getCurrentUser();
+        if (me == null || fu == null) return;
+        fu.getIdToken(false).addOnSuccessListener(tk -> new Thread(() -> {
+            int n = 0;
+            try {
+                JSONObject j = (JSONObject) npCall("npPending", tk.getToken(), "{}")[1];
+                n = j.optBoolean("error") ? 0 : Math.max(0, j.optInt("count"));
+            } catch (Exception ignored) {
+            }
+            final int f = n;
+            runOnUiThread(() -> {
+                if (f == npCount) return;
+                npCount = f;
+                if ("all".equals(tab) && !isFinishing()) render();
+            });
+        }).start());
+    }
+
+    private void openNinepass() { // 1회용 자동 로그인 주소를 서버가 만들어 주면 인터넷 창(브라우저)으로 연다
+        com.google.firebase.auth.FirebaseUser fu = Cloud.auth().getCurrentUser();
+        if (fu == null) return;
+        Ui.toast(this, "나인패스 여는 중…");
+        fu.getIdToken(false).addOnCompleteListener(tk -> {
+            if (!tk.isSuccessful() || tk.getResult() == null) {
+                Ui.toast(this, "로그인을 확인해 주세요");
+                return;
+            }
+            final String tok = tk.getResult().getToken();
+            new Thread(() -> {
+                String url = "", err;
+                try {
+                    Object[] r = npCall("npGo", tok, "{\"next\":\"/\"}");
+                    JSONObject j = (JSONObject) r[1];
+                    url = j.optString("url");
+                    err = "mismatch".equals(j.optString("error")) ? NP_MISMATCH : j.optString("error", "나인패스를 열지 못했어요 (" + r[0] + ")");
+                } catch (Exception e) {
+                    err = "인터넷 연결을 확인해 주세요";
+                }
+                final String u = url, er = err;
+                runOnUiThread(() -> {
+                    if (!u.isEmpty()) {
+                        openIntent(new Intent(Intent.ACTION_VIEW, Uri.parse(u)));
+                        npPoll();
+                    } else if (NP_MISMATCH.equals(er))
+                        new Dlg(this).setTitle("나인패스").setMessage(er + "\n\n나인패스에 등록된 이름·연락처가 나인패밀리(직원 정보의 이름·로그인 번호·연락처)와 같아야 해요.").setPositiveButton("닫기", null).show();
+                    else Ui.toast(this, er);
+                });
+            }).start();
+        });
     }
 
     private android.content.SharedPreferences lockPrefs() {
@@ -3031,6 +3118,9 @@ public class MainActivity extends Activity {
             e.add(new Entry("보고", "일일보고 종합 보기", "일일보고 종합 대표님 직원별", () -> goSub("reportview")));
             if (!canPerf()) e.add(new Entry("보고", "실적 보고서 보기", "실적 보고서 보기 대표님", () -> goSub("perfreport")));
         }
+        Entry np = new Entry("회사", "나인패스 (전자결재)", "나인패스 전자결재 결재 문서 기안 승인 ninepass", () -> openNinepass());
+        np.badge = npCount > 0 ? (npCount > 99 ? "99+" : String.valueOf(npCount)) : "";
+        e.add(np);
         Entry n = new Entry("회사", "공지사항", "공지사항 공지 알림", () -> goSub("notice"));
         int un = unreadNotices();
         n.badge = un > 0 ? String.valueOf(un) : "";
@@ -7563,6 +7653,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.4.0", "2026-11-02", "• 나인패스(전자결재) 연결: 전체 → 회사 → '나인패스'를 누르면 다시 로그인하지 않고 인터넷 창으로 열려요. 내가 결재할 문서 수가 빨간 숫자로 보여요(30초마다 새로 고침)\n• 나인패스에 등록된 이름·연락처가 나인패밀리와 다르면 '직원 정보와 일치하지 않습니다' 안내가 나와요"},
             {"0.3.9", "2026-10-31", "• 버전 번호 바꿈: 끝자리가 9를 넘으면 앞자리로 올라가요(0.3.8 → 0.3.9 → 0.4.0). 지난 내역 번호도 같은 방식으로 고쳤어요(예전 0.0.38 = 0.3.8)\n• 물품요청: 요청한 사람·관리자가 수정·삭제 (품목·수량은 발송 전까지)\n• 재고 현황(재고 화면 또는 전체 → 재고): 품목별 보관지 수량·출고중·안전재고, 보관지·미달만 거르기, 이름·코드·수량·부족 순 정렬, 부족 품목 체크 → 물품요청 자동 채움\n• 권한 화면 단순화: 역할(멤버·운영자·관리자·최고관리자)을 고르면 끝, 세부 권한은 접어 두고 겹치는 항목은 하나로\n• 채팅 이름 색: 아무 색이나 직접 골라요(색·진하기)\n• 앱 잠금 지문: 지문이 등록돼 있어도 '없음'으로 나오던 것 고침\n• AI 다듬기: 구글 Gemini 무료로 바꿈"},
             {"0.3.8", "2026-10-30", "• 보안: 서버 규칙을 화면 권한과 맞춤(만든 사람 표시·방장·최고관리자 표시·암호 보관 위치·변경 기록), 로그아웃 때 폰에 남은 자료 지움\n• 권한 단계: 최고관리자·운영자·멤버, '중요 자료 삭제' 권한(가맹점·계약·재고 삭제)\n• 가맹점: 멤버도 새 가맹점 등록(등록·최근 수정한 사람 표시), 대표자 성함\n• 채팅: 내 이름 색 바꾸기(전체 → 채팅), 채팅방 목록 '순서 편집'으로 끌어서 순서 바꾸기, 입력창 다듬기, ✦ AI 다듬기\n• 업무 종류: 카드사서류·큐밴등록 / 지난 업무를 나중에 가맹점 응대 기록에 남기기\n• 계약: 수정·삭제, 장비 구분·전자계약서·리드관리·기존 VAN사\n• 실적 → 종합 보고서 / 단체 문자: 계약 만료로 거르기\n• 카드에 입체감"},
             {"0.3.7", "2026-10-26", "• 보안: 가맹점 정보 쓰기는 '가맹점 등록·수정' 권한자·관리자만(서버 규칙), 목록의 전화·주소는 가려서 보이고 상세에서만 전체\n• 보안: 가맹점 상세 열람·등록·수정·삭제·엑셀 가져오기·백업을 감사 로그로(관리자 → 가맹점 조회 기록), 하루 조회 한도(넘으면 막고 관리자에게 알림)\n• 앱 잠금(PIN·지문): 내 계정·설정 → 앱 잠금\n• 채팅: 쓰던 메시지 임시 저장(방마다, 다른 화면 갔다 와도 이어서)\n• 가맹점 조회 창: '새 가맹점 등록'은 등록 권한자에게만, 아래 '새 가맹점 등록' 버튼 정리 / 엑셀 가져오기는 관리자 전용\n• 업무 요청 빠른 선택 버튼 작게(버튼 안 글자 한 줄, 많으면 다음 줄로)\n• 최고관리자(양문희·가태현): 모든 권한 항상 켜짐"},

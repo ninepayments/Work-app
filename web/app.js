@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.6.3';
+const VERSION = '웹 0.6.4';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
@@ -374,6 +374,22 @@ function topAddAct() { // ACT 는 아래에서 만들어진다 → ACT.topAdd �
     const pr = Object.assign({}, myProf() || {id: S.uid}); pr.topnav = keep; put('profiles', pr); render(); toast('상단바를 바꿨어요.'); return true;
   }, '저장');
 }
+// ---------- 나인패스(전자결재): 상단 '메모' 오른쪽 메뉴 + 결재 대기 수. 키는 서버 함수(npGo·npPending)에만 있고 화면은 로그인 토큰으로 묻기만 한다 ----------
+const NP_FN = 'https://asia-northeast3-nine-family.cloudfunctions.net/';
+const npBadge = () => S.npCount ? '<span class="badge">' + (S.npCount > 99 ? '99+' : S.npCount) + '</span>' : '';
+const npNavHTML = () => '<button class="npnav" data-act="ninepass" title="나인패스 전자결재 (새 창)"><img src="ninepass-logo-64.png" alt=""><span class="t">나인패스</span>' + npBadge() + '</button>';
+async function npPoll() { // 결재 대기 수 — 실패하면 숫자만 숨긴다(오류 안내 없음)
+  if (DEMO || !S.me || !auth || !auth.currentUser || document.hidden) return;
+  let n = 0;
+  try {
+    const r = await fetch(NP_FN + 'npPending', {method: 'POST', headers: {Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}});
+    const j = await r.json(); n = j && !j.error ? Math.max(0, Number(j.count) || 0) : 0;
+  } catch (e) { n = 0; }
+  if (n === (S.npCount || 0)) return; S.npCount = n;
+  document.querySelectorAll('.npnav').forEach(b => { const o = b.querySelector('.badge'); if (o) o.remove(); if (n) b.insertAdjacentHTML('beforeend', npBadge()); });
+}
+setInterval(npPoll, 30000); setTimeout(npPoll, 3000); document.addEventListener('visibilitychange', () => { if (!document.hidden) npPoll(); });
+const NP_MISMATCH = '나인패스에 등록된 직원 정보와 일치하지 않습니다. 관리자에게 문의하세요';
 function newTaskCount() { return list('tasks').filter(t => t.assignee === S.uid && t.status === '지시됨').length + list('tasks').filter(t => t.preq && t.preq.stage === '발송함' && t.creator === S.uid).length; } // 물품요청이 발송되면 요청한 사람에게 '입고 확인' 알림
 function bodyHTML() {
   const k = S.sub || S.tab, wide = isWide();
@@ -403,7 +419,7 @@ function render() {
   const body = bodyHTML();
   if (wide) {
     const top = '<header class="pctop"><button class="hamb" data-act="menu" aria-label="' + (S.menu ? '전체 메뉴 닫기' : '전체 메뉴 열기') + '">' + (S.menu ? '✕' : '☰') + (!S.menu && badges.all ? '<span class="badge">' + badges.all + '</span>' : '') + '</button>' +
-      '<div class="logo" data-act="home" title="홈으로"><img src="icon-192.png" alt="">나인패밀리</div><nav class="pcnav">' + NAVPC.map(btn).join('') + topExtraHTML() + '<button class="navadd" data-act="topAdd" title="상단바에 메뉴 추가·빼기" aria-label="상단바에 메뉴 추가">+</button></nav>' +
+      '<div class="logo" data-act="home" title="홈으로"><img src="icon-192.png" alt="">나인패밀리</div><nav class="pcnav">' + NAVPC.map(btn).join('') + npNavHTML() + topExtraHTML() + '<button class="navadd" data-act="topAdd" title="상단바에 메뉴 추가·빼기" aria-label="상단바에 메뉴 추가">+</button></nav>' +
       '<button data-act="installApp" class="inst pcinst" style="display:none">PC에 설치하기</button><div class="me">' + esc(S.me.name) + ' · ' + roleName(S.me) + '</div>' + '<button class="pcdock' + (LS('dock_' + S.uid) === '1' ? ' on' : '') + '" data-act="dockToggle" title="오른쪽 채팅창 열기·닫기">💬 채팅창' + (badges.chat ? '<span class="badge">' + badges.chat + '</span>' : '') + '</button>' + (window.nineWin ? '<button class="pcwin" data-act="pcWin" aria-label="창 메뉴">⋮</button>' : '') + '</header>';
     root.innerHTML = '<div class="app pc' + (dockOn() ? ' dockon' : '') + '">' + top + chatBarHTML() + '<div class="main">' + body + '</div></div>' + (S.menu ? '' : fab());
   } else {
@@ -1016,6 +1032,19 @@ ACT.polish = async () => {
   modal('<h3>✦ AI 다듬기</h3><div class="sub" style="margin-top:0">원래 글</div><div class="aiold">' + esc(text) + '</div><div class="sub">다듬은 글</div><div class="ainew">' + esc(out) + '</div><button class="btn gold full" data-act="polishUse">바꾸기</button><button class="btn full" data-act="close">그대로 두기</button>');
 };
 ACT.topAdd = topAddAct;
+ACT.ninepass = async () => { // 새 창(탭)으로 나인패스 — 1회용 자동 로그인 주소는 누를 때마다 서버가 새로 만든다
+  if (DEMO) return toast('데모에서는 나인패스를 열 수 없어요.');
+  const elec = !!window.nineWin; // PC 프로그램: 주소를 받은 뒤 window.open → 인터넷 창(브라우저)으로 열림
+  const w = elec ? null : window.open('', '_blank'); // 브라우저: 누른 순간 빈 창을 먼저 열어야 팝업 차단에 안 걸린다
+  const fail = m => { if (w) w.close(); m === NP_MISMATCH ? modal('<h3>나인패스</h3><div class="sub" style="margin-top:0;font-size:15px;color:var(--ink)">' + esc(m) + '</div><div class="sub">나인패스에 등록된 이름·연락처가 나인패밀리(직원 정보의 이름·로그인 번호·연락처)와 같아야 해요.</div><button class="btn full" data-act="close">닫기</button>') : toast(m); };
+  try {
+    if (w) w.document.title = '나인패스 여는 중…';
+    const r = await fetch(NP_FN + 'npGo', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}, body: JSON.stringify({next: '/'})});
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.url) { if (w) { w.opener = null; w.location.replace(j.url); } else window.open(j.url, '_blank'); npPoll(); return; }
+    fail(j.error === 'mismatch' ? NP_MISMATCH : (j.error || '나인패스를 열지 못했어요 (' + r.status + ')'));
+  } catch (e) { fail('인터넷 연결을 확인해 주세요'); }
+};
 ACT.polishUse = () => {
   const inp = $('#msgin'); closeModal(); if (!inp || !S.polished) return;
   inp.value = S.polished; S.polished = ''; growMsg(inp); if (S.room) LS('draft_' + S.uid + '_' + S.room, inp.value); inp.focus();
@@ -2939,6 +2968,7 @@ function menuItems() {
   add('보고', '일일보고 쓰기', '일일보고 보고 오늘 한 일', 'nav:all:daily');
   if (P) add('보고', '실적 보고서 올리기 (대표님께)', '실적 보고서 올리기 대표님 본부장', 'nav:all:perfreport');
   if (R) { add('보고', '일일보고 종합 보기', '일일보고 종합 대표님 직원별', 'nav:all:reportview'); if (!P) add('보고', '실적 보고서 보기', '실적 보고서 보기 대표님', 'nav:all:perfreport'); }
+  add('회사', '나인패스 (전자결재)', '나인패스 전자결재 결재 문서 기안 승인 ninepass', 'act:ninepass', S.npCount ? (S.npCount > 99 ? '99+' : String(S.npCount)) : '');
   add('회사', '공지사항', '공지사항 공지 알림', 'nav:all:notice', nu ? String(nu) : '');
   add('회사', '자료실', '자료실 게시판 양식 서식 계약서 파일 문서', 'nav:all:library'); add('회사', '비상연락망 (눌러서 전화)', '비상연락망 연락처 전화 번호', 'nav:all:contacts');
   if (canStaffInfo()) add('회사', '직원 정보 (명부)', '직원 정보 명부 부서 직책 생년월일 연락처 주소 사진', 'nav:all:staffinfo');
@@ -3057,6 +3087,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.6.4', '2026-11-02', ['나인패스(전자결재) 연결: PC 위쪽 메뉴 ‘메모’ 오른쪽(휴대폰은 ☰ → 회사)의 ‘나인패스’를 누르면 다시 로그인하지 않고 새 창으로 열려요. 내가 결재할 문서 수가 빨간 숫자로 보여요(30초마다)', '나인패스에 등록된 이름·연락처가 나인패밀리와 다르면 ‘직원 정보와 일치하지 않습니다’ 안내']],
   ['웹 0.6.3', '2026-10-31', ['버전 번호 바꿈: 끝자리가 9를 넘으면 앞자리로 올라가요(0.6.2 → 0.6.3 → … → 0.7.0). 지난 내역 번호도 같은 방식으로 고쳤어요(예전 0.0.62 = 0.6.2)', '물품요청: 요청한 사람·관리자가 수정·삭제 (품목·수량은 발송 전까지)', '재고 현황(재고 화면 또는 ☰ → 재고): 품목별 보관지 수량·출고중·안전재고 표, 보관지·안전재고 미달만 거르기, 정렬, 부족 품목 체크 → 물품요청 자동 채움', '권한 화면 단순화: 역할(멤버·운영자·관리자·최고관리자)을 고르면 끝, 세부 권한은 접어 두고 겹치는 항목은 하나로', '채팅 이름 색: 아무 색이나 직접 골라요', '버튼·메뉴 색을 원래 단색으로(그라데이션 뺌)', 'AI 다듬기: 구글 Gemini 무료로 바꿈']],
   ['웹 0.6.2', '2026-10-30', ['보안: 서버 규칙을 화면 권한과 맞춤(만든 사람 표시·방장·최고관리자 표시·암호 보관 위치·변경 기록), 로그아웃 때 이 기기에 남은 자료 지움', '권한 단계: 최고관리자·운영자·멤버 (직원 수정 창에서 한 번에), ‘중요 자료 삭제’ 권한 — 가맹점·계약·재고 삭제는 이 권한자만', '가맹점: 멤버도 새 가맹점 등록(등록한 사람·최근 수정한 사람 표시), 대표자 성함 칸', '채팅: 남의 글은 사진+이름(카톡처럼), 내 이름 색 바꾸기, 채팅방 목록 끌어서 순서 바꾸기, 입력창 다듬기', '채팅: ✦ AI 다듬기 — 쓴 글의 맞춤법·말투를 다듬어 바꿀지 고르기', '업무 종류: 카드사서류·큐밴등록', '지난 업무를 나중에 가맹점 응대 기록에 남기기', '계약: 수정·삭제, 장비 구분·전자계약서·리드관리·기존 VAN사', '실적 → 종합 보고서(월별 신규·단말기/POS·전자계약·토스 프론트/포스·토스 리드·CMS 재계약, 엑셀로 받기)', '단체 문자: 계약 만료(1·2·3개월 이내·이미 만료)로 거르기', 'PC 상단바: + 로 자주 쓰는 메뉴 붙이기, 메뉴 글씨 크고 굵게, 화면 입체감']],
   ['웹 0.6.1', '2026-10-26', ['보안: 가맹점 정보 쓰기는 ‘가맹점 등록·수정’ 권한자·관리자만(서버 규칙), 가맹점 목록의 전화·주소는 가려서 보이고 상세에서만 전체', '보안: 가맹점 상세 열람·등록·수정·삭제·엑셀 가져오기·백업 내려받기를 감사 로그로 남김(관리자 → 가맹점 조회 기록), 조회량 많은 계정 확인', '보안: 가맹점 상세 조회 하루 한도(기본 100곳, 관리자 → 한도 설정) — 넘으면 막히고 관리자에게 알림', '보안: 앱 잠금(PIN) — 내 계정·설정 → 앱 잠금. 새로 열거나 1분 넘게 다른 창에 있다 오면 PIN', '엑셀 가져오기는 관리자 전용', '채팅: 쓰던 메시지 임시 저장 — 다른 화면에 갔다 와도 이어서 쓰기(방마다)', '가맹점 조회 창: ‘새 가맹점 등록’은 등록 권한이 있는 직원에게만(조회·검색·선택·상세·응대 기록은 누구나 암호 없이)', '업무 요청 빠른 선택 버튼을 작게, 버튼 안 글자는 한 줄로', '최고관리자(양문희·가태현): 모든 권한이 항상 켜짐, 다른 관리자가 끄거나 삭제할 수 없음']],

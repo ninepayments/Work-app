@@ -43,6 +43,7 @@ exports.polish = onRequest({ region: 'asia-northeast3', secrets: [GEMINI_API_KEY
   });
   if (over) return res.status(429).json({ error: '오늘 다듬기 횟수(' + DAY_LIMIT + '번)를 다 썼어요' });
   // 3) Gemini 호출
+  if (!/^[A-Za-z0-9_\-]{20,}$/.test(GEMINI_API_KEY.value())) return res.status(503).json({error: 'AI 키가 아직 등록되지 않았어요 (관리자 확인 필요)'});
   try {
     for (const model of MODELS) {
       const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', {
@@ -67,4 +68,79 @@ exports.polish = onRequest({ region: 'asia-northeast3', secrets: [GEMINI_API_KEY
     console.error(e);
     return res.status(500).json({error: '다듬기에 실패했어요'});
   }
+});
+
+// ---------- 나인패스(전자결재) 연동 — docs 의 연동 규격서대로. 키·주소는 비밀값 NINEPASS_KEY · NINEPASS_URL 에서만 읽는다 ----------
+// npGo: 로그인한 직원의 1회용 자동 로그인 주소를 만들어 돌려준다(화면이 새 창으로 연다). 직원 정보가 나인패스와 안 맞으면 mismatch.
+// npPending: 결재 대기 수 {count}. 실패는 {count:0, error:true} (화면은 숫자만 숨김). 같은 직원 15초 캐시, 나인패스 응답 5초 제한.
+const crypto = require('crypto');
+const NINEPASS_KEY = defineSecret('NINEPASS_KEY');
+const NINEPASS_URL = defineSecret('NINEPASS_URL');
+const npCache = new Map(); // uid → {at, count, found}
+
+async function staffOf(req) { // 로그인 토큰 → 나인패밀리 직원 {uid, name, phones}
+  const m = /^Bearer (.+)$/.exec(req.get('Authorization') || '');
+  if (!m) return null;
+  let phone;
+  try {
+    phone = (await admin.auth().verifyIdToken(m[1])).phone_number;
+  } catch (e) {
+    return null;
+  }
+  const db = admin.firestore();
+  const ph = phone ? await db.doc('phones/' + phone).get() : null;
+  if (!ph || !ph.exists || ph.get('active') !== true) return null;
+  const ud = await db.doc('users/' + ph.get('uid')).get();
+  let u = {};
+  try {
+    u = JSON.parse(ud.get('j') || '{}');
+  } catch (e) {}
+  const name = String(u.name || ph.get('name') || '').trim();
+  const norm = (v) => { let d = String(v || '').replace(/\D/g, ''); if (d.startsWith('82')) d = '0' + d.slice(2); return /^0\d{8,10}$/.test(d) ? d : ''; };
+  const phones = [...new Set([norm(phone), norm(u.tel)].filter(Boolean))]; // 로그인 번호 + 직원 정보 '연락처'
+  return name && phones.length ? {uid: ph.get('uid'), name, phones} : null;
+}
+const npBase = () => String(NINEPASS_URL.value() || '').replace(/\/+$/, '');
+const npReady = () => /^https:\/\//.test(npBase()) && NINEPASS_KEY.value().length >= 16;
+async function npAsk(st) { // 나인패스 결재 대기 수 → {found, count} (실패하면 throw)
+  const q = new URLSearchParams({name: st.name, phone: st.phones.join(',')});
+  const r = await fetch(npBase() + '/api/external/pending?' + q, {headers: {'X-NinePass-Key': NINEPASS_KEY.value()}, signal: AbortSignal.timeout(5000)});
+  if (r.status === 404) return {found: false, count: 0};
+  if (!r.ok) throw new Error('ninepass ' + r.status);
+  const j = await r.json();
+  return {found: j.found !== false, count: Math.max(0, Number(j.pending) || 0)};
+}
+const npOpts = {region: 'asia-northeast3', secrets: [NINEPASS_KEY, NINEPASS_URL], cors: ORIGINS, maxInstances: 3, timeoutSeconds: 20};
+
+exports.npPending = onRequest(npOpts, async (req, res) => {
+  const st = await staffOf(req);
+  if (!st || !npReady()) return res.json({count: 0, error: true});
+  const c = npCache.get(st.uid);
+  if (c && Date.now() - c.at < 15000) return res.json({count: c.count, found: c.found});
+  try {
+    const a = await npAsk(st);
+    npCache.set(st.uid, {at: Date.now(), count: a.count, found: a.found});
+    return res.json({count: a.count, found: a.found});
+  } catch (e) {
+    console.error('npPending', e.message); // 키·주소는 남기지 않는다
+    return res.json({count: 0, error: true});
+  }
+});
+
+exports.npGo = onRequest(npOpts, async (req, res) => {
+  if (req.method !== 'POST') return res.status(405).json({error: 'POST 만 됩니다'});
+  const st = await staffOf(req);
+  if (!st) return res.status(401).json({error: '로그인이 필요해요'});
+  if (!npReady()) return res.status(503).json({error: '나인패스 연동 설정이 아직 안 됐어요 (관리자 확인 필요)'});
+  try {
+    const a = await npAsk(st); // 먼저 직원 확인 — 안 맞으면 나인패스 403 화면 대신 우리 안내
+    if (!a.found) return res.status(404).json({error: 'mismatch'});
+  } catch (e) {
+    console.error('npGo check', e.message);
+  }
+  const next = typeof (req.body && req.body.next) === 'string' && /^\/[^/\\]/.test(req.body.next) ? req.body.next : '/';
+  const phone = st.phones.join(','), ts = Math.floor(Date.now() / 1000);
+  const sig = crypto.createHmac('sha256', NINEPASS_KEY.value()).update(ts + '\n' + st.name + '\n' + phone, 'utf8').digest('hex');
+  const q = new URLSearchParams({name: st.name, phone, ts: String(ts), sig, next});
+  return res.json({url: npBase() + '/sso?' + q});
 });

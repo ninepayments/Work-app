@@ -1,0 +1,47 @@
+name: Deploy server functions
+# Firebase 서버 함수(functions/ — AI 다듬기 polish, 나인패스 npGo·npPending)를 배포한다. 손으로(Run workflow) 또는 functions/ 가 바뀌면.
+# 비밀값: FIREBASE_SERVICE_ACCOUNT(필수), NINEPASS_URL·NINEPASS_KEY·GEMINI_API_KEY(있으면 Firebase 비밀값으로 옮겨 넣음, 없으면 'unset' 자리표시).
+# 값은 로그에 나오지 않는다(GitHub 가 가림 + 표준입력으로만 넘김).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['functions/**', '.github/workflows/functions.yml']
+permissions:
+  contents: read
+concurrency:
+  group: functions
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Deploy
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          NINEPASS_URL: ${{ secrets.NINEPASS_URL }}
+          NINEPASS_KEY: ${{ secrets.NINEPASS_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$SA" ]; then echo "::error::FIREBASE_SERVICE_ACCOUNT 비밀값이 없습니다."; exit 1; fi
+          umask 077
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npm i -g firebase-tools@15.34.2 --silent --no-audit --no-fund
+          (cd functions && npm ci --no-audit --no-fund --silent)
+          F="firebase --project nine-family --non-interactive"
+          for N in NINEPASS_URL NINEPASS_KEY GEMINI_API_KEY; do
+            V="${!N}"
+            if [ -n "$V" ]; then
+              printf '%s' "$V" | $F functions:secrets:set "$N" --data-file=- --force >/dev/null && echo "$N: 등록함"
+            elif ! $F functions:secrets:access "$N" >/dev/null 2>&1; then
+              printf 'unset' | $F functions:secrets:set "$N" --data-file=- --force >/dev/null && echo "$N: 아직 없음(자리표시)"
+            else
+              echo "$N: 서버에 있는 값 그대로"
+            fi
+          done
+          $F deploy --only functions --force
+          rm -f "$RUNNER_TEMP/sa.json"
