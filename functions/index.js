@@ -78,18 +78,20 @@ const NINEPASS_KEY = defineSecret('NINEPASS_KEY');
 const NINEPASS_URL = defineSecret('NINEPASS_URL');
 const npCache = new Map(); // uid → {at, count, found}
 
-async function staffOf(req) { // 로그인 토큰 → 나인패밀리 직원 {uid, name, phones}
+async function staffOf(req) { // 로그인 토큰 → 나인패밀리 직원 {uid, name, phones}. 실패하면 {fail: 이유} (기록에는 이유만, 번호·토큰은 남기지 않음)
   const m = /^Bearer (.+)$/.exec(req.get('Authorization') || '');
-  if (!m) return null;
+  if (!m) return {fail: 'no-token'};
   let phone;
   try {
     phone = (await admin.auth().verifyIdToken(m[1])).phone_number;
   } catch (e) {
-    return null;
+    return {fail: 'token ' + (e.code || e.message)};
   }
+  if (!phone) return {fail: 'token-no-phone'};
   const db = admin.firestore();
-  const ph = phone ? await db.doc('phones/' + phone).get() : null;
-  if (!ph || !ph.exists || ph.get('active') !== true) return null;
+  const ph = await db.doc('phones/' + phone).get();
+  if (!ph.exists) return {fail: 'no-phones-doc'};
+  if (ph.get('active') !== true) return {fail: 'phones-inactive'};
   const ud = await db.doc('users/' + ph.get('uid')).get();
   let u = {};
   try {
@@ -98,7 +100,9 @@ async function staffOf(req) { // 로그인 토큰 → 나인패밀리 직원 {ui
   const name = String(u.name || ph.get('name') || '').trim();
   const norm = (v) => { let d = String(v || '').replace(/\D/g, ''); if (d.startsWith('82')) d = '0' + d.slice(2); return /^0\d{8,10}$/.test(d) ? d : ''; };
   const phones = [...new Set([norm(phone), norm(u.tel)].filter(Boolean))]; // 로그인 번호 + 직원 정보 '연락처'
-  return name && phones.length ? {uid: ph.get('uid'), name, phones} : null;
+  if (!name) return {fail: 'no-name' + (ud.exists ? '' : ' (users 문서 없음)')};
+  if (!phones.length) return {fail: 'no-phone-digits'};
+  return {uid: ph.get('uid'), name, phones};
 }
 const npBase = () => String(NINEPASS_URL.value() || '').replace(/\/+$/, '');
 const npReady = () => /^https:\/\//.test(npBase()) && NINEPASS_KEY.value().length >= 16;
@@ -115,7 +119,8 @@ const npOpts = {region: 'asia-northeast3', secrets: [NINEPASS_KEY, NINEPASS_URL]
 
 exports.npPending = onRequest(npOpts, async (req, res) => {
   const st = await staffOf(req);
-  if (!st || !npReady()) return res.json({count: 0, error: true});
+  if (st.fail) { console.error('npPending staff', st.fail); return res.json({count: 0, error: true}); }
+  if (!npReady()) return res.json({count: 0, error: true});
   const c = npCache.get(st.uid);
   if (c && Date.now() - c.at < 15000) return res.json({count: c.count, found: c.found});
   try {
@@ -131,7 +136,7 @@ exports.npPending = onRequest(npOpts, async (req, res) => {
 exports.npGo = onRequest(npOpts, async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({error: 'POST 만 됩니다'});
   const st = await staffOf(req);
-  if (!st) return res.status(401).json({error: '로그인이 필요해요'});
+  if (st.fail) { console.error('npGo staff', st.fail); return res.status(401).json({error: '나인패밀리 직원 확인에 실패했어요 (' + st.fail + ') — 관리자에게 이 문구를 알려 주세요'}); }
   if (!npReady()) return res.status(503).json({error: '나인패스 연동 설정이 아직 안 됐어요 (관리자 확인 필요)'});
   try {
     const a = await npAsk(st); // 먼저 직원 확인 — 안 맞으면 나인패스 403 화면 대신 우리 안내
