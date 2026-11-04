@@ -405,3 +405,16 @@ details.man[open]{padding-bottom:12px}
 .pcnav button.npnav img{width:28px;height:28px;border-radius:8px;flex:none}
 .pcnav button.npnav .badge{position:absolute;top:2px;right:2px;margin:0}
 .npbtn{display:block;margin-top:8px;border:0;border-radius:10px;padding:8px 12px;background:var(--gold);color:var(--dark);font-weight:800;cursor:pointer;width:100%}
+/* 결재 양식함 */
+.fewrap,.ffwrap{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start}
+.ffwrap{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)}
+@media (max-width:900px){.fewrap,.ffwrap{grid-template-columns:minmax(0,1fr)}}
+.fecv{position:relative;user-select:none;touch-action:none;border:1px solid var(--line,#ddd);border-radius:10px;overflow:hidden;background:#fff;cursor:crosshair}
+.fecv img{display:block;width:100%;pointer-events:none}
+.febox{position:absolute;border:2px solid var(--gold);background:rgba(205,170,82,.18);border-radius:3px;cursor:pointer}
+.febox span{position:absolute;left:2px;top:-1px;font-size:11px;font-weight:700;color:#5e460c;background:rgba(255,255,255,.85);padding:0 3px;border-radius:3px;white-space:nowrap}
+.febox.drawing{border-style:dashed}
+.ferow{display:flex;gap:6px;align-items:center;margin:6px 0}
+.ferow input{flex:1;min-width:0;margin:0}.ferow select{width:auto;margin:0}
+.ffprev canvas{width:100%;height:auto;border:1px solid var(--line,#ddd);border-radius:10px;background:#fff;display:block}
+.ffin textarea{min-height:70px}

@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.6.6';
+const VERSION = '웹 0.6.7';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
@@ -477,6 +477,9 @@ function viewBody(k) {
     case 'reportview': return viewReportView();
     case 'perfreport': return viewPerfReport();
     case 'library': return viewLibrary();
+    case 'forms': return viewForms();
+    case 'formedit': return viewFormEdit();
+    case 'formfill': return viewFormFill();
     case 'contacts': return viewContacts();
     case 'staff': return viewStaff();
     case 'staffinfo': return viewStaffInfo();
@@ -1057,6 +1060,149 @@ ACT.npLink = () => { closeModal(); npWin('npLinkStart', {}, '나인패스 계정
 ACT.npUnlink = () => askConfirm('나인패스 계정 연결을 끊을까요?', '끊으면 이름·연락처로 다시 찾아요. 언제든 다시 연결할 수 있어요.', '연결 끊기', async () => {
   try { const r = await fetch(NP_FN + 'npUnlink', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}, body: '{}'}); const j = await r.json().catch(() => ({})); if (!r.ok) return toast(j.error || '끊지 못했어요'); S.npLinked = false; render(); toast('연결을 끊었어요.'); } catch (e) { toast('인터넷 연결을 확인해 주세요'); }
 }, true);
+// ---------- 결재 양식함: 관리자가 양식(이미지·PDF)을 올리고 칸을 정해 두면, 직원이 칸에 입력해 PDF 로 받거나 나인패스 임시저장 문서로 바로 보낸다 ----------
+// 양식은 config 'npforms' {items:[{id, name, kind, pages:[{blob, chunks, w, h}], fields:[{id, label, p, x, y, w, h, auto, fs}]}]} — 칸 위치는 그 장의 너비·높이에 대한 비율(0~1). 앱과 같은 형식
+const formsDoc = () => list('config').find(c => c.key === 'npforms');
+const formsList = () => ((formsDoc() || {}).items || []).filter(f => f && !f.deleted);
+const formById = id => formsList().find(f => String(f.id) === String(id));
+const FORM_AUTO = [['', '직접 입력'], ['name', '작성자 이름'], ['date', '오늘 날짜'], ['dept', '부서'], ['pos', '직책'], ['tel', '연락처']];
+const autoVal = a => !S.me ? '' : a === 'name' ? S.me.name : a === 'date' ? todayStr() : a === 'dept' ? (S.me.dept || '') : a === 'pos' ? (S.me.pos || '') : a === 'tel' ? (S.me.tel || telFmt(S.me.phone)) : '';
+function saveForms(items) { const o = Object.assign({}, formsDoc() || create('config', {key: 'npforms'})); o.items = items; o.changedBy = S.uid; o.changedAt = nowStr(); put('config', o); }
+const pageImg = new Map(); // blob id → Promise<Image>
+function loadPage(pg) {
+  const k = pg.src || pg.blob; if (pageImg.has(k)) return pageImg.get(k);
+  const pr = (pg.src ? Promise.resolve(pg.src) : fetchBlob(pg.blob, pg.chunks)).then(u => new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = u; }));
+  pr.catch(() => pageImg.delete(k)); pageImg.set(k, pr); return pr;
+}
+const FORM_FONT = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif';
+async function drawFormPage(f, p, vals) { // 그 장의 양식 그림 위에 입력한 글자를 찍은 canvas
+  const pg = f.pages[p], im = await loadPage(pg), c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0); g.fillStyle = '#111'; g.textBaseline = 'top';
+  (f.fields || []).filter(x => x.p === p).forEach(x => {
+    const t = String(vals[x.id] != null ? vals[x.id] : '').trim(); if (!t) return;
+    const W = c.width, bx = x.x * W, by = x.y * c.height, bw = x.w * W, bh = x.h * c.height;
+    let fs = x.fs ? x.fs * W : Math.min(bh * 0.62, W * 0.03); g.font = fs + 'px ' + FORM_FONT;
+    const lines = []; t.split('\n').forEach(par => { let cur = ''; [...par].forEach(ch => { if (g.measureText(cur + ch).width > bw - fs * 0.3 && cur) { lines.push(cur); cur = ch; } else cur += ch; }); lines.push(cur); });
+    while (lines.length * fs * 1.25 > bh && fs > 8) { fs *= 0.9; g.font = fs + 'px ' + FORM_FONT; } // 칸을 넘치면 글자를 줄인다
+    const top = lines.length === 1 ? by + (bh - fs) / 2 : by + fs * 0.15;
+    lines.forEach((l, i) => g.fillText(l, bx + fs * 0.15, top + i * fs * 1.25, bw - fs * 0.3));
+  });
+  return c;
+}
+async function formJpegs(f, vals) { const out = []; for (let p = 0; p < f.pages.length; p++) { const c = await drawFormPage(f, p, vals); const b = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.9)); out.push({w: c.width, h: c.height, d: new Uint8Array(await b.arrayBuffer())}); } return out; }
+function pdfOfJpegs(pgs) { // JPEG 장들을 그대로 담은 PDF (A4 너비 595pt, 높이는 그림 비율대로)
+  const enc = new TextEncoder(), parts = [], offs = []; let len = 0; const push = x => { const u = typeof x === 'string' ? enc.encode(x) : x; parts.push(u); len += u.length; };
+  const obj = (n, body, stream) => { offs[n] = len; push(n + ' 0 obj\n' + body); if (stream) { push('\nstream\n'); push(stream); push('\nendstream'); } push('\nendobj\n'); };
+  push('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n'); const N = pgs.length, kids = pgs.map((_, i) => (3 + i * 3) + ' 0 R').join(' ');
+  obj(1, '<< /Type /Catalog /Pages 2 0 R >>'); obj(2, '<< /Type /Pages /Kids [' + kids + '] /Count ' + N + ' >>');
+  pgs.forEach((g, i) => { const pn = 3 + i * 3, W = 595, H = Math.round(595 * g.h / g.w), cs = 'q ' + W + ' 0 0 ' + H + ' 0 0 cm /Im0 Do Q';
+    obj(pn, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Resources << /XObject << /Im0 ' + (pn + 1) + ' 0 R >> >> /Contents ' + (pn + 2) + ' 0 R >>');
+    obj(pn + 1, '<< /Type /XObject /Subtype /Image /Width ' + g.w + ' /Height ' + g.h + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + g.d.length + ' >>', g.d);
+    obj(pn + 2, '<< /Length ' + cs.length + ' >>', enc.encode(cs)); });
+  const xref = len, n = 3 + N * 3; let x = 'xref\n0 ' + n + '\n0000000000 65535 f \n'; for (let i = 1; i < n; i++) x += String(offs[i]).padStart(10, '0') + ' 00000 n \n';
+  push(x + 'trailer\n<< /Size ' + n + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF'); const out = new Uint8Array(len); let o = 0; parts.forEach(u => { out.set(u, o); o += u.length; }); return out;
+}
+// 양식 파일(이미지·PDF) → 장마다 JPEG (긴 쪽 1800px 이하, 장당 900KB 이하)
+async function loadPdfJs() { if (window.pdfjsLib) return window.pdfjsLib; await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'vendor/pdfjs-3.11.174/pdf.min.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s); }); window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs-3.11.174/pdf.worker.min.js'; return window.pdfjsLib; }
+const canvasJpeg = (c, limit) => new Promise((ok, no) => { const go = q => c.toBlob(b => { if (!b) return no(new Error('jpeg')); if (b.size > limit && q > 0.4) return go(q - 0.1); b.arrayBuffer().then(x => ok(new Uint8Array(x))); }, 'image/jpeg', q); go(0.88); });
+async function formPagesOf(file) {
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name), out = [];
+  if (isPdf) {
+    const lib = await loadPdfJs(), doc = await lib.getDocument({data: new Uint8Array(await file.arrayBuffer())}).promise;
+    if (doc.numPages > 10) throw new Error('양식은 10장까지 올릴 수 있어요.');
+    for (let i = 1; i <= doc.numPages; i++) { const pg = await doc.getPage(i), v0 = pg.getViewport({scale: 1}), k = Math.min(3, 1800 / Math.max(v0.width, v0.height)), v = pg.getViewport({scale: k});
+      const c = document.createElement('canvas'); c.width = Math.round(v.width); c.height = Math.round(v.height); const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+      await pg.render({canvasContext: g, viewport: v}).promise; out.push({w: c.width, h: c.height, d: await canvasJpeg(c, 900 * 1024)}); }
+  } else if (/^image\//.test(file.type)) {
+    const im = await new Promise((ok, no) => { const x = new Image(); x.onload = () => ok(x); x.onerror = () => no(new Error('그림을 열지 못했어요.')); x.src = URL.createObjectURL(file); });
+    const k = Math.min(1, 1800 / Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height); out.push({w: c.width, h: c.height, d: await canvasJpeg(c, 900 * 1024)});
+  } else throw new Error('양식은 이미지(JPG·PNG)나 PDF 로 올려 주세요. 한글·엑셀·워드는 ‘PDF로 저장’한 뒤 올리면 돼요.');
+  return out;
+}
+function viewForms() {
+  const L = formsList(), A = can('staff_manage');
+  return '<h1>결재 양식함</h1><div class="sub">양식을 골라 칸에 입력하면 양식 위에 글자가 찍혀요. 다 쓰면 PDF로 받거나, [나인패스로 보내기]로 내 나인패스 계정의 임시저장 문서에 바로 첨부돼요(결재선·서명은 나인패스에서).</div>' +
+    (A ? '<button class="btn gold full" data-act="formNew">＋ 양식 올리기 (이미지·PDF)</button>' : '') +
+    (L.length ? L.map(f => '<div class="card row"><div class="grow" data-act="formFill" data-arg="' + f.id + '" style="cursor:pointer"><div class="t1">' + esc(f.name) + '</div><div class="t2">' + f.pages.length + '장 · 칸 ' + (f.fields || []).length + '개' + (f.kindName ? ' · 나인패스 ' + esc(f.kindName) : '') + '</div></div>' +
+      (A ? '<button class="btn" style="margin:0" data-act="formEdit" data-arg="' + f.id + '">칸 편집</button><button class="btn red" style="margin:0 0 0 6px" data-act="formDel" data-arg="' + f.id + '">삭제</button>' : '') + '</div>').join('') :
+      '<div class="empty">' + (A ? '아직 올린 양식이 없어요. 위 ‘양식 올리기’로 지출결의서·품의서 같은 양식을 올려 주세요.' : '아직 올라온 양식이 없어요. 관리자에게 양식을 올려 달라고 해 주세요.') + '</div>');
+}
+async function npKindsList() { if (S.npKinds) return S.npKinds; if (DEMO) return (S.npKinds = [{code: 'proposal', name: '품의서'}, {code: 'leave', name: '연차휴가신청서'}]);
+  try { const r = await fetch(NP_FN + 'npKinds', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}, body: '{}'}); const j = await r.json(); return (S.npKinds = j.kinds || []); } catch (e) { return []; } }
+function kindSelect(cur) { return '<label class="fl" for="f_fk">나인패스 문서 종류 (보낼 때 쓰여요)</label><select id="f_fk"><option value="">기본 (품의서)</option>' + (S.npKinds || []).map(k => '<option value="' + esc(k.code) + '"' + (k.code === cur ? ' selected' : '') + '>' + esc(k.name) + '</option>').join('') + '</select>'; }
+ACT.formNew = async () => {
+  await npKindsList();
+  formModal('양식 올리기', '<div class="sub" style="margin-top:0">이미지(JPG·PNG) 또는 PDF(10장까지). 한글·엑셀·워드 양식은 그 프로그램에서 ‘PDF로 저장’한 뒤 올려 주세요. 올린 다음 칸 위치를 정해요.</div><label class="fl" for="f_fn">양식 이름</label><input id="f_fn" placeholder="예: 지출결의서">' + kindSelect('') + '<label class="fl" for="f_ff">양식 파일</label><input type="file" id="f_ff" accept="image/*,application/pdf,.pdf">', async () => {
+    const name = $('#f_fn').value.trim(), file = $('#f_ff').files[0], kind = $('#f_fk').value; if (!name) return warn('양식 이름을 적어 주세요.'); if (!file) return warn('양식 파일을 골라 주세요.');
+    toast('양식을 읽는 중…'); let pgs; try { pgs = await formPagesOf(file); } catch (e) { return warn(e.message || '파일을 읽지 못했어요.'); }
+    const pages = [];
+    try { for (const g of pgs) { if (DEMO) { pages.push({src: 'data:image/jpeg;base64,' + b64of(g.d), w: g.w, h: g.h}); continue; } const up = await uploadBlob(g.d, 'image/jpeg', name + '.jpg'); pages.push({blob: up.blob, chunks: up.chunks, w: g.w, h: g.h}); } } catch (e) { return warn('양식을 올리지 못했어요. 인터넷을 확인해 주세요.'); }
+    const kn = (S.npKinds || []).find(k => k.code === kind), f = {id: nextId(), name, kind, kindName: kn ? kn.name : '', pages, fields: [], by: S.uid, at: nowStr()};
+    saveForms(formsList().concat([f])); closeModal(); toast('올렸어요. 이제 입력할 칸을 그려 주세요.'); ACT.formEdit(f.id); return true;
+  }, '올리기');
+};
+ACT.formDel = id => { const f = formById(id); if (!f) return; askConfirm('‘' + f.name + '’ 양식을 지울까요?', '양식함에서 사라져요. 이미 받은 PDF·나인패스 문서는 그대로예요.', '삭제', () => { saveForms(formsList().filter(x => x.id !== f.id)); render(); toast('지웠어요.'); }, true); };
+// 칸 편집: 양식 그림 위를 끌어서 칸을 만들고, 아래 목록에서 이름·자동 입력·글자 크기를 정한다
+ACT.formEdit = id => { const f = formById(id); if (!f) return; S.fe = {id: f.id, p: 0, fields: JSON.parse(JSON.stringify(f.fields || [])), kind: f.kind || '', name: f.name}; S.tab = 'all'; S.sub = 'formedit'; render(); };
+function viewFormEdit() {
+  const f = S.fe && formById(S.fe.id); if (!f) return '<div class="empty">양식을 찾지 못했어요.</div>';
+  const E = S.fe, pg = f.pages[E.p], fl = E.fields.filter(x => x.p === E.p);
+  setTimeout(wireFormEdit, 0);
+  return '<h1>칸 편집 — ' + esc(f.name) + '</h1><div class="sub">그림 위를 마우스로 끌어서 입력 칸을 그려요. 칸을 누르면 아래 목록에서 그 칸이 강조돼요. 다 하면 [저장].</div>' +
+    (f.pages.length > 1 ? '<div class="pills">' + f.pages.map((_, i) => '<button class="pill' + (i === E.p ? ' on' : '') + '" data-act="fePage" data-arg="' + i + '">' + (i + 1) + '장</button>').join('') + '</div>' : '') +
+    '<div class="fewrap"><div class="fecv" id="fecv"><img id="feimg" alt="양식 ' + (E.p + 1) + '장" draggable="false">' + fl.map(x => '<div class="febox" data-fid="' + x.id + '" style="left:' + x.x * 100 + '%;top:' + x.y * 100 + '%;width:' + x.w * 100 + '%;height:' + x.h * 100 + '%"><span>' + esc(x.label) + '</span></div>').join('') + '</div>' +
+    '<div class="felist"><div class="lb">칸 목록 (' + (E.p + 1) + '장)</div>' + (fl.length ? fl.map(x => '<div class="ferow" data-fid="' + x.id + '"><input class="fe-l" data-fid="' + x.id + '" value="' + esc(x.label) + '" aria-label="칸 이름"><select class="fe-a" data-fid="' + x.id + '" aria-label="자동 입력">' + FORM_AUTO.map(([v, l]) => '<option value="' + v + '"' + (v === (x.auto || '') ? ' selected' : '') + '>' + l + '</option>').join('') + '</select><button class="btn red" style="margin:0;padding:6px 10px" data-act="feDel" data-arg="' + x.id + '" aria-label="칸 지우기">✕</button></div>').join('') : '<div class="sub">아직 칸이 없어요. 왼쪽 그림 위를 끌어서 그려 주세요.</div>') +
+    kindSelect(E.kind) + '<div class="btns"><button class="btn" data-nav="all" data-sub="forms">취소</button><button class="btn gold" data-act="feSave">저장</button></div></div></div>';
+}
+function wireFormEdit() {
+  const f = S.fe && formById(S.fe.id), cv = $('#fecv'), im = $('#feimg'); if (!f || !cv || !im) return;
+  loadPage(f.pages[S.fe.p]).then(x => { im.src = x.src; }).catch(() => toast('양식 그림을 불러오지 못했어요.'));
+  let st = null, box = null; const rel = e => { const r = cv.getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
+  cv.onpointerdown = e => { if (e.target.closest('.febox')) { const id = e.target.closest('.febox').dataset.fid; const i = document.querySelector('.fe-l[data-fid="' + id + '"]'); if (i) { i.focus(); i.select(); } return; } st = rel(e); box = document.createElement('div'); box.className = 'febox drawing'; cv.appendChild(box); cv.setPointerCapture(e.pointerId); e.preventDefault(); };
+  cv.onpointermove = e => { if (!st) return; const [x, y] = rel(e); Object.assign(box.style, {left: Math.min(x, st[0]) * 100 + '%', top: Math.min(y, st[1]) * 100 + '%', width: Math.abs(x - st[0]) * 100 + '%', height: Math.abs(y - st[1]) * 100 + '%'}); };
+  cv.onpointerup = e => { if (!st) return; const [x, y] = rel(e), r = {x: Math.min(x, st[0]), y: Math.min(y, st[1]), w: Math.abs(x - st[0]), h: Math.abs(y - st[1])}; st = null; box.remove();
+    if (r.w < 0.01 || r.h < 0.006) return; S.fe.fields.push(Object.assign({id: nextId(), label: '칸 ' + (S.fe.fields.length + 1), p: S.fe.p, auto: ''}, r)); render(); setTimeout(() => { const ls = document.querySelectorAll('.fe-l'); const i = ls[ls.length - 1]; if (i) { i.focus(); i.select(); } }, 30); };
+  document.querySelectorAll('.fe-l').forEach(i => i.onchange = () => { const x = S.fe.fields.find(z => String(z.id) === i.dataset.fid); if (x) { x.label = i.value.trim() || x.label; const b = document.querySelector('.febox[data-fid="' + x.id + '"] span'); if (b) b.textContent = x.label; } });
+  document.querySelectorAll('.fe-a').forEach(i => i.onchange = () => { const x = S.fe.fields.find(z => String(z.id) === i.dataset.fid); if (x) x.auto = i.value; });
+  const k = $('#f_fk'); if (k) k.onchange = () => { S.fe.kind = k.value; };
+}
+ACT.fePage = p => { S.fe.p = Number(p); render(); };
+ACT.feDel = id => { S.fe.fields = S.fe.fields.filter(x => String(x.id) !== String(id)); render(); };
+ACT.feSave = () => {
+  document.querySelectorAll('.fe-l').forEach(i => { const x = S.fe.fields.find(z => String(z.id) === i.dataset.fid); if (x && i.value.trim()) x.label = i.value.trim(); });
+  const kn = (S.npKinds || []).find(k => k.code === S.fe.kind);
+  saveForms(formsList().map(f => f.id === S.fe.id ? Object.assign({}, f, {fields: S.fe.fields, kind: S.fe.kind, kindName: kn ? kn.name : (S.fe.kind ? f.kindName : '')}) : f));
+  S.sub = 'forms'; S.fe = null; render(); toast('칸을 저장했어요.');
+};
+// 작성: 칸마다 입력 → 오른쪽 미리보기에 바로 찍힘. 쓰던 값은 이 기기에 양식별로 남는다
+ACT.formFill = id => { const f = formById(id); if (!f) return; if (!(f.fields || []).length) return toast(can('staff_manage') ? '먼저 ‘칸 편집’에서 입력 칸을 그려 주세요.' : '아직 입력 칸이 없는 양식이에요. 관리자에게 알려 주세요.');
+  let v = {}; try { v = JSON.parse(LS('ffv_' + S.uid + '_' + f.id) || '{}') || {}; } catch (e) {}
+  f.fields.forEach(x => { if (x.auto && !v[x.id]) v[x.id] = autoVal(x.auto); }); S.ff = {id: f.id, v, p: 0}; npKindsList(); S.tab = 'all'; S.sub = 'formfill'; render(); };
+function viewFormFill() {
+  const f = S.ff && formById(S.ff.id); if (!f) return '<div class="empty">양식을 찾지 못했어요.</div>';
+  setTimeout(drawFill, 0);
+  return '<h1>' + esc(f.name) + ' 작성</h1><div class="sub">칸을 채우면 오른쪽(휴대폰은 아래) 양식에 바로 찍혀요. 쓰던 내용은 이 기기에 저장돼요.</div><div class="ffwrap"><div class="ffin">' +
+    f.pages.map((_, p) => { const fl = f.fields.filter(x => x.p === p); return fl.length ? (f.pages.length > 1 ? '<div class="lb">' + (p + 1) + '장</div>' : '') + fl.map(x => '<label class="fl" for="ff_' + x.id + '">' + esc(x.label) + '</label>' + (x.h > 0.06 ? '<textarea id="ff_' + x.id + '" class="ffv" data-fid="' + x.id + '" data-p="' + p + '">' + esc(S.ff.v[x.id] || '') + '</textarea>' : '<input id="ff_' + x.id + '" class="ffv" data-fid="' + x.id + '" data-p="' + p + '" value="' + esc(S.ff.v[x.id] || '') + '" autocomplete="off">')).join('') : ''; }).join('') +
+    '<div class="btns" style="margin-top:14px"><button class="btn" data-act="ffPdf">⬇ PDF 받기</button><button class="btn gold" data-act="ffSend">나인패스로 보내기</button></div><button class="btn full" data-act="ffClear">칸 비우기</button></div>' +
+    '<div class="ffprev">' + (f.pages.length > 1 ? '<div class="pills">' + f.pages.map((_, i) => '<button class="pill' + (i === S.ff.p ? ' on' : '') + '" data-act="ffPage" data-arg="' + i + '">' + (i + 1) + '장</button>').join('') + '</div>' : '') + '<canvas id="ffcv" aria-label="작성한 양식 미리보기"></canvas></div></div>';
+}
+let fillT = 0;
+async function drawFill() { const f = S.ff && formById(S.ff.id), cv = $('#ffcv'); if (!f || !cv) return; try { const c = await drawFormPage(f, S.ff.p, S.ff.v); cv.width = c.width; cv.height = c.height; cv.getContext('2d').drawImage(c, 0, 0); } catch (e) { toast('양식 그림을 불러오지 못했어요.'); } }
+document.addEventListener('input', e => { const t = e.target; if (!t || !t.classList || !t.classList.contains('ffv') || !S.ff) return; S.ff.v[t.dataset.fid] = t.value; LS('ffv_' + S.uid + '_' + S.ff.id, JSON.stringify(S.ff.v)); const p = Number(t.dataset.p); if (p !== S.ff.p) { S.ff.p = p; document.querySelectorAll('.ffprev .pill').forEach((b, i) => b.classList.toggle('on', i === p)); } clearTimeout(fillT); fillT = setTimeout(drawFill, 150); });
+ACT.ffPage = p => { S.ff.p = Number(p); document.querySelectorAll('.ffprev .pill').forEach((b, i) => b.classList.toggle('on', i === S.ff.p)); drawFill(); };
+ACT.ffClear = () => askConfirm('칸을 모두 비울까요?', '자동 입력 칸(이름·날짜 등)은 다시 채워져요.', '비우기', () => { const f = formById(S.ff.id); S.ff.v = {}; f.fields.forEach(x => { if (x.auto) S.ff.v[x.id] = autoVal(x.auto); }); LS('ffv_' + S.uid + '_' + f.id, JSON.stringify(S.ff.v)); render(); });
+async function ffPdfBytes() { const f = formById(S.ff.id); return pdfOfJpegs(await formJpegs(f, S.ff.v)); }
+const ffFileName = f => f.name + '_' + (S.me ? S.me.name : '') + '_' + todayStr() + '.pdf';
+ACT.ffPdf = async () => { const f = formById(S.ff.id); toast('PDF 만드는 중…'); try { saveBytes(ffFileName(f), await ffPdfBytes(), 'application/pdf'); } catch (e) { toast('PDF를 만들지 못했어요.'); } };
+ACT.ffSend = () => { const f = formById(S.ff.id);
+  formModal('나인패스로 보내기', '<div class="sub" style="margin-top:0">내 나인패스 계정에 <b>임시저장 문서</b>로 만들어지고 완성본 PDF가 첨부돼요. 새 창에서 결재선을 확인하고 [상신]을 누르면 돼요(서명도 나인패스에서).</div><label class="fl" for="f_st">문서 제목</label><input id="f_st" maxlength="72" value="' + esc(f.name + ' · ' + todayStr()) + '"><label class="fl" for="f_sm">기안 의견 (선택)</label><textarea id="f_sm" placeholder="결재자에게 남길 말"></textarea>', () => {
+    const title = $('#f_st').value.trim(), memo = $('#f_sm').value.trim(); if (!title) return warn('문서 제목을 적어 주세요.');
+    closeModal(); toast('나인패스로 보내는 중…');
+    ffPdfBytes().then(pdf => { if (pdf.length > 10 * 1024 * 1024) return toast('완성본이 10MB를 넘어요. 양식 장 수를 줄여 주세요.'); return npWin('npDraft', {title, memo, kind: f.kind || '', mime: 'application/pdf', fname: ffFileName(f), file: b64of(pdf)}, '나인패스 문서 만드는 중…').then(ok => { if (ok) toast('나인패스 임시저장 문서를 만들었어요. 새 창에서 상신해 주세요.'); }); }).catch(() => toast('PDF를 만들지 못했어요.'));
+    return true;
+  }, '보내기');
+};
 ACT.polishUse = () => {
   const inp = $('#msgin'); closeModal(); if (!inp || !S.polished) return;
   inp.value = S.polished; S.polished = ''; growMsg(inp); if (S.room) LS('draft_' + S.uid + '_' + S.room, inp.value); inp.focus();
@@ -2998,6 +3144,7 @@ function menuItems() {
   add('회사', S.npLinked ? '나인패스 계정 연결 끊기' : '나인패스 계정 연결 (자동 로그인)', '나인패스 계정 연결 끊기 해제 로그인 전자결재', S.npLinked ? 'act:npUnlink' : 'act:npLink', S.npLinked ? '연결됨' : '');
   add('회사', '나인패스 (전자결재)', '나인패스 전자결재 결재 문서 기안 승인 ninepass', 'act:ninepass', S.npCount ? (S.npCount > 99 ? '99+' : String(S.npCount)) : '');
   add('회사', '공지사항', '공지사항 공지 알림', 'nav:all:notice', nu ? String(nu) : '');
+  add('회사', '결재 양식함 (작성 → PDF · 나인패스로 보내기)', '결재 양식 양식함 서류 지출결의서 품의서 작성 pdf 나인패스 기안', 'nav:all:forms');
   add('회사', '자료실', '자료실 게시판 양식 서식 계약서 파일 문서', 'nav:all:library'); add('회사', '비상연락망 (눌러서 전화)', '비상연락망 연락처 전화 번호', 'nav:all:contacts');
   if (canStaffInfo()) add('회사', '직원 정보 (명부)', '직원 정보 명부 부서 직책 생년월일 연락처 주소 사진', 'nav:all:staffinfo');
   add('내 계정·설정', '내 프로필 (사진·상태 메시지)', '프로필 사진 상태 메시지 내 정보', 'act:myProfile');
@@ -3115,6 +3262,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.6.7', '2026-11-04', ['결재 양식함(☰ → 회사): 관리자가 양식(이미지·PDF, 10장까지)을 올리고 그림 위를 끌어서 입력 칸을 그려 둬요(이름·날짜·부서 등 자동 입력 가능)', '직원은 칸을 채우면 양식 위에 바로 찍히고, ⬇ PDF 받기 또는 [나인패스로 보내기] — 내 나인패스 계정의 임시저장 문서에 완성본이 첨부돼 새 창에서 상신만 하면 돼요']],
   ['웹 0.6.6', '2026-11-04', ['나인패스 계정 연결: ☰ → 회사 → ‘나인패스 계정 연결’ — 나인패스 화면에서 한 번 로그인하면 이름·연락처가 달라도 자동 로그인', '나인패스 결재 알림: 결재할 문서가 새로 오면 본인만 보이는 ‘📝 나인패스 결재’ 채팅방에 메시지(제목·종류·기안자), [나인패스 열기]로 그 문서가 바로 열려요', '나인패스 직원 정보가 안 맞으면 계정 연결하기 안내']],
   ['웹 0.6.5', '2026-11-04', ['가맹점 일괄 가져오기: 이카운트 ‘접수’ 목록 엑셀을 그대로 올리면 가맹점마다 응대 기록(요청사항·처리결과·처리담당·프로젝트명·처리일자)으로 들어가요. 여러 가맹점을 한 파일로, 같은 접수번호는 다시 올려도 한 번만', '약정마감일 → 계약종료일, CMS금액 → 금액, 적요 → 메모로 읽어요']],
   ['웹 0.6.4', '2026-11-02', ['나인패스(전자결재) 연결: PC 위쪽 메뉴 ‘메모’ 오른쪽(휴대폰은 ☰ → 회사)의 ‘나인패스’를 누르면 다시 로그인하지 않고 새 창으로 열려요. 내가 결재할 문서 수가 빨간 숫자로 보여요(30초마다)', '나인패스에 등록된 이름·연락처가 나인패밀리와 다르면 ‘직원 정보와 일치하지 않습니다’ 안내']],

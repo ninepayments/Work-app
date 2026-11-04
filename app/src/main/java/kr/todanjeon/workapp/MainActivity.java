@@ -1215,6 +1215,8 @@ public class MainActivity extends Activity {
         else if ("deposit".equals(k)) renderDeposits();
         else if ("contacts".equals(k)) renderContacts();
         else if ("library".equals(k)) renderLibrary();
+        else if ("forms".equals(k)) renderForms();
+        else if ("formfill".equals(k)) renderFormFill();
         else if ("profit".equals(k) && canPerf()) renderProfit();
         else if ("summary".equals(k) && canPerf()) renderSummary();
         else renderAll();
@@ -3167,6 +3169,7 @@ public class MainActivity extends Activity {
         int un = unreadNotices();
         n.badge = un > 0 ? String.valueOf(un) : "";
         e.add(n);
+        e.add(new Entry("회사", "결재 양식함 (작성 → PDF · 나인패스로 보내기)", "결재 양식 양식함 서류 지출결의서 품의서 작성 pdf 나인패스 기안", () -> goSub("forms")));
         e.add(new Entry("회사", "자료실", "자료실 게시판 양식 서식 계약서 파일 문서 자료 올리기 내려받기", () -> goSub("library")));
         e.add(new Entry("회사", "비상연락망 (눌러서 전화)", "비상연락망 연락처 전화 번호 비상 본사 카드사 밴사", () -> goSub("contacts")));
         if (canStaffInfo()) e.add(new Entry("회사", "직원 정보 (명부)", "직원 정보 명부 부서 직책 생년월일 연락처 주소 사진", () -> goSub("staffinfo")));
@@ -4437,6 +4440,310 @@ public class MainActivity extends Activity {
             out.add(new Object[]{x[0], x[1], x[2], x[3], x[4], x[5], cnt, lack});
         }
         return out;
+    }
+
+    // ---------- 결재 양식함 (웹과 같은 config 'npforms') — 앱은 작성·PDF 받기·나인패스로 보내기. 양식 올리기·칸 편집은 PC 웹에서 ----------
+    private int formFillId = 0, formPage = 0;
+    private JSONObject formFillVals = new JSONObject();
+
+    private List<JSONObject> formsList() {
+        List<JSONObject> out = new ArrayList<>();
+        for (JSONObject c : store.list(store.arr("config"))) {
+            if (!"npforms".equals(c.optString("key"))) continue;
+            JSONArray a = c.optJSONArray("items");
+            for (int i = 0; a != null && i < a.length(); i++) if (a.optJSONObject(i) != null && !a.optJSONObject(i).optBoolean("deleted")) out.add(a.optJSONObject(i));
+        }
+        return out;
+    }
+
+    private JSONObject formById(int id) {
+        for (JSONObject f : formsList()) if (f.optInt("id") == id) return f;
+        return null;
+    }
+
+    private String formAuto(String a) {
+        if (me == null) return "";
+        switch (a) {
+            case "name":
+                return me.optString("name");
+            case "date":
+                return todayStr();
+            case "dept":
+                return me.optString("dept");
+            case "pos":
+                return me.optString("pos");
+            case "tel":
+                return me.optString("tel").isEmpty() ? telFmt(me.optString("phone")) : me.optString("tel");
+            default:
+                return "";
+        }
+    }
+
+    private void renderForms() {
+        content.addView(title("결재 양식함"));
+        content.addView(Ui.text(this, "양식을 골라 칸에 입력하면 양식 위에 글자가 찍혀요. 다 쓰면 PDF로 받거나 '나인패스로 보내기'로 내 나인패스 계정의 임시저장 문서에 바로 첨부돼요(결재선·서명은 나인패스에서).", 13, Ui.GRAY, false));
+        if (can(Perm.STAFF_MANAGE)) content.addView(Ui.text(this, "양식 올리기와 칸 편집은 PC 웹(☰ → 회사 → 결재 양식함)에서 해요.", 12, Ui.DEEP, true), Ui.lp(this, 8));
+        List<JSONObject> L = formsList();
+        if (L.isEmpty()) content.addView(Ui.text(this, "아직 올라온 양식이 없어요.", 14, Ui.GRAY, false), Ui.lp(this, 16));
+        for (final JSONObject f : L) {
+            LinearLayout c = Ui.card(this);
+            c.addView(Ui.text(this, f.optString("name"), 16, Ui.INK, true));
+            JSONArray pg = f.optJSONArray("pages"), fl = f.optJSONArray("fields");
+            c.addView(Ui.text(this, (pg == null ? 0 : pg.length()) + "장 · 칸 " + (fl == null ? 0 : fl.length()) + "개" + (f.optString("kindName").isEmpty() ? "" : " · 나인패스 " + f.optString("kindName")), 12, Ui.GRAY, false));
+            c.setOnClickListener(v -> openFormFill(f));
+            content.addView(c, Ui.lp(this, 8));
+        }
+    }
+
+    private void openFormFill(JSONObject f) {
+        JSONArray fl = f.optJSONArray("fields");
+        if (fl == null || fl.length() == 0) {
+            Ui.toast(this, "아직 입력 칸이 없는 양식이에요. PC 웹에서 칸을 먼저 그려 주세요.");
+            return;
+        }
+        formFillId = f.optInt("id");
+        formPage = 0;
+        try {
+            formFillVals = new JSONObject(lockPrefs().getString("ffv_" + myId() + "_" + formFillId, "{}"));
+        } catch (Exception e) {
+            formFillVals = new JSONObject();
+        }
+        for (int i = 0; i < fl.length(); i++) {
+            JSONObject x = fl.optJSONObject(i);
+            String k = String.valueOf(x.optLong("id"));
+            if (!x.optString("auto").isEmpty() && formFillVals.optString(k).isEmpty()) try {
+                formFillVals.put(k, formAuto(x.optString("auto")));
+            } catch (Exception ignored) {
+            }
+        }
+        goSub("formfill");
+    }
+
+    /** 그 장의 양식 그림 위에 입력한 글자를 찍은 그림 (웹 drawFormPage 와 같은 계산) */
+    private android.graphics.Bitmap drawFormPage(JSONObject f, int p) {
+        JSONObject pg = f.optJSONArray("pages").optJSONObject(p);
+        android.graphics.Bitmap src = android.graphics.BitmapFactory.decodeFile(Media.blobFile(this, pg.optString("blob")).getPath());
+        if (src == null) return null;
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(src.getWidth(), src.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas g = new android.graphics.Canvas(b);
+        g.drawColor(Color.WHITE);
+        g.drawBitmap(src, 0, 0, null);
+        android.graphics.Paint pt = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        pt.setColor(Color.rgb(17, 17, 17));
+        int W = b.getWidth(), H = b.getHeight();
+        JSONArray fl = f.optJSONArray("fields");
+        for (int i = 0; fl != null && i < fl.length(); i++) {
+            JSONObject x = fl.optJSONObject(i);
+            if (x.optInt("p") != p) continue;
+            String t = formFillVals.optString(String.valueOf(x.optLong("id"))).trim();
+            if (t.isEmpty()) continue;
+            float bx = (float) x.optDouble("x") * W, by = (float) x.optDouble("y") * H, bw = (float) x.optDouble("w") * W, bh = (float) x.optDouble("h") * H;
+            float fs = x.has("fs") ? (float) x.optDouble("fs") * W : Math.min(bh * 0.62f, W * 0.03f);
+            List<String> lines = new ArrayList<>();
+            for (int tries = 0; tries < 30; tries++) {
+                pt.setTextSize(fs);
+                lines.clear();
+                for (String par : t.split("\n", -1)) {
+                    StringBuilder cur = new StringBuilder();
+                    for (int k = 0; k < par.length(); k++) {
+                        char ch = par.charAt(k);
+                        if (cur.length() > 0 && pt.measureText(cur.toString() + ch) > bw - fs * 0.3f) {
+                            lines.add(cur.toString());
+                            cur.setLength(0);
+                        }
+                        cur.append(ch);
+                    }
+                    lines.add(cur.toString());
+                }
+                if (lines.size() * fs * 1.25f <= bh || fs <= 8) break;
+                fs *= 0.9f; // 칸을 넘치면 글자를 줄인다
+            }
+            float top = lines.size() == 1 ? by + (bh - fs) / 2 : by + fs * 0.15f;
+            for (int k = 0; k < lines.size(); k++) g.drawText(lines.get(k), bx + fs * 0.15f, top + k * fs * 1.25f + fs * 0.85f, pt);
+        }
+        return b;
+    }
+
+    /** JPEG 장들을 그대로 담은 PDF (A4 너비 595pt) — 웹 pdfOfJpegs 와 같은 구조 */
+    private static byte[] pdfOfJpegs(List<byte[]> jpg, List<int[]> wh) throws Exception {
+        java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+        int n = 3 + jpg.size() * 3;
+        long[] off = new long[n];
+        java.nio.charset.Charset A = java.nio.charset.StandardCharsets.ISO_8859_1;
+        o.write("%PDF-1.4\n%âãÏÓ\n".getBytes(A));
+        StringBuilder kids = new StringBuilder();
+        for (int i = 0; i < jpg.size(); i++) kids.append(3 + i * 3).append(" 0 R ");
+        off[1] = o.size();
+        o.write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n".getBytes(A));
+        off[2] = o.size();
+        o.write(("2 0 obj\n<< /Type /Pages /Kids [" + kids.toString().trim() + "] /Count " + jpg.size() + " >>\nendobj\n").getBytes(A));
+        for (int i = 0; i < jpg.size(); i++) {
+            int pn = 3 + i * 3, w = wh.get(i)[0], h = wh.get(i)[1], PW = 595, PH = Math.round(595f * h / w);
+            String cs = "q " + PW + " 0 0 " + PH + " 0 0 cm /Im0 Do Q";
+            off[pn] = o.size();
+            o.write((pn + " 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + PW + " " + PH + "] /Resources << /XObject << /Im0 " + (pn + 1) + " 0 R >> >> /Contents " + (pn + 2) + " 0 R >>\nendobj\n").getBytes(A));
+            off[pn + 1] = o.size();
+            o.write(((pn + 1) + " 0 obj\n<< /Type /XObject /Subtype /Image /Width " + w + " /Height " + h + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " + jpg.get(i).length + " >>\nstream\n").getBytes(A));
+            o.write(jpg.get(i));
+            o.write("\nendstream\nendobj\n".getBytes(A));
+            off[pn + 2] = o.size();
+            o.write(((pn + 2) + " 0 obj\n<< /Length " + cs.length() + " >>\nstream\n" + cs + "\nendstream\nendobj\n").getBytes(A));
+        }
+        long xref = o.size();
+        StringBuilder x = new StringBuilder("xref\n0 " + n + "\n0000000000 65535 f \n");
+        for (int i = 1; i < n; i++) x.append(String.format(Locale.ROOT, "%010d", off[i])).append(" 00000 n \n");
+        x.append("trailer\n<< /Size ").append(n).append(" /Root 1 0 R >>\nstartxref\n").append(xref).append("\n%%EOF");
+        o.write(x.toString().getBytes(A));
+        return o.toByteArray();
+    }
+
+    private byte[] formPdf(JSONObject f) throws Exception {
+        List<byte[]> jp = new ArrayList<>();
+        List<int[]> wh = new ArrayList<>();
+        for (int p = 0; p < f.optJSONArray("pages").length(); p++) {
+            android.graphics.Bitmap b = drawFormPage(f, p);
+            if (b == null) throw new Exception("page");
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            b.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, bo);
+            jp.add(bo.toByteArray());
+            wh.add(new int[]{b.getWidth(), b.getHeight()});
+        }
+        return pdfOfJpegs(jp, wh);
+    }
+
+    /** 양식 장 그림을 모두 폰에 받아 둔 뒤 done */
+    private void fetchFormPages(JSONObject f, Runnable done) {
+        JSONArray pg = f.optJSONArray("pages");
+        final java.util.concurrent.atomic.AtomicInteger left = new java.util.concurrent.atomic.AtomicInteger(pg.length());
+        for (int i = 0; i < pg.length(); i++) fetchBlob(pg.optJSONObject(i).optString("blob"), pg.optJSONObject(i).optInt("chunks"), () -> {
+            if (left.decrementAndGet() == 0) runOnUiThread(done);
+        });
+    }
+
+    private String formFileName(JSONObject f) {
+        return (f.optString("name") + "_" + me.optString("name") + "_" + todayStr()).replaceAll("[^0-9A-Za-z가-힣._-]", "_") + ".pdf";
+    }
+
+    private void renderFormFill() {
+        final JSONObject f = formById(formFillId);
+        if (f == null) {
+            content.addView(Ui.text(this, "양식을 찾지 못했어요.", 14, Ui.GRAY, false));
+            return;
+        }
+        content.addView(title(f.optString("name") + " 작성"));
+        content.addView(Ui.text(this, "칸을 채우면 아래 양식에 바로 찍혀요. 쓰던 내용은 이 폰에 저장돼요.", 13, Ui.GRAY, false));
+        final ImageView prev = new ImageView(this);
+        prev.setAdjustViewBounds(true);
+        prev.setBackgroundColor(Color.WHITE);
+        final Runnable redraw = () -> fetchFormPages(f, () -> {
+            android.graphics.Bitmap b = drawFormPage(f, formPage);
+            if (b != null) prev.setImageBitmap(b);
+        });
+        final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        JSONArray fl = f.optJSONArray("fields");
+        int pages = f.optJSONArray("pages").length();
+        for (int p = 0; p < pages; p++) {
+            if (pages > 1) content.addView(Ui.text(this, (p + 1) + "장", 13, Ui.DEEP, true), Ui.lp(this, 12));
+            for (int i = 0; fl != null && i < fl.length(); i++) {
+                final JSONObject x = fl.optJSONObject(i);
+                if (x.optInt("p") != p) continue;
+                final int fp = p;
+                final String key = String.valueOf(x.optLong("id"));
+                content.addView(Ui.text(this, x.optString("label"), 12, Ui.GRAY, true), Ui.lp(this, 8));
+                EditText e = Ui.field(this, x.optString("label"), false);
+                if (x.optDouble("h") > 0.06) {
+                    e.setSingleLine(false);
+                    e.setMinLines(3);
+                }
+                e.setText(formFillVals.optString(key));
+                e.addTextChangedListener(new TextWatcher() {
+                    public void beforeTextChanged(CharSequence s, int a, int b, int c) {
+                    }
+
+                    public void onTextChanged(CharSequence s, int a, int b, int c) {
+                    }
+
+                    public void afterTextChanged(Editable s) {
+                        try {
+                            formFillVals.put(key, s.toString());
+                        } catch (Exception ignored) {
+                        }
+                        lockPrefs().edit().putString("ffv_" + myId() + "_" + formFillId, formFillVals.toString()).apply();
+                        formPage = fp;
+                        h.removeCallbacksAndMessages(null);
+                        h.postDelayed(redraw, 300);
+                    }
+                });
+                content.addView(e, Ui.lp(this, 2));
+            }
+        }
+        LinearLayout btns = new LinearLayout(this);
+        Button pdf = Ui.button(this, "⬇ PDF 받기", Ui.FIELD, Ui.INK);
+        pdf.setOnClickListener(v -> fetchFormPages(f, () -> {
+            try {
+                File out = new File(Media.dir(this), formFileName(f));
+                Media.write(out, formPdf(f));
+                Uri u = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".files", out);
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("application/pdf");
+                i.putExtra(Intent.EXTRA_STREAM, u);
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(Intent.createChooser(i, "PDF 저장·보내기"));
+            } catch (Exception e) {
+                Ui.toast(this, "PDF를 만들지 못했어요.");
+            }
+        }));
+        Button send = Ui.button(this, "나인패스로 보내기", Ui.GOLD, Ui.DARK);
+        send.setOnClickListener(v -> {
+            LinearLayout d = form();
+            d.addView(Ui.text(this, "내 나인패스 계정에 임시저장 문서로 만들어지고 완성본 PDF가 첨부돼요. 열린 창에서 결재선을 확인하고 [상신]을 누르면 돼요(서명도 나인패스에서).", 13, Ui.GRAY, false));
+            final EditText ti = Ui.field(this, "문서 제목", false);
+            ti.setText(f.optString("name") + " · " + todayStr());
+            final EditText mm = Ui.field(this, "기안 의견 (선택)", false);
+            mm.setSingleLine(false);
+            d.addView(ti, Ui.lp(this, 10));
+            d.addView(mm, Ui.lp(this, 6));
+            new Dlg(this).setTitle("나인패스로 보내기").setView(d).setNegativeButton("취소", null).setPositiveButton("보내기", (dd, w) -> {
+                final String t = ti.getText().toString().trim();
+                if (t.isEmpty()) {
+                    Ui.toast(this, "문서 제목을 적어 주세요.");
+                    return;
+                }
+                fetchFormPages(f, () -> {
+                    try {
+                        byte[] b = formPdf(f);
+                        if (b.length > 10 * 1024 * 1024) {
+                            Ui.toast(this, "완성본이 10MB를 넘어요.");
+                            return;
+                        }
+                        JSONObject body = new JSONObject().put("title", t.length() > 72 ? t.substring(0, 72) : t).put("memo", mm.getText().toString().trim()).put("kind", f.optString("kind"))
+                                .put("mime", "application/pdf").put("fname", formFileName(f)).put("file", android.util.Base64.encodeToString(b, android.util.Base64.NO_WRAP));
+                        npOpen("npDraft", body.toString(), "나인패스 문서 만드는 중…");
+                    } catch (Exception e) {
+                        Ui.toast(this, "PDF를 만들지 못했어요.");
+                    }
+                });
+            }).show();
+        });
+        btns.addView(pdf, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        btns.addView(send, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        content.addView(btns, Ui.lp(this, 14));
+        if (pages > 1) {
+            LinearLayout pc = new LinearLayout(this);
+            for (int p = 0; p < pages; p++) {
+                final int pp = p;
+                TextView c = Ui.chip(this, (p + 1) + "장", p == formPage ? Ui.NAVY : Ui.FIELD, p == formPage ? Color.WHITE : Ui.INK);
+                c.setPadding(Ui.dp(this, 14), Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 8));
+                c.setOnClickListener(v -> {
+                    formPage = pp;
+                    render();
+                });
+                pc.addView(c);
+            }
+            content.addView(pc, Ui.lp(this, 12));
+        }
+        content.addView(prev, Ui.lp(this, 10));
+        redraw.run();
     }
 
     private void renderStockStat() {
@@ -7695,6 +8002,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.4.3", "2026-11-04", "• 결재 양식함(전체 → 회사): 양식을 골라 칸을 채우면 양식 위에 바로 찍혀요. 'PDF 받기' 또는 '나인패스로 보내기'(내 나인패스 계정 임시저장 문서에 첨부 → 열린 창에서 상신)\n• 양식 올리기·칸 편집은 PC 웹에서"},
             {"0.4.2", "2026-11-04", "• 나인패스 계정 연결: 전체 → 회사 → '나인패스 계정 연결' — 나인패스 화면에서 한 번 로그인하면 이름·연락처가 달라도 자동 로그인\n• 나인패스 결재 알림: 결재할 문서가 새로 오면 본인만 보이는 '📝 나인패스 결재' 채팅방에 메시지(제목·종류·기안자), '나인패스 열기'로 그 문서가 바로 열려요"},
             {"0.4.1", "2026-11-04", "• 가맹점 일괄 가져오기: 이카운트 '접수' 목록 엑셀을 그대로 올리면 가맹점마다 응대 기록(요청사항·처리결과·처리담당·프로젝트명·처리일자)으로 들어가요. 여러 가맹점을 한 파일로, 같은 접수번호는 다시 올려도 한 번만\n• 약정마감일 → 계약종료일, CMS금액 → 금액, 적요 → 메모로 읽어요"},
             {"0.4.0", "2026-11-02", "• 나인패스(전자결재) 연결: 전체 → 회사 → '나인패스'를 누르면 다시 로그인하지 않고 인터넷 창으로 열려요. 내가 결재할 문서 수가 빨간 숫자로 보여요(30초마다 새로 고침)\n• 나인패스에 등록된 이름·연락처가 나인패밀리와 다르면 '직원 정보와 일치하지 않습니다' 안내가 나와요"},
