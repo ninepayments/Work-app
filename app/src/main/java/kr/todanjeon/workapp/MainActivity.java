@@ -948,6 +948,7 @@ public class MainActivity extends Activity {
             try {
                 JSONObject j = (JSONObject) npCall("npPending", tk.getToken(), "{}")[1];
                 n = j.optBoolean("error") ? 0 : Math.max(0, j.optInt("count"));
+                if (j.has("linked")) npLinked = j.optBoolean("linked");
             } catch (Exception ignored) {
             }
             final int f = n;
@@ -959,10 +960,24 @@ public class MainActivity extends Activity {
         }).start());
     }
 
-    private void openNinepass() { // 1회용 자동 로그인 주소를 서버가 만들어 주면 인터넷 창(브라우저)으로 연다
+    private void openNinepass() {
+        openNinepass("/");
+    }
+
+    private void openNinepass(String next) { // 1회용 자동 로그인 주소를 서버가 만들어 주면 인터넷 창(브라우저)으로 연다
+        try {
+            npOpen("npGo", new JSONObject().put("next", next).toString(), "나인패스 여는 중…");
+        } catch (Exception ignored) {
+        }
+    }
+
+    private boolean npLinked = false;
+
+    /** 나인패스 서버 함수 → 받은 1회용 주소를 브라우저로 (자동 로그인·계정 연결·임시저장 문서) — 웹 npWin 과 같음 */
+    private void npOpen(final String fn, final String body, String busy) {
         com.google.firebase.auth.FirebaseUser fu = Cloud.auth().getCurrentUser();
         if (fu == null) return;
-        Ui.toast(this, "나인패스 여는 중…");
+        Ui.toast(this, busy);
         fu.getIdToken(false).addOnCompleteListener(tk -> {
             if (!tk.isSuccessful() || tk.getResult() == null) {
                 Ui.toast(this, "로그인을 확인해 주세요");
@@ -972,10 +987,10 @@ public class MainActivity extends Activity {
             new Thread(() -> {
                 String url = "", err;
                 try {
-                    Object[] r = npCall("npGo", tok, "{\"next\":\"/\"}");
+                    Object[] r = npCall(fn, tok, body);
                     JSONObject j = (JSONObject) r[1];
                     url = j.optString("url");
-                    err = "mismatch".equals(j.optString("error")) ? NP_MISMATCH : j.optString("error", "나인패스를 열지 못했어요 (" + r[0] + ")");
+                    err = j.optString("error", "나인패스를 열지 못했어요 (" + r[0] + ")");
                 } catch (Exception e) {
                     err = "인터넷 연결을 확인해 주세요";
                 }
@@ -983,13 +998,34 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     if (!u.isEmpty()) {
                         openIntent(new Intent(Intent.ACTION_VIEW, Uri.parse(u)));
-                        npPoll();
-                    } else if (NP_MISMATCH.equals(er))
-                        new Dlg(this).setTitle("나인패스").setMessage(er + "\n\n나인패스에 등록된 이름·연락처가 나인패밀리(직원 정보의 이름·로그인 번호·연락처)와 같아야 해요.").setPositiveButton("닫기", null).show();
+                        npHandler.postDelayed(this::npPoll, 4000);
+                    } else if ("mismatch".equals(er) || "unlinked".equals(er))
+                        new Dlg(this).setTitle("나인패스").setMessage(("unlinked".equals(er) ? "나인패스 계정 연결이 끊겼어요. 다시 연결해 주세요." : NP_MISMATCH) + "\n\n나인패스 계정을 한 번 연결하면 이름·연락처가 달라도 자동으로 로그인돼요. 연결 창에서 나인패스 아이디·비밀번호로 로그인하면 끝나요(비밀번호는 나인패스 화면에만 입력해요).")
+                                .setNegativeButton("닫기", null).setPositiveButton("계정 연결하기", (d, w) -> npOpen("npLinkStart", "{}", "나인패스 계정 연결 중…")).show();
                     else Ui.toast(this, er);
                 });
             }).start();
         });
+    }
+
+    private void npUnlink() {
+        new Dlg(this).setTitle("나인패스 계정 연결을 끊을까요?").setMessage("끊으면 이름·연락처로 다시 찾아요. 언제든 다시 연결할 수 있어요.").setNegativeButton("취소", null).setPositiveButton("연결 끊기", (d, w) -> {
+            com.google.firebase.auth.FirebaseUser fu = Cloud.auth().getCurrentUser();
+            if (fu == null) return;
+            fu.getIdToken(false).addOnSuccessListener(tk -> new Thread(() -> {
+                boolean ok = false;
+                try {
+                    ok = (Integer) npCall("npUnlink", tk.getToken(), "{}")[0] < 400;
+                } catch (Exception ignored) {
+                }
+                final boolean f = ok;
+                runOnUiThread(() -> {
+                    if (f) npLinked = false;
+                    Ui.toast(this, f ? "연결을 끊었어요." : "끊지 못했어요. 인터넷을 확인해 주세요.");
+                    render();
+                });
+            }).start());
+        }).show();
     }
 
     private android.content.SharedPreferences lockPrefs() {
@@ -3118,6 +3154,12 @@ public class MainActivity extends Activity {
             e.add(new Entry("보고", "일일보고 종합 보기", "일일보고 종합 대표님 직원별", () -> goSub("reportview")));
             if (!canPerf()) e.add(new Entry("보고", "실적 보고서 보기", "실적 보고서 보기 대표님", () -> goSub("perfreport")));
         }
+        Entry npl = new Entry("회사", npLinked ? "나인패스 계정 연결 끊기" : "나인패스 계정 연결 (자동 로그인)", "나인패스 계정 연결 끊기 해제 로그인 전자결재", () -> {
+            if (npLinked) npUnlink();
+            else npOpen("npLinkStart", "{}", "나인패스 계정 연결 중…");
+        });
+        npl.badge = npLinked ? "연결됨" : "";
+        e.add(npl);
         Entry np = new Entry("회사", "나인패스 (전자결재)", "나인패스 전자결재 결재 문서 기안 승인 ninepass", () -> openNinepass());
         np.badge = npCount > 0 ? (npCount > 99 ? "99+" : String.valueOf(npCount)) : "";
         e.add(np);
@@ -7653,6 +7695,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.4.2", "2026-11-04", "• 나인패스 계정 연결: 전체 → 회사 → '나인패스 계정 연결' — 나인패스 화면에서 한 번 로그인하면 이름·연락처가 달라도 자동 로그인\n• 나인패스 결재 알림: 결재할 문서가 새로 오면 본인만 보이는 '📝 나인패스 결재' 채팅방에 메시지(제목·종류·기안자), '나인패스 열기'로 그 문서가 바로 열려요"},
             {"0.4.1", "2026-11-04", "• 가맹점 일괄 가져오기: 이카운트 '접수' 목록 엑셀을 그대로 올리면 가맹점마다 응대 기록(요청사항·처리결과·처리담당·프로젝트명·처리일자)으로 들어가요. 여러 가맹점을 한 파일로, 같은 접수번호는 다시 올려도 한 번만\n• 약정마감일 → 계약종료일, CMS금액 → 금액, 적요 → 메모로 읽어요"},
             {"0.4.0", "2026-11-02", "• 나인패스(전자결재) 연결: 전체 → 회사 → '나인패스'를 누르면 다시 로그인하지 않고 인터넷 창으로 열려요. 내가 결재할 문서 수가 빨간 숫자로 보여요(30초마다 새로 고침)\n• 나인패스에 등록된 이름·연락처가 나인패밀리와 다르면 '직원 정보와 일치하지 않습니다' 안내가 나와요"},
             {"0.3.9", "2026-10-31", "• 버전 번호 바꿈: 끝자리가 9를 넘으면 앞자리로 올라가요(0.3.8 → 0.3.9 → 0.4.0). 지난 내역 번호도 같은 방식으로 고쳤어요(예전 0.0.38 = 0.3.8)\n• 물품요청: 요청한 사람·관리자가 수정·삭제 (품목·수량은 발송 전까지)\n• 재고 현황(재고 화면 또는 전체 → 재고): 품목별 보관지 수량·출고중·안전재고, 보관지·미달만 거르기, 이름·코드·수량·부족 순 정렬, 부족 품목 체크 → 물품요청 자동 채움\n• 권한 화면 단순화: 역할(멤버·운영자·관리자·최고관리자)을 고르면 끝, 세부 권한은 접어 두고 겹치는 항목은 하나로\n• 채팅 이름 색: 아무 색이나 직접 골라요(색·진하기)\n• 앱 잠금 지문: 지문이 등록돼 있어도 '없음'으로 나오던 것 고침\n• AI 다듬기: 구글 Gemini 무료로 바꿈"},
@@ -10131,6 +10174,14 @@ public class MainActivity extends Activity {
             b.setMaxWidth(maxW);
             b.setLineSpacing(0, 1.1f);
             box.addView(b, Ui.lp(this, rto != null ? 6 : 0));
+            JSONObject npx = m.optJSONObject("np"); // 나인패스 결재 알림 — 누르면 그 문서를 자동 로그인으로 연다 (웹과 같음)
+            if (npx != null) {
+                final String npPath = npx.optString("path", "/");
+                TextView nb = Ui.smallBtn(this, "나인패스 열기 ›", Ui.GOLD, Ui.DARK);
+                nb.setOnClickListener(v -> openNinepass(npPath));
+                box.addView(nb, Ui.lp(this, 8));
+                tap = () -> openNinepass(npPath);
+            }
             attachGestures(box, m, tap);
             wrap.addView(box);
         }

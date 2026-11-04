@@ -404,3 +404,4 @@ details.man[open]{padding-bottom:12px}
 .pcnav button.npnav{position:relative;gap:8px}
 .pcnav button.npnav img{width:28px;height:28px;border-radius:8px;flex:none}
 .pcnav button.npnav .badge{position:absolute;top:2px;right:2px;margin:0}
+.npbtn{display:block;margin-top:8px;border:0;border-radius:10px;padding:8px 12px;background:var(--gold);color:var(--dark);font-weight:800;cursor:pointer;width:100%}

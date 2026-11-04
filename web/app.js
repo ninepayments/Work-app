@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.6.5';
+const VERSION = '웹 0.6.6';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
@@ -383,7 +383,7 @@ async function npPoll() { // 결재 대기 수 — 실패하면 숫자만 숨긴
   let n = 0;
   try {
     const r = await fetch(NP_FN + 'npPending', {method: 'POST', headers: {Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}});
-    const j = await r.json(); n = j && !j.error ? Math.max(0, Number(j.count) || 0) : 0;
+    const j = await r.json(); n = j && !j.error ? Math.max(0, Number(j.count) || 0) : 0; if (j && typeof j.linked === 'boolean') S.npLinked = j.linked;
   } catch (e) { n = 0; }
   if (n === (S.npCount || 0)) return; S.npCount = n;
   document.querySelectorAll('.npnav').forEach(b => { const o = b.querySelector('.badge'); if (o) o.remove(); if (n) b.insertAdjacentHTML('beforeend', npBadge()); });
@@ -882,6 +882,7 @@ function msgBody(m) {
   if (m.kind === 'stk') return '<img class="stk" src="' + stkSrc(m.blob) + '" alt="' + esc(m.text || '스티커') + '">';
   if (m.kind === 'img') return '<img class="cimg" data-blob="' + esc(m.blob) + '" data-n="' + (m.chunks || 0) + '" data-name="' + esc(m.fname || '사진.jpg') + '" alt="사진" data-act="viewImg">';
   if (m.kind === 'file') return '<button class="fbtn" data-act="openFile" data-arg="' + esc(m.blob + '|' + (m.chunks || 0) + '|' + (m.fname || '파일')) + '">📎 ' + esc(m.fname || '파일') + (m.size ? ' <small>' + Math.max(1, Math.round(m.size / 1024)) + 'KB · 눌러서 받기</small>' : '') + '</button>';
+  if (m.np) return linkify(msgText(m)) + '<button type="button" class="npbtn" data-act="npOpen" data-arg="' + esc(m.np.path || '/') + '">나인패스 열기 ›</button>'; // 나인패스 결재 알림
   return linkify(msgText(m));
 }
 function reactLine(m) {
@@ -1032,19 +1033,30 @@ ACT.polish = async () => {
   modal('<h3>✦ AI 다듬기</h3><div class="sub" style="margin-top:0">원래 글</div><div class="aiold">' + esc(text) + '</div><div class="sub">다듬은 글</div><div class="ainew">' + esc(out) + '</div><button class="btn gold full" data-act="polishUse">바꾸기</button><button class="btn full" data-act="close">그대로 두기</button>');
 };
 ACT.topAdd = topAddAct;
-ACT.ninepass = async () => { // 새 창(탭)으로 나인패스 — 1회용 자동 로그인 주소는 누를 때마다 서버가 새로 만든다
-  if (DEMO) return toast('데모에서는 나인패스를 열 수 없어요.');
+// 나인패스 서버 함수를 불러 받은 1회용 주소를 새 창(탭)으로 연다 — 자동 로그인·계정 연결·임시저장 문서 모두 같은 방식
+async function npWin(fn, body, busy) {
+  if (DEMO) { toast('데모에서는 나인패스를 열 수 없어요.'); return false; }
   const elec = !!window.nineWin; // PC 프로그램: 주소를 받은 뒤 window.open → 인터넷 창(브라우저)으로 열림
   const w = elec ? null : window.open('', '_blank'); // 브라우저: 누른 순간 빈 창을 먼저 열어야 팝업 차단에 안 걸린다
-  const fail = m => { if (w) w.close(); m === NP_MISMATCH ? modal('<h3>나인패스</h3><div class="sub" style="margin-top:0;font-size:15px;color:var(--ink)">' + esc(m) + '</div><div class="sub">나인패스에 등록된 이름·연락처가 나인패밀리(직원 정보의 이름·로그인 번호·연락처)와 같아야 해요.</div><button class="btn full" data-act="close">닫기</button>') : toast(m); };
   try {
-    if (w) w.document.title = '나인패스 여는 중…';
-    const r = await fetch(NP_FN + 'npGo', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}, body: JSON.stringify({next: '/'})});
+    if (w) w.document.title = busy || '나인패스 여는 중…';
+    const r = await fetch(NP_FN + fn, {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}, body: JSON.stringify(body || {})});
     const j = await r.json().catch(() => ({}));
-    if (r.ok && j.url) { if (w) { w.opener = null; w.location.replace(j.url); } else window.open(j.url, '_blank'); npPoll(); return; }
-    fail(j.error === 'mismatch' ? NP_MISMATCH : (j.error || '나인패스를 열지 못했어요 (' + r.status + ')'));
-  } catch (e) { fail('인터넷 연결을 확인해 주세요'); }
-};
+    if (r.ok && j.url) { if (w) { w.opener = null; w.location.replace(j.url); } else window.open(j.url, '_blank'); setTimeout(npPoll, 4000); return true; }
+    if (w) w.close();
+    if (j.error === 'mismatch' || j.error === 'unlinked') npMismatch(j.error); else toast(j.error || '나인패스를 열지 못했어요 (' + r.status + ')');
+  } catch (e) { if (w) w.close(); toast('인터넷 연결을 확인해 주세요'); }
+  return false;
+}
+function npMismatch(k) {
+  modal('<h3>나인패스</h3><div class="sub" style="margin-top:0;font-size:15px;color:var(--ink)">' + esc(k === 'unlinked' ? '나인패스 계정 연결이 끊겼어요. 다시 연결해 주세요.' : NP_MISMATCH) + '</div><div class="sub">나인패스 계정을 한 번 연결하면 이름·연락처가 달라도 자동으로 로그인돼요. 연결 창에서 나인패스 아이디·비밀번호로 로그인하면 끝나요(비밀번호는 나인패스 화면에만 입력해요).</div><button class="btn gold full" data-act="npLink">🔗 나인패스 계정 연결하기</button><button class="btn full" data-act="close">닫기</button>');
+}
+ACT.ninepass = () => npWin('npGo', {next: '/'});
+ACT.npOpen = path => npWin('npGo', {next: path || '/'}); // 채팅 결재 알림의 [나인패스 열기]
+ACT.npLink = () => { closeModal(); npWin('npLinkStart', {}, '나인패스 계정 연결 중…').then(ok => { if (ok) toast('새 창에서 나인패스에 로그인하고 [연결]을 눌러 주세요.'); }); };
+ACT.npUnlink = () => askConfirm('나인패스 계정 연결을 끊을까요?', '끊으면 이름·연락처로 다시 찾아요. 언제든 다시 연결할 수 있어요.', '연결 끊기', async () => {
+  try { const r = await fetch(NP_FN + 'npUnlink', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}, body: '{}'}); const j = await r.json().catch(() => ({})); if (!r.ok) return toast(j.error || '끊지 못했어요'); S.npLinked = false; render(); toast('연결을 끊었어요.'); } catch (e) { toast('인터넷 연결을 확인해 주세요'); }
+}, true);
 ACT.polishUse = () => {
   const inp = $('#msgin'); closeModal(); if (!inp || !S.polished) return;
   inp.value = S.polished; S.polished = ''; growMsg(inp); if (S.room) LS('draft_' + S.uid + '_' + S.room, inp.value); inp.focus();
@@ -2983,6 +2995,7 @@ function menuItems() {
   add('보고', '일일보고 쓰기', '일일보고 보고 오늘 한 일', 'nav:all:daily');
   if (P) add('보고', '실적 보고서 올리기 (대표님께)', '실적 보고서 올리기 대표님 본부장', 'nav:all:perfreport');
   if (R) { add('보고', '일일보고 종합 보기', '일일보고 종합 대표님 직원별', 'nav:all:reportview'); if (!P) add('보고', '실적 보고서 보기', '실적 보고서 보기 대표님', 'nav:all:perfreport'); }
+  add('회사', S.npLinked ? '나인패스 계정 연결 끊기' : '나인패스 계정 연결 (자동 로그인)', '나인패스 계정 연결 끊기 해제 로그인 전자결재', S.npLinked ? 'act:npUnlink' : 'act:npLink', S.npLinked ? '연결됨' : '');
   add('회사', '나인패스 (전자결재)', '나인패스 전자결재 결재 문서 기안 승인 ninepass', 'act:ninepass', S.npCount ? (S.npCount > 99 ? '99+' : String(S.npCount)) : '');
   add('회사', '공지사항', '공지사항 공지 알림', 'nav:all:notice', nu ? String(nu) : '');
   add('회사', '자료실', '자료실 게시판 양식 서식 계약서 파일 문서', 'nav:all:library'); add('회사', '비상연락망 (눌러서 전화)', '비상연락망 연락처 전화 번호', 'nav:all:contacts');
@@ -3102,6 +3115,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.6.6', '2026-11-04', ['나인패스 계정 연결: ☰ → 회사 → ‘나인패스 계정 연결’ — 나인패스 화면에서 한 번 로그인하면 이름·연락처가 달라도 자동 로그인', '나인패스 결재 알림: 결재할 문서가 새로 오면 본인만 보이는 ‘📝 나인패스 결재’ 채팅방에 메시지(제목·종류·기안자), [나인패스 열기]로 그 문서가 바로 열려요', '나인패스 직원 정보가 안 맞으면 계정 연결하기 안내']],
   ['웹 0.6.5', '2026-11-04', ['가맹점 일괄 가져오기: 이카운트 ‘접수’ 목록 엑셀을 그대로 올리면 가맹점마다 응대 기록(요청사항·처리결과·처리담당·프로젝트명·처리일자)으로 들어가요. 여러 가맹점을 한 파일로, 같은 접수번호는 다시 올려도 한 번만', '약정마감일 → 계약종료일, CMS금액 → 금액, 적요 → 메모로 읽어요']],
   ['웹 0.6.4', '2026-11-02', ['나인패스(전자결재) 연결: PC 위쪽 메뉴 ‘메모’ 오른쪽(휴대폰은 ☰ → 회사)의 ‘나인패스’를 누르면 다시 로그인하지 않고 새 창으로 열려요. 내가 결재할 문서 수가 빨간 숫자로 보여요(30초마다)', '나인패스에 등록된 이름·연락처가 나인패밀리와 다르면 ‘직원 정보와 일치하지 않습니다’ 안내']],
   ['웹 0.6.3', '2026-10-31', ['버전 번호 바꿈: 끝자리가 9를 넘으면 앞자리로 올라가요(0.6.2 → 0.6.3 → … → 0.7.0). 지난 내역 번호도 같은 방식으로 고쳤어요(예전 0.0.62 = 0.6.2)', '물품요청: 요청한 사람·관리자가 수정·삭제 (품목·수량은 발송 전까지)', '재고 현황(재고 화면 또는 ☰ → 재고): 품목별 보관지 수량·출고중·안전재고 표, 보관지·안전재고 미달만 거르기, 정렬, 부족 품목 체크 → 물품요청 자동 채움', '권한 화면 단순화: 역할(멤버·운영자·관리자·최고관리자)을 고르면 끝, 세부 권한은 접어 두고 겹치는 항목은 하나로', '채팅 이름 색: 아무 색이나 직접 골라요', '버튼·메뉴 색을 원래 단색으로(그라데이션 뺌)', 'AI 다듬기: 구글 Gemini 무료로 바꿈']],

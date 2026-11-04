@@ -146,3 +146,6 @@
 - 2026-11-04: 가맹점 가져오기가 이카운트 '접수' 목록 머리글도 읽음 — 접수번호(eno, 중복 방지)·처리담당(직원 이름이 같으면 who, 아니면 ewho 글자)·접수인·진행상태(estate)·프로젝트명(ekind → 응대 종류로 바꿔 넣음: 원격→원격A/S, 방문·설치·AS→방문A/S, 전화→전화응대, 용지→용지신청, 그 외 기타)·접수상세내용(요청사항)·처리결과·품목명(eitem). 약정마감일→cend, CMS금액→camt, 적요→memo. 처리일자 없으면 접수번호 앞 날짜.
 - 2026-11-04: npGo — 나인패스가 연동 키를 거절(401)하면 창을 열지 않고 '연동 키가 맞지 않아요' 안내(사진에서 옮겨 적은 키 오타 대비).
 - 2026-11-04: 나인패스 '로그인이 필요해요'는 나인패밀리 서버(npGo)의 직원 확인 실패 문구였음(나인패스 문구 아님) — 쿠키 SameSite 요청은 철회. 실패 이유를 기록·안내에 남기게 함(no-token/token…/no-phones-doc/phones-inactive/no-name/no-phone-digits). 나인패밀리는 새 창으로 엶(iframe 아님) → 나인패스 '끼워 넣기 허용'은 비워 둠.
+- 2026-11-04: 나인패스 v0.0.20 규격 반영 — fid = 나인패밀리 직원 번호(users.id). 계정 연결 npLinkStart(→ /link, back=npLinkBack) · npLinkBack(서명 HMAC(ts\nlinked\nfid), 10분 안, 서버 전용 컬렉션 nplink/{fid} {linked,name}) · npUnlink(DELETE /api/external/link). 연결돼 있으면 /sso·pending·drafts 를 fid 로, 아니면 이름+연락처.
+- 2026-11-04: 결재 알림 npNotify(5분마다, 서울 시간) — /api/external/pending/list 의 새 문서 id 만(서버 전용 npstate/{uid} {seen, room}) 본인만 보이는 비공개 방 prooms '📝 나인패스 결재'(np:true, mem=[본인 번호])에 pmsgs(who 0, wname '📝 나인패스', np:{path}). 처음엔 2건 이상이면 요약 1건, 한 번에 6건 이상도 요약. 메시지의 [나인패스 열기] → npGo(next=path).
+- 2026-11-04: 결재 양식함(다음 작업) — 양식은 이미지·PDF 만(엑셀·워드·한글은 안 받음). 완성본은 npDraft → /api/external/drafts(임시저장) → 그 작성 화면을 자동 로그인으로 엶. 문서 종류는 npKinds(/api/external/kinds).
