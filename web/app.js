@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.6.8';
+const VERSION = '웹 0.6.9';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
@@ -377,7 +377,34 @@ function topAddAct() { // ACT 는 아래에서 만들어진다 → ACT.topAdd �
 // ---------- 나인패스(전자결재): 상단 '메모' 오른쪽 메뉴 + 결재 대기 수. 키는 서버 함수(npGo·npPending)에만 있고 화면은 로그인 토큰으로 묻기만 한다 ----------
 const NP_FN = 'https://asia-northeast3-nine-family.cloudfunctions.net/';
 const npBadge = () => S.npCount ? '<span class="badge">' + (S.npCount > 99 ? '99+' : S.npCount) + '</span>' : '';
-const npNavHTML = () => '<button class="npnav" data-act="ninepass" title="나인패스 전자결재 (새 창)"><img src="ninepass-logo-64.png" alt=""><span class="t">나인패스</span>' + npBadge() + '</button>';
+// PC 프로그램 0.1.0~ 은 나인패스를 다른 메뉴처럼 상단바 아래 화면으로 띄운다(npIn). 그 밖(인터넷 창·옛 PC 프로그램)은 새 창
+const npIn = () => !!(window.nineWin && window.nineWin.np) && isWide();
+const npNavHTML = () => npIn()
+  ? '<button class="npnav' + (!S.menu && S.sub === 'ninepass' ? ' on' : '') + '" data-nav="all" data-sub="ninepass" title="나인패스 전자결재"><img src="ninepass-logo-64.png" alt=""><span class="t">나인패스</span>' + npBadge() + '</button>'
+  : '<button class="npnav" data-act="ninepass" title="나인패스 전자결재 (새 창)"><img src="ninepass-logo-64.png" alt=""><span class="t">나인패스</span>' + npBadge() + '</button>';
+function viewNinePassPane() {
+  if (!npIn()) return '<h1>나인패스</h1><div class="sub">이 화면은 PC 프로그램에서 열려요. 여기서는 새 창으로 열어요.</div><button class="btn gold full" data-act="ninepass">나인패스 새 창으로 열기</button>';
+  return '<div class="npbar"><img src="ninepass-logo-64.png" alt=""><b>나인패스</b><span class="grow"></span><button class="btn" data-act="npBack" aria-label="뒤로">‹ 뒤로</button><button class="btn" data-act="npReload">⟳ 새로고침</button><button class="btn" data-act="npHome">처음 화면</button><button class="btn" data-act="ninepassWin">새 창으로</button></div><div class="nppane" id="nppane"><div class="sub" id="npmsg">나인패스 불러오는 중…</div></div>';
+}
+let npShown = false;
+function npRect() { const el = $('#nppane'); if (!el) return null; const r = el.getBoundingClientRect(); const h = Math.max(200, window.innerHeight - r.top - 6); el.style.height = h + 'px'; return {x: r.left, y: r.top, w: r.width, h}; }
+async function npSync() { // 지금 화면이 나인패스면 그 자리에 보이고, 아니면(또는 팝업이 떠 있으면) 숨긴다
+  if (!(window.nineWin && window.nineWin.np)) return;
+  const b = npIn() && S.sub === 'ninepass' && !S.menu && !$('#modal') ? npRect() : null;
+  if (!b) { if (npShown) { window.nineWin.np.hide(); npShown = false; } return; }
+  if (S.npPendUrl) { window.nineWin.np.show(S.npPendUrl, b); S.npPendUrl = ''; S.npLoaded = true; npShown = true; return; }
+  if (S.npLoaded) { window.nineWin.np.show('', b); npShown = true; return; }
+  if (S.npLoading) return; S.npLoading = true;
+  try {
+    const r = await fetch(NP_FN + 'npGo', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}, body: JSON.stringify({next: S.npNext || '/'})});
+    const j = await r.json().catch(() => ({}));
+    const b2 = S.sub === 'ninepass' && !$('#modal') ? npRect() : null;
+    if (r.ok && j.url && b2) { window.nineWin.np.show(j.url, b2); npShown = true; S.npLoaded = true; S.npNext = ''; setTimeout(npPoll, 5000); }
+    else if (!r.ok) { const m = $('#npmsg'); if (m) m.textContent = j.error === 'mismatch' || j.error === 'unlinked' ? NP_MISMATCH + ' (☰ → 회사 → 나인패스 계정 연결)' : (j.error || '나인패스를 열지 못했어요 (' + r.status + ')'); }
+  } catch (e) { const m = $('#npmsg'); if (m) m.textContent = '인터넷 연결을 확인해 주세요'; }
+  S.npLoading = false;
+}
+window.addEventListener('resize', () => { if (npShown) npSync(); });
 async function npPoll() { // 결재 대기 수 — 실패하면 숫자만 숨긴다(오류 안내 없음)
   if (DEMO || !S.me || !auth || !auth.currentUser || document.hidden) return;
   let n = 0;
@@ -396,7 +423,7 @@ function bodyHTML() {
   if (wide && S.menu) return '<div class="scroll menupg"><div class="col">' + viewMenu(true) + '</div></div>';
   if (S.tab === 'chat' && !S.sub) return viewChat();
   const main = '<div class="scroll"><div class="col">' + (!wide && (S.sub || S.tab !== 'task') ? '<button class="back" data-act="back" aria-label="뒤로가기">‹ 뒤로</button>' : '') + viewBody(k) + '</div></div>';
-  const out = wide && k !== 'manual' && k !== 'about' ? '<div class="pcsplit"><aside class="pcside">' + sideHTML(k) + '<div style="height:60px"></div></aside>' + main + '</div>' : main;
+  const out = wide && k !== 'manual' && k !== 'about' && k !== 'ninepass' ? '<div class="pcsplit"><aside class="pcside">' + sideHTML(k) + '<div style="height:60px"></div></aside>' + main + '</div>' : main;
   return dockOn() ? '<div class="dockwrap"><div class="dockmain">' + out + '</div><aside class="chatdock">' + viewChat(true) + '</aside></div>' : out;
 }
 function render() {
@@ -427,6 +454,7 @@ function render() {
   }
   syncInstall();
   bind(root);
+  setTimeout(npSync, 0); // PC 프로그램: 나인패스 화면 보이기·숨기기
   const sc = $('.scroll'); if (sc) sc.scrollTop = keepScroll;
   const ms = $('#msgbox'); S.mbRoom = ms ? S.room : 0;
   if (ms) { // 처음 열면 안 읽은 첫 글부터, 그 뒤엔 맨 아래를 보고 있을 때만 새 글 따라 내려간다
@@ -478,6 +506,7 @@ function viewBody(k) {
     case 'perfreport': return viewPerfReport();
     case 'library': return viewLibrary();
     case 'forms': return viewForms();
+    case 'ninepass': return viewNinePassPane();
     case 'formedit': return viewFormEdit();
     case 'formfill': return viewFormFill();
     case 'contacts': return viewContacts();
@@ -1045,6 +1074,7 @@ async function npWin(fn, body, busy) {
     if (w) w.document.title = busy || '나인패스 여는 중…';
     const r = await fetch(NP_FN + fn, {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}, body: JSON.stringify(body || {})});
     const j = await r.json().catch(() => ({}));
+    if (r.ok && j.url && npIn() && fn !== 'npLinkStart' && !(body && body.win)) { S.npPendUrl = j.url; S.menu = false; S.room = 0; S.tab = 'all'; S.sub = 'ninepass'; closeModal(); render(); return true; } // PC 프로그램: 나인패스 화면에서 연다
     if (r.ok && j.url) { if (w) { w.opener = null; w.location.replace(j.url); } else window.open(j.url, '_blank'); setTimeout(npPoll, 4000); return true; }
     if (w) w.close();
     if (j.error === 'mismatch' || j.error === 'unlinked') npMismatch(j.error); else toast(j.error || '나인패스를 열지 못했어요 (' + r.status + ')');
@@ -1055,7 +1085,10 @@ function npMismatch(k) {
   modal('<h3>나인패스</h3><div class="sub" style="margin-top:0;font-size:15px;color:var(--ink)">' + esc(k === 'unlinked' ? '나인패스 계정 연결이 끊겼어요. 다시 연결해 주세요.' : NP_MISMATCH) + '</div><div class="sub">나인패스 계정을 한 번 연결하면 이름·연락처가 달라도 자동으로 로그인돼요. 연결 창에서 나인패스 아이디·비밀번호로 로그인하면 끝나요(비밀번호는 나인패스 화면에만 입력해요).</div><button class="btn gold full" data-act="npLink">🔗 나인패스 계정 연결하기</button><button class="btn full" data-act="close">닫기</button>');
 }
 ACT.ninepass = () => npWin('npGo', {next: '/'});
-ACT.npOpen = path => npWin('npGo', {next: path || '/'}); // 채팅 결재 알림의 [나인패스 열기]
+ACT.ninepassWin = () => npWin('npGo', {next: '/', win: true});
+function npGoPane(path) { S.npNext = path || '/'; S.npLoaded = false; S.menu = false; S.room = 0; S.tab = 'all'; S.sub = 'ninepass'; closeModal(); render(); }
+ACT.npOpen = path => npIn() ? npGoPane(path) : npWin('npGo', {next: path || '/'}); // 채팅 결재 알림의 [나인패스 열기]
+ACT.npBack = () => window.nineWin.np.back(); ACT.npReload = () => window.nineWin.np.reload(); ACT.npHome = () => npGoPane('/');
 ACT.npLink = () => { closeModal(); npWin('npLinkStart', {}, '나인패스 계정 연결 중…').then(ok => { if (ok) toast('새 창에서 나인패스에 로그인하고 [연결]을 눌러 주세요.'); }); };
 ACT.npUnlink = () => askConfirm('나인패스 계정 연결을 끊을까요?', '끊으면 이름·연락처로 다시 찾아요. 언제든 다시 연결할 수 있어요.', '연결 끊기', async () => {
   try { const r = await fetch(NP_FN + 'npUnlink', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}, body: '{}'}); const j = await r.json().catch(() => ({})); if (!r.ok) return toast(j.error || '끊지 못했어요'); S.npLinked = false; render(); toast('연결을 끊었어요.'); } catch (e) { toast('인터넷 연결을 확인해 주세요'); }
@@ -3253,6 +3286,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.6.9', '2026-11-04', ['PC 프로그램(0.1.0 이상)에서 나인패스가 다른 메뉴처럼 열려요 — 상단바 ‘나인패스’를 누르면 아래 화면이 나인패스로 바뀌고, 다른 메뉴를 누르면 돌아와요(보던 화면은 그대로). 뒤로·새로고침·처음 화면·새 창으로 버튼', '채팅 결재 알림의 [나인패스 열기]와 결재 양식함의 [나인패스로 보내기]도 PC 프로그램에서는 그 화면에서 열려요']],
   ['웹 0.6.8', '2026-11-04', ['정리: 최고관리자를 처음 옮길 때만 쓰던 이름 목록을 지웠어요(이제 최고관리자는 직원 정보의 최고관리자 표시로만 정해져요)']],
   ['웹 0.6.7', '2026-11-04', ['결재 양식함(☰ → 회사): 관리자가 양식(이미지·PDF, 10장까지)을 올리고 그림 위를 끌어서 입력 칸을 그려 둬요(이름·날짜·부서 등 자동 입력 가능)', '직원은 칸을 채우면 양식 위에 바로 찍히고, ⬇ PDF 받기 또는 [나인패스로 보내기] — 내 나인패스 계정의 임시저장 문서에 완성본이 첨부돼 새 창에서 상신만 하면 돼요']],
   ['웹 0.6.6', '2026-11-04', ['나인패스 계정 연결: ☰ → 회사 → ‘나인패스 계정 연결’ — 나인패스 화면에서 한 번 로그인하면 이름·연락처가 달라도 자동 로그인', '나인패스 결재 알림: 결재할 문서가 새로 오면 본인만 보이는 ‘📝 나인패스 결재’ 채팅방에 메시지(제목·종류·기안자), [나인패스 열기]로 그 문서가 바로 열려요', '나인패스 직원 정보가 안 맞으면 계정 연결하기 안내']],
@@ -3373,12 +3407,12 @@ function viewManual() {
 
 // ---------- 팝업 ----------
 function modal(html) {
-  closeModal();
+  closeModal(); if (npShown && window.nineWin && window.nineWin.np) { window.nineWin.np.hide(); npShown = false; } // 팝업이 나인패스 화면에 가리지 않게
   const d = document.createElement('div'); d.className = 'modal'; d.id = 'modal'; document.body.classList.add('hasmodal'); d.innerHTML = '<div class="sheet">' + html + '</div>';
   d.onclick = ev => { if (ev.target === d && !d.querySelector('input:not([type=checkbox]),textarea')) closeModal(); const a = ev.target.closest('[data-act]'); if (a && ACT[a.dataset.act]) { ev.stopPropagation(); ACT[a.dataset.act](a.dataset.arg, a, ev); } };
   document.body.appendChild(d);
 }
-function closeModal() { const m = $('#modal'); if (m) m.remove(); document.body.classList.remove('hasmodal'); }
+function closeModal() { const m = $('#modal'); if (m) m.remove(); document.body.classList.remove('hasmodal'); if (S.sub === 'ninepass') setTimeout(npSync, 0); }
 function askConfirm(title, msg, okLabel, onOk, danger) { // 브라우저 기본 확인창 대신
   modal('<h3>' + esc(title) + '</h3>' + (msg ? '<div class="sub" style="white-space:pre-wrap;color:var(--ink);font-size:14px;margin:8px 0">' + esc(msg) + '</div>' : '') + '<div class="btns" style="margin-top:12px"><button class="btn" data-act="close">취소</button><button class="btn ' + (danger ? 'red' : 'gold') + '" id="c_ok">' + esc(okLabel) + '</button></div>');
   $('#c_ok').onclick = () => { closeModal(); onOk(); };
