@@ -4096,7 +4096,7 @@ public class MainActivity extends Activity {
                     rs.setLineSpacing(0, 1.25f);
                     c.addView(rs, Ui.lp(this, 2));
                 }
-                c.addView(Ui.text(this, (g.has("task") ? "📋 업무에서 · " : "") + store.userName(g.optInt("who")) + (g.has("editedBy") ? "  ·  수정 " + store.userName(g.optInt("editedBy")) + " " + g.optString("editedAt") : ""), 11, Ui.GRAY, false), Ui.lp(this, 4));
+                c.addView(Ui.text(this, (g.has("task") ? "📋 업무에서 · " : "") + (g.optString("ewho").isEmpty() ? store.userName(g.optInt("who")) : g.optString("ewho")) + (g.optString("ekind").isEmpty() ? "" : " · " + g.optString("ekind")) + (g.has("editedBy") ? "  ·  수정 " + store.userName(g.optInt("editedBy")) + " " + g.optString("editedAt") : ""), 11, Ui.GRAY, false), Ui.lp(this, 4));
                 c.setOnClickListener(v -> showEditLog(g, null, fill[0]));
                 list.addView(c, Ui.lp(this, 6));
             }
@@ -7653,6 +7653,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.4.1", "2026-11-04", "• 가맹점 일괄 가져오기: 이카운트 '접수' 목록 엑셀을 그대로 올리면 가맹점마다 응대 기록(요청사항·처리결과·처리담당·프로젝트명·처리일자)으로 들어가요. 여러 가맹점을 한 파일로, 같은 접수번호는 다시 올려도 한 번만\n• 약정마감일 → 계약종료일, CMS금액 → 금액, 적요 → 메모로 읽어요"},
             {"0.4.0", "2026-11-02", "• 나인패스(전자결재) 연결: 전체 → 회사 → '나인패스'를 누르면 다시 로그인하지 않고 인터넷 창으로 열려요. 내가 결재할 문서 수가 빨간 숫자로 보여요(30초마다 새로 고침)\n• 나인패스에 등록된 이름·연락처가 나인패밀리와 다르면 '직원 정보와 일치하지 않습니다' 안내가 나와요"},
             {"0.3.9", "2026-10-31", "• 버전 번호 바꿈: 끝자리가 9를 넘으면 앞자리로 올라가요(0.3.8 → 0.3.9 → 0.4.0). 지난 내역 번호도 같은 방식으로 고쳤어요(예전 0.0.38 = 0.3.8)\n• 물품요청: 요청한 사람·관리자가 수정·삭제 (품목·수량은 발송 전까지)\n• 재고 현황(재고 화면 또는 전체 → 재고): 품목별 보관지 수량·출고중·안전재고, 보관지·미달만 거르기, 이름·코드·수량·부족 순 정렬, 부족 품목 체크 → 물품요청 자동 채움\n• 권한 화면 단순화: 역할(멤버·운영자·관리자·최고관리자)을 고르면 끝, 세부 권한은 접어 두고 겹치는 항목은 하나로\n• 채팅 이름 색: 아무 색이나 직접 골라요(색·진하기)\n• 앱 잠금 지문: 지문이 등록돼 있어도 '없음'으로 나오던 것 고침\n• AI 다듬기: 구글 Gemini 무료로 바꿈"},
             {"0.3.8", "2026-10-30", "• 보안: 서버 규칙을 화면 권한과 맞춤(만든 사람 표시·방장·최고관리자 표시·암호 보관 위치·변경 기록), 로그아웃 때 폰에 남은 자료 지움\n• 권한 단계: 최고관리자·운영자·멤버, '중요 자료 삭제' 권한(가맹점·계약·재고 삭제)\n• 가맹점: 멤버도 새 가맹점 등록(등록·최근 수정한 사람 표시), 대표자 성함\n• 채팅: 내 이름 색 바꾸기(전체 → 채팅), 채팅방 목록 '순서 편집'으로 끌어서 순서 바꾸기, 입력창 다듬기, ✦ AI 다듬기\n• 업무 종류: 카드사서류·큐밴등록 / 지난 업무를 나중에 가맹점 응대 기록에 남기기\n• 계약: 수정·삭제, 장비 구분·전자계약서·리드관리·기존 VAN사\n• 실적 → 종합 보고서 / 단체 문자: 계약 만료로 거르기\n• 카드에 입체감"},
@@ -9117,6 +9118,11 @@ public class MainActivity extends Activity {
             return;
         }
         int logAdd = 0, logSkip = 0;
+        final java.util.Set<String> seenLog = new java.util.HashSet<>(); // 다시 올려도 두 번 안 들어가게(접수번호 또는 같은 날·같은 내용) — 웹과 같음
+        for (JSONObject lg : store.list(store.arr("mlogs"))) {
+            if (!lg.optString("eno").isEmpty()) seenLog.add("n" + lg.optString("eno"));
+            seenLog.add(lg.optInt("merchant") + "|" + lg.optString("date") + "|" + logReq(lg) + "|" + logRes(lg));
+        }
         for (List<String> r : data) {
             String nm = MerchantImport.cell(r, map, "name");
             String biz = MerchantImport.cell(r, map, "bizno");
@@ -9144,20 +9150,36 @@ public class MainActivity extends Activity {
                 if (isNew) m.put("memo", ((memo.isEmpty() ? "" : memo + " · ") + (bt.isEmpty() ? "" : "업태/종목 " + bt)).trim());
                 else if (!memo.isEmpty()) m.put("memo", memo);
                 if (isNew) m.put("deleted", false);
+                String ca = MerchantImport.cell(r, map, "camt").replaceAll("[^0-9]", "");
+                if (!ca.isEmpty() && ca.length() < 12) m.put("camt", Long.parseLong(ca));
                 String lq = MerchantImport.cell(r, map, "lreq"), ls = MerchantImport.cell(r, map, "lres");
-                if (!lq.isEmpty() || !ls.isEmpty()) { // 응대 기록 (이카운트 요청사항·처리완료) — 웹과 같은 규칙
+                if (!lq.isEmpty() || !ls.isEmpty()) { // 응대 기록 (이카운트 요청사항·처리완료, 또는 '접수' 목록의 접수상세내용·처리결과) — 웹과 같은 규칙
+                    String no = MerchantImport.cell(r, map, "lno");
                     String ld = MerchantImport.dateCell(MerchantImport.cell(r, map, "ldate"));
+                    if (ld.isEmpty() && no.matches("^\\d{4}-\\d{2}-\\d{2}.*")) ld = no.substring(0, 10);
                     if (ld.isEmpty()) ld = todayStr();
-                    String k0 = logKind(MerchantImport.cell(r, map, "lkind").replaceAll("\\s", ""));
-                    String lk = java.util.Arrays.asList(LOG_KINDS).contains(k0) ? k0 : lq.contains("용지") ? "용지신청" : "기타";
-                    boolean dup = false;
-                    for (JSONObject lg : store.list(store.arr("mlogs")))
-                        if (lg.optInt("merchant") == m.optInt("id") && ld.equals(lg.optString("date")) && lq.equals(logReq(lg)) && ls.equals(logRes(lg))) dup = true;
-                    if (dup) logSkip++;
+                    String ek = MerchantImport.cell(r, map, "lkind");
+                    String k0 = logKind(ek.replaceAll("\\s", ""));
+                    String t = ek + " " + lq;
+                    String lk = java.util.Arrays.asList(LOG_KINDS).contains(k0) ? k0 : t.contains("용지") ? "용지신청" : ek.contains("원격") ? "원격A/S" : ek.contains("전화") ? "전화응대" : ek.matches("(?i).*(방문|설치|A/?S).*") ? "방문A/S" : "기타";
+                    String key = m.optInt("id") + "|" + ld + "|" + lq + "|" + ls;
+                    if ((!no.isEmpty() && seenLog.contains("n" + no)) || seenLog.contains(key)) logSkip++;
                     else {
+                        String wn = MerchantImport.cell(r, map, "lwho");
+                        if (wn.isEmpty()) wn = MerchantImport.cell(r, map, "lrecv");
+                        int wu = 0;
+                        for (JSONObject u : store.list(store.users())) if (!wn.isEmpty() && wn.equals(u.optString("name").trim())) wu = u.optInt("id");
                         JSONObject o = store.create("mlogs");
                         o.put("merchant", m.optInt("id")).put("mname", m.optString("name")).put("date", ld).put("kind", lk).put("req", lq).put("res", ls)
-                                .put("text", lq + (ls.isEmpty() ? "" : (lq.isEmpty() ? "" : "\n") + "→ 처리: " + ls)).put("who", myId()).put("src", "엑셀 가져오기");
+                                .put("text", lq + (ls.isEmpty() ? "" : (lq.isEmpty() ? "" : "\n") + "→ 처리: " + ls)).put("who", wu != 0 ? wu : myId()).put("src", "엑셀 가져오기");
+                        if (!no.isEmpty()) o.put("eno", no);
+                        if (!wn.isEmpty() && wu == 0) o.put("ewho", wn);
+                        if (!ek.isEmpty()) o.put("ekind", ek);
+                        String it = MerchantImport.cell(r, map, "litem"), st = MerchantImport.cell(r, map, "lstate");
+                        if (!it.isEmpty()) o.put("eitem", it);
+                        if (!st.isEmpty()) o.put("estate", st);
+                        seenLog.add(key);
+                        if (!no.isEmpty()) seenLog.add("n" + no);
                         logAdd++;
                     }
                 }

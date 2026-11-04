@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.6.4';
+const VERSION = '웹 0.6.5';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
@@ -1185,7 +1185,7 @@ function openTasksOf(m) { // 이 가맹점에 걸린 아직 안 끝난 업무
 }
 function logCard(g, act) {
   const [a, id, mid] = act.split('|');
-  return '<div class="card" data-act="' + a + '" data-arg="' + id + '|' + mid + '"><span class="chip">' + esc(logKind(g.kind)) + '</span> <b style="font-size:13px">' + esc(g.date) + '</b>' + (logReq(g) ? '<div class="lb">요청사항</div><div style="white-space:pre-wrap">' + esc(logReq(g)) + '</div>' : '') + (logRes(g) ? '<div class="lb g">처리결과</div><div style="white-space:pre-wrap">' + esc(logRes(g)) + '</div>' : '') + '<div class="t2">' + (g.task ? '📋 업무에서 · ' : '') + esc(uname(g.who) + (g.editedBy ? ' · 수정 ' + uname(g.editedBy) + ' ' + (g.editedAt || '') : '')) + '</div></div>';
+  return '<div class="card" data-act="' + a + '" data-arg="' + id + '|' + mid + '"><span class="chip">' + esc(logKind(g.kind)) + '</span> <b style="font-size:13px">' + esc(g.date) + '</b>' + (logReq(g) ? '<div class="lb">요청사항</div><div style="white-space:pre-wrap">' + esc(logReq(g)) + '</div>' : '') + (logRes(g) ? '<div class="lb g">처리결과</div><div style="white-space:pre-wrap">' + esc(logRes(g)) + '</div>' : '') + '<div class="t2">' + (g.task ? '📋 업무에서 · ' : '') + esc((g.ewho || uname(g.who)) + (g.ekind ? ' · ' + g.ekind : '') + (g.editedBy ? ' · 수정 ' + uname(g.editedBy) + ' ' + (g.editedAt || '') : '')) + '</div></div>';
 }
 ACT.logKindF = a => { const [mid, k] = a.split('|'); S.logKindF = k; ACT.merchant(mid); };
 ACT.logDateOff = mid => { S.logDateF = ''; ACT.merchant(mid); };
@@ -2715,10 +2715,15 @@ async function readTable(file) {
 const normH = s => String(s || '').replace(/[\s *()[\]·._/-]/g, '').toLowerCase();
 function fieldOf(h) {
   h = normH(h); if (!h) return null;
-  // 응대 기록 열 (가맹점 이름 열보다 먼저 본다: '가맹점 요청사항' 같은 머리글)
+  // 응대 기록 열 (가맹점 이름 열보다 먼저 본다: '가맹점 요청사항' 같은 머리글). 이카운트 '접수' 목록 머리글도 읽는다(앱 MerchantImport 와 같음)
+  if (h === '접수번호' || h === '접수no' || h === '접수코드') return 'lno';
+  if (h.includes('담당') || h === '처리자') return 'lwho';
+  if (h === '접수인' || h === '작성자') return 'lrecv';
+  if (h.includes('진행상태') || h === '상태') return 'lstate';
+  if (h.includes('품목명')) return 'litem';
   if (/(응대|요청|접수|처리|완료|조치)(일자|날짜|일)$/.test(h)) return 'ldate';
-  if (h.includes('응대종류') || h.includes('응대구분') || h.includes('요청구분') || h.includes('접수구분') || h === '유형') return 'lkind';
-  if (h.includes('요청') || h.includes('접수내용') || h.includes('문의')) return 'lreq';
+  if (h.includes('응대종류') || h.includes('응대구분') || h.includes('요청구분') || h.includes('접수구분') || h.includes('프로젝트') || h === '유형') return 'lkind';
+  if (h.includes('요청') || h.includes('접수내용') || h.includes('상세내용') || h.includes('문의')) return 'lreq';
   if (h.includes('처리') || h.includes('조치') || h.includes('결과')) return 'lres';
   if (h.includes('사업자') || h === '등록번호' || h.includes('bizno')) return 'bizno';
   if (h.includes('거래처코드') || h === '코드' || h.includes('고객코드')) return 'ecode';
@@ -2727,8 +2732,9 @@ function fieldOf(h) {
   if (h.includes('핸드폰') || h.includes('휴대') || h.includes('모바일') || h.includes('mobile') || h === 'hp') return 'mobile';
   if (h.includes('전화') || h.includes('연락처') || h === 'tel') return 'phone';
   if (h.includes('주소')) return 'addr'; if (h.includes('등급')) return 'grade'; if (h.includes('업태')) return 'biztype'; if (h.includes('종목')) return 'bizitem';
-  if (h.includes('van')) return 'van'; if (h.includes('계약시작') || h.includes('시작일')) return 'cstart'; if (h.includes('계약종료') || h.includes('종료일') || h.includes('만료')) return 'cend';
-  if (h.includes('메모') || h.includes('비고')) return 'memo';
+  if (h.includes('van')) return 'van'; if (h.includes('계약시작') || h.includes('시작일')) return 'cstart'; if (h.includes('계약종료') || h.includes('종료일') || h.includes('만료') || h.includes('마감')) return 'cend';
+  if (h.includes('cms금액') || h === '금액' || h === '계약금액') return 'camt';
+  if (h.includes('메모') || h.includes('비고') || h === '적요') return 'memo';
   return null;
 }
 function findHeader(rows) { for (let i = 0; i < Math.min(rows.length, 15); i++) { const m = {}; rows[i].forEach((c, j) => { const f = fieldOf(c); if (f && !(f in m)) m[f] = j; }); if ('name' in m && Object.keys(m).length >= 2) return [i, m]; } return null; }
@@ -2747,7 +2753,7 @@ function findMerchant(ec, bd, nm) {
 ACT.importM = () => {
   if (!can('staff_manage')) return toast('엑셀 가져오기는 관리자만 할 수 있어요.');
   needLock(() => {
-    modal('<h3>가맹점 일괄 가져오기</h3><div class="sub">이카운트 ‘거래처등록’ 목록을 엑셀(.xlsx) 또는 CSV로 내려받아 골라 주세요. 머리글에 ‘거래처명’(또는 상호·가맹점명)이 있어야 해요. 사업자등록번호, 거래처코드, 대표자, 전화, 핸드폰, 주소, 등급, 업태, 종목, VAN사, 계약시작일·종료일, 메모 열이 있으면 함께 가져와요. 직접 만들 때는 양식을 받아서 채워 주세요.</div><button class="btn tint full" data-act="mTemplate">📄 업로드 양식 받기 (.xlsx)</button><button class="btn gold full" id="f_pick">파일 고르기</button><input type="file" id="f_imp" accept=".xlsx,.csv,.txt" hidden><button class="btn full" data-act="close">닫기</button>');
+    modal('<h3>가맹점 일괄 가져오기</h3><div class="sub">이카운트 ‘거래처등록’ 목록을 엑셀(.xlsx) 또는 CSV로 내려받아 골라 주세요. 머리글에 ‘거래처명’(또는 상호·가맹점명)이 있어야 해요. 사업자등록번호, 거래처코드, 대표자, 전화, 핸드폰, 주소, 등급, 업태, 종목, VAN사, 계약시작일·종료일, 메모 열이 있으면 함께 가져와요. 직접 만들 때는 양식을 받아서 채워 주세요.<br><b>응대 이력 한꺼번에:</b> 이카운트 ‘접수’ 목록(접수번호·처리담당·프로젝트명·처리일자·가맹점·접수상세내용·처리결과)을 엑셀로 내려받아 그대로 올리면 가맹점마다 응대 기록으로 들어가요. 여러 가맹점이 섞여 있어도 되고, 같은 접수번호는 다시 올려도 한 번만 들어가요.</div><button class="btn tint full" data-act="mTemplate">📄 업로드 양식 받기 (.xlsx)</button><button class="btn gold full" id="f_pick">파일 고르기</button><input type="file" id="f_imp" accept=".xlsx,.csv,.txt" hidden><button class="btn full" data-act="close">닫기</button>');
     $('#f_pick').onclick = () => $('#f_imp').click();
     $('#f_imp').onchange = async () => {
       let rows; try { rows = await readTable($('#f_imp').files[0]); } catch (e) { return toast(e.message && e.message !== 'zip' ? e.message : '파일을 읽지 못했어요.'); }
@@ -2758,6 +2764,9 @@ ACT.importM = () => {
       askConfirm('가져오기 미리보기', '새로 등록 ' + add + '곳\n기존 가맹점 갱신 ' + upd + '곳' + (nlog ? '\n응대 기록 ' + nlog + '건 (같은 날 같은 내용은 건너뜀)' : '') + '\n건너뜀(상호 없음·예시 줄) ' + skip + '곳\n\n[읽은 열]\n' + Object.entries(map).map(([f, c]) => f + ' ← ' + rows[hr][c]).join('\n') + '\n\n※ 같은 거래처코드·사업자번호·상호가 있으면 새로 만들지 않고, 파일에 값이 있는 칸만 덮어써요(빈 칸은 그대로).\n※ 가져오기 직전 상태는 이 PC에 기준점으로 저장돼요.', '가져오기', async () => {
         if (!await snapMerchants('가져오기전')) return toast('가져오기 전 기준점을 저장하지 못해서 멈췄어요.');
         let logAdd = 0, logSkip = 0;
+        const seenLog = new Set(); list('mlogs').forEach(g => { if (g.eno) seenLog.add('n' + g.eno); seenLog.add(g.merchant + '|' + g.date + '|' + logReq(g) + '|' + logRes(g)); }); // 다시 올려도 두 번 안 들어가게(접수번호 또는 같은 날·같은 내용)
+        const staffBy = n => list('users').find(u => (u.name || '').trim() === n);
+        const kindFrom = (raw, lq) => { const k0 = logKind(raw.replace(/\s/g, '')); if (KINDS.includes(k0)) return k0; const t = raw + ' ' + lq; return /용지/.test(t) ? '용지신청' : /원격/.test(raw) ? '원격A/S' : /전화/.test(raw) ? '전화응대' : /방문|설치|A\/?S/i.test(raw) ? '방문A/S' : '기타'; };
         data.forEach(r => {
           const nm = cellOf(r, map, 'name'); if (!nm || isSample(nm) || isSample(r[0])) return; const biz = cellOf(r, map, 'bizno'), ec = cellOf(r, map, 'ecode');
           let m = findMerchant(ec, biz.replace(/\D/g, ''), nm); const isNew = !m; m = isNew ? create('merchants', {deleted: false}) : Object.assign({}, m);
@@ -2767,12 +2776,18 @@ ACT.importM = () => {
           const g = gradeOf(cellOf(r, map, 'grade')); if (g >= 0) m.grade = g; else if (isNew) m.grade = 5;
           const memo = cellOf(r, map, 'memo'), bt = (cellOf(r, map, 'biztype') + ' ' + cellOf(r, map, 'bizitem')).trim();
           if (isNew) m.memo = ((memo ? memo + ' · ' : '') + (bt ? '업태/종목 ' + bt : '')).trim(); else if (memo) m.memo = memo;
+          const ca = numOf(cellOf(r, map, 'camt')); if (ca) m.camt = ca;
           put('merchants', m);
           const lq = cellOf(r, map, 'lreq'), ls = cellOf(r, map, 'lres');
-          if (lq || ls) { // 응대 기록 (이카운트 요청사항·처리완료)
-            const ld = dateCell(cellOf(r, map, 'ldate')) || todayStr(); const k0 = logKind(cellOf(r, map, 'lkind').replace(/\s/g, '')), lk = KINDS.includes(k0) ? k0 : /용지/.test(lq) ? '용지신청' : '기타';
-            if (list('mlogs').some(g => g.merchant === m.id && g.date === ld && logReq(g) === lq && logRes(g) === ls)) logSkip++;
-            else { put('mlogs', create('mlogs', {merchant: m.id, mname: m.name, date: ld, kind: lk, req: lq, res: ls, text: lq + (ls ? (lq ? '\n' : '') + '→ 처리: ' + ls : ''), who: S.uid, src: '엑셀 가져오기'})); logAdd++; }
+          if (lq || ls) { // 응대 기록 (이카운트 요청사항·처리완료, 또는 '접수' 목록의 접수상세내용·처리결과)
+            const no = cellOf(r, map, 'lno'), ld = dateCell(cellOf(r, map, 'ldate')) || (/^\d{4}-\d{2}-\d{2}/.test(no) ? no.slice(0, 10) : '') || todayStr();
+            const wn = cellOf(r, map, 'lwho') || cellOf(r, map, 'lrecv'), wu = wn && staffBy(wn), key = m.id + '|' + ld + '|' + lq + '|' + ls;
+            if ((no && seenLog.has('n' + no)) || seenLog.has(key)) logSkip++;
+            else {
+              const g = {merchant: m.id, mname: m.name, date: ld, kind: kindFrom(cellOf(r, map, 'lkind'), lq), req: lq, res: ls, text: lq + (ls ? (lq ? '\n' : '') + '→ 처리: ' + ls : ''), who: wu ? wu.id : S.uid, src: '엑셀 가져오기'};
+              if (no) g.eno = no; if (wn && !wu) g.ewho = wn; const ek = cellOf(r, map, 'lkind'), it = cellOf(r, map, 'litem'), st = cellOf(r, map, 'lstate'); if (ek) g.ekind = ek; if (it) g.eitem = it; if (st) g.estate = st;
+              put('mlogs', create('mlogs', g)); seenLog.add(key); if (no) seenLog.add('n' + no); logAdd++;
+            }
           }
         });
         alog('import', null, '등록 ' + add + ' · 갱신 ' + upd + ' · 응대 기록 ' + logAdd); render(); toast('가맹점 ' + add + '곳 등록, ' + upd + '곳 갱신' + (logAdd || logSkip ? ', 응대 기록 ' + logAdd + '건 추가' + (logSkip ? '(중복 ' + logSkip + '건 건너뜀)' : '') : '') + '했어요. 잘못되면 관리자 → 가맹점 보호·복원에서 되돌릴 수 있어요.');
@@ -3087,6 +3102,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.6.5', '2026-11-04', ['가맹점 일괄 가져오기: 이카운트 ‘접수’ 목록 엑셀을 그대로 올리면 가맹점마다 응대 기록(요청사항·처리결과·처리담당·프로젝트명·처리일자)으로 들어가요. 여러 가맹점을 한 파일로, 같은 접수번호는 다시 올려도 한 번만', '약정마감일 → 계약종료일, CMS금액 → 금액, 적요 → 메모로 읽어요']],
   ['웹 0.6.4', '2026-11-02', ['나인패스(전자결재) 연결: PC 위쪽 메뉴 ‘메모’ 오른쪽(휴대폰은 ☰ → 회사)의 ‘나인패스’를 누르면 다시 로그인하지 않고 새 창으로 열려요. 내가 결재할 문서 수가 빨간 숫자로 보여요(30초마다)', '나인패스에 등록된 이름·연락처가 나인패밀리와 다르면 ‘직원 정보와 일치하지 않습니다’ 안내']],
   ['웹 0.6.3', '2026-10-31', ['버전 번호 바꿈: 끝자리가 9를 넘으면 앞자리로 올라가요(0.6.2 → 0.6.3 → … → 0.7.0). 지난 내역 번호도 같은 방식으로 고쳤어요(예전 0.0.62 = 0.6.2)', '물품요청: 요청한 사람·관리자가 수정·삭제 (품목·수량은 발송 전까지)', '재고 현황(재고 화면 또는 ☰ → 재고): 품목별 보관지 수량·출고중·안전재고 표, 보관지·안전재고 미달만 거르기, 정렬, 부족 품목 체크 → 물품요청 자동 채움', '권한 화면 단순화: 역할(멤버·운영자·관리자·최고관리자)을 고르면 끝, 세부 권한은 접어 두고 겹치는 항목은 하나로', '채팅 이름 색: 아무 색이나 직접 골라요', '버튼·메뉴 색을 원래 단색으로(그라데이션 뺌)', 'AI 다듬기: 구글 Gemini 무료로 바꿈']],
   ['웹 0.6.2', '2026-10-30', ['보안: 서버 규칙을 화면 권한과 맞춤(만든 사람 표시·방장·최고관리자 표시·암호 보관 위치·변경 기록), 로그아웃 때 이 기기에 남은 자료 지움', '권한 단계: 최고관리자·운영자·멤버 (직원 수정 창에서 한 번에), ‘중요 자료 삭제’ 권한 — 가맹점·계약·재고 삭제는 이 권한자만', '가맹점: 멤버도 새 가맹점 등록(등록한 사람·최근 수정한 사람 표시), 대표자 성함 칸', '채팅: 남의 글은 사진+이름(카톡처럼), 내 이름 색 바꾸기, 채팅방 목록 끌어서 순서 바꾸기, 입력창 다듬기', '채팅: ✦ AI 다듬기 — 쓴 글의 맞춤법·말투를 다듬어 바꿀지 고르기', '업무 종류: 카드사서류·큐밴등록', '지난 업무를 나중에 가맹점 응대 기록에 남기기', '계약: 수정·삭제, 장비 구분·전자계약서·리드관리·기존 VAN사', '실적 → 종합 보고서(월별 신규·단말기/POS·전자계약·토스 프론트/포스·토스 리드·CMS 재계약, 엑셀로 받기)', '단체 문자: 계약 만료(1·2·3개월 이내·이미 만료)로 거르기', 'PC 상단바: + 로 자주 쓰는 메뉴 붙이기, 메뉴 글씨 크고 굵게, 화면 입체감']],

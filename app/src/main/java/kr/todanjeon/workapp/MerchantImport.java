@@ -204,10 +204,15 @@ final class MerchantImport {
     private static String fieldOf(String h) {
         h = norm(h);
         if (h.isEmpty()) return null;
-        // 응대 기록 열 (가맹점 이름 열보다 먼저 본다: '가맹점 요청사항' 같은 머리글)
+        // 응대 기록 열 (가맹점 이름 열보다 먼저 본다: '가맹점 요청사항' 같은 머리글). 이카운트 '접수' 목록 머리글도 읽는다(웹 fieldOf 와 같음)
+        if (h.equals("접수번호") || h.equals("접수no") || h.equals("접수코드")) return "lno";
+        if (h.contains("담당") || h.equals("처리자")) return "lwho";
+        if (h.equals("접수인") || h.equals("작성자")) return "lrecv";
+        if (h.contains("진행상태") || h.equals("상태")) return "lstate";
+        if (h.contains("품목명")) return "litem";
         if (h.matches(".*(응대|요청|접수|처리|완료|조치)(일자|날짜|일)$")) return "ldate";
-        if (h.contains("응대종류") || h.contains("응대구분") || h.contains("요청구분") || h.contains("접수구분") || h.equals("유형")) return "lkind";
-        if (h.contains("요청") || h.contains("접수내용") || h.contains("문의")) return "lreq";
+        if (h.contains("응대종류") || h.contains("응대구분") || h.contains("요청구분") || h.contains("접수구분") || h.contains("프로젝트") || h.equals("유형")) return "lkind";
+        if (h.contains("요청") || h.contains("접수내용") || h.contains("상세내용") || h.contains("문의")) return "lreq";
         if (h.contains("처리") || h.contains("조치") || h.contains("결과")) return "lres";
         if (h.contains("사업자") || h.equals("등록번호") || h.contains("bizno")) return "bizno";
         if (h.contains("거래처코드") || h.equals("코드") || h.contains("고객코드")) return "ecode";
@@ -221,8 +226,9 @@ final class MerchantImport {
         if (h.contains("종목")) return "bizitem";
         if (h.contains("van")) return "van";
         if (h.contains("계약시작") || h.contains("시작일")) return "cstart";
-        if (h.contains("계약종료") || h.contains("종료일") || h.contains("만료")) return "cend";
-        if (h.contains("메모") || h.contains("비고")) return "memo";
+        if (h.contains("계약종료") || h.contains("종료일") || h.contains("만료") || h.contains("마감")) return "cend";
+        if (h.contains("cms금액") || h.equals("금액") || h.equals("계약금액")) return "camt";
+        if (h.contains("메모") || h.contains("비고") || h.equals("적요")) return "memo";
         return null;
     }
 
