@@ -1,0 +1,24 @@
+name: Read server function logs
+# 서버 함수(npGo·npPending·polish)의 최근 오류 기록을 본다(읽기만). 함수는 키·주소·서명을 기록에 남기지 않는다.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read logs
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          umask 077
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" >/dev/null 2>&1
+          rm -f "$RUNNER_TEMP/sa.json"
+          for F in npgo nppending; do
+            echo "===== $F (최근 1일, 최대 40줄) ====="
+            gcloud logging read "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$F\" AND (textPayload:* OR httpRequest.status>=400)" \
+              --project nine-family --freshness=1d --limit 40 \
+              --format='value(timestamp, httpRequest.status, textPayload)' || true
+          done
