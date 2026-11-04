@@ -4,9 +4,11 @@
 // 주의: Gemini 무료 등급은 구글이 보낸 글을 서비스 개선에 쓸 수 있다 → 개인정보·카드번호 같은 글은 다듬지 말 것(앱 안내문에도 적음).
 const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
-const admin = require('firebase-admin');
+const {initializeApp} = require('firebase-admin/app'); // firebase-admin 14: 예전 getAuth()·getFirestore() 방식은 없어짐 → 모듈별로 불러온다
+const {getAuth} = require('firebase-admin/auth');
+const {getFirestore, FieldValue} = require('firebase-admin/firestore');
 
-admin.initializeApp();
+initializeApp();
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
 // 모델 이름은 구글이 자주 바꾼다 → 앞에서부터 시도하고 없는 모델(404)이면 다음 것. 환경변수 GEMINI_MODEL 로 맨 앞에 넣을 수 있다
 const MODELS = [process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest'].filter(Boolean);
@@ -22,11 +24,11 @@ exports.polish = onRequest({ region: 'asia-northeast3', secrets: [GEMINI_API_KEY
   if (!m) return res.status(401).json({ error: '로그인이 필요해요' });
   let phone;
   try {
-    phone = (await admin.auth().verifyIdToken(m[1])).phone_number;
+    phone = (await getAuth().verifyIdToken(m[1])).phone_number;
   } catch (e) {
     return res.status(401).json({ error: '로그인이 만료됐어요' });
   }
-  const db = admin.firestore();
+  const db = getFirestore();
   const ph = phone ? await db.doc('phones/' + phone).get() : null;
   if (!ph || !ph.exists || ph.get('active') !== true) return res.status(403).json({ error: '등록된 직원만 쓸 수 있어요' });
   const text = String((req.body && req.body.text) || '').trim();
@@ -83,12 +85,12 @@ async function staffOf(req) { // 로그인 토큰 → 나인패밀리 직원 {ui
   if (!m) return {fail: 'no-token'};
   let phone;
   try {
-    phone = (await admin.auth().verifyIdToken(m[1])).phone_number;
+    phone = (await getAuth().verifyIdToken(m[1])).phone_number;
   } catch (e) {
     return {fail: 'token ' + (e.code || e.message)};
   }
   if (!phone) return {fail: 'token-no-phone'};
-  const db = admin.firestore();
+  const db = getFirestore();
   const ph = await db.doc('phones/' + phone).get();
   if (!ph.exists) return {fail: 'no-phones-doc'};
   if (ph.get('active') !== true) return {fail: 'phones-inactive'};
@@ -110,7 +112,7 @@ const hmac = (msg) => crypto.createHmac('sha256', NINEPASS_KEY.value()).update(m
 const FN_BASE = 'https://asia-northeast3-nine-family.cloudfunctions.net/';
 // 직원 찾기 값: 계정 연결(nplink)이 있으면 fid, 없으면 이름+연락처 (나인패스 규격 v0.0.20)
 async function withLink(st) {
-  const d = await admin.firestore().doc('nplink/' + st.uid).get();
+  const d = await getFirestore().doc('nplink/' + st.uid).get();
   st.fid = String(st.uid); st.linked = d.exists && d.get('linked') === true; st.npname = d.exists ? d.get('name') || '' : '';
   return st;
 }
@@ -193,7 +195,7 @@ exports.npLinkBack = onRequest({region: 'asia-northeast3', secrets: [NINEPASS_KE
   if (!good) { console.error('npLinkBack badsig'); return res.status(400).send(page('연결하지 못했어요', '확인 값이 맞지 않아요. 나인패밀리에서 다시 시도해 주세요.', false)); }
   let name = '';
   try { const j = await npGet('/api/external/link', null, {fid}); name = j && j.linked ? String(j.name || '') : ''; } catch (e) { console.error('npLinkBack check', e.message); }
-  await admin.firestore().doc('nplink/' + fid).set({linked: true, name, u: Date.now()});
+  await getFirestore().doc('nplink/' + fid).set({linked: true, name, u: Date.now()});
   npCache.delete(Number(fid)); npCache.delete(fid);
   return res.send(page('나인패스 계정을 연결했어요', (name ? '나인패스 <b>' + name.replace(/[<>&"]/g, '') + '</b> 계정과 연결됐어요. ' : '') + '이제 나인패밀리에서 나인패스가 자동으로 로그인되고, 결재 요청이 채팅으로 와요.', true));
 });
@@ -204,7 +206,7 @@ exports.npUnlink = onRequest(npOpts, async (req, res) => {
     const r = await fetch(npBase() + '/api/external/link?' + new URLSearchParams({fid: st.fid}), {method: 'DELETE', headers: {'X-NinePass-Key': NINEPASS_KEY.value()}, signal: AbortSignal.timeout(8000)});
     if (r.status === 401) return res.status(502).json({error: KEY_ERR});
   } catch (e) { console.error('npUnlink', e.message); }
-  await admin.firestore().doc('nplink/' + st.fid).delete();
+  await getFirestore().doc('nplink/' + st.fid).delete();
   return res.json({ok: true});
 });
 
@@ -261,12 +263,12 @@ async function npRoom(db, uid, phone, stt) { // 본인만 보이는 비공개 �
 async function npPost(db, room, phone, text, path) {
   const id = rid(), o = {id, room, who: 0, wname: '📝 나인패스', text, ts: Date.now(), mem: [phone]};
   if (path) o.np = {path};
-  await db.doc('pmsgs/' + id).set({j: JSON.stringify(o), u: Date.now(), mem: [phone], who: 0, s: admin.firestore.FieldValue.serverTimestamp()});
+  await db.doc('pmsgs/' + id).set({j: JSON.stringify(o), u: Date.now(), mem: [phone], who: 0, s: FieldValue.serverTimestamp()});
 }
 const itemText = (x) => '📝 결재 요청이 왔어요\n' + (x.title || '(제목 없음)') + (x.kind ? ' · ' + x.kind : '') + '\n기안 ' + (x.drafter || '-') + (x.submittedAt ? ' · ' + String(x.submittedAt).slice(5, 16).replace('T', ' ') : '');
 exports.npNotify = onSchedule({schedule: 'every 5 minutes', region: 'asia-northeast3', timeZone: 'Asia/Seoul', secrets: [NINEPASS_KEY, NINEPASS_URL], timeoutSeconds: 120, maxInstances: 1}, async () => {
   if (!npReady()) return;
-  const db = admin.firestore();
+  const db = getFirestore();
   const phs = await db.collection('phones').where('active', '==', true).get();
   for (const ph of phs.docs) {
     try {

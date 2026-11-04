@@ -149,3 +149,4 @@
 - 2026-11-04: 나인패스 v0.0.20 규격 반영 — fid = 나인패밀리 직원 번호(users.id). 계정 연결 npLinkStart(→ /link, back=npLinkBack) · npLinkBack(서명 HMAC(ts\nlinked\nfid), 10분 안, 서버 전용 컬렉션 nplink/{fid} {linked,name}) · npUnlink(DELETE /api/external/link). 연결돼 있으면 /sso·pending·drafts 를 fid 로, 아니면 이름+연락처.
 - 2026-11-04: 결재 알림 npNotify(5분마다, 서울 시간) — /api/external/pending/list 의 새 문서 id 만(서버 전용 npstate/{uid} {seen, room}) 본인만 보이는 비공개 방 prooms '📝 나인패스 결재'(np:true, mem=[본인 번호])에 pmsgs(who 0, wname '📝 나인패스', np:{path}). 처음엔 2건 이상이면 요약 1건, 한 번에 6건 이상도 요약. 메시지의 [나인패스 열기] → npGo(next=path).
 - 2026-11-04: 결재 양식함(다음 작업) — 양식은 이미지·PDF 만(엑셀·워드·한글은 안 받음). 완성본은 npDraft → /api/external/drafts(임시저장) → 그 작성 화면을 자동 로그인으로 엶. 문서 종류는 npKinds(/api/external/kinds).
+- 2026-11-04: 서버 함수는 firebase-admin 14 의 모듈 방식(getAuth·getFirestore·FieldValue)으로 — 예전 admin.auth()·admin.firestore() 는 14 에서 없어져 직원 확인이 'admin.auth is not a function' 으로 실패했었음.
