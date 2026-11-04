@@ -151,3 +151,4 @@
 - 2026-11-04: 결재 양식함(다음 작업) — 양식은 이미지·PDF 만(엑셀·워드·한글은 안 받음). 완성본은 npDraft → /api/external/drafts(임시저장) → 그 작성 화면을 자동 로그인으로 엶. 문서 종류는 npKinds(/api/external/kinds).
 - 2026-11-04: 서버 함수는 firebase-admin 14 의 모듈 방식(getAuth·getFirestore·FieldValue)으로 — 예전 admin.auth()·admin.firestore() 는 14 에서 없어져 직원 확인이 'admin.auth is not a function' 으로 실패했었음.
 - 2026-11-04: 결재 양식함 — 양식은 config 'npforms' {items:[{id,name,kind,kindName,pages:[{blob,chunks,w,h}],fields:[{id,label,p,x,y,w,h,auto}]}]}(관리자만 씀, 칸 위치는 장 크기 대비 비율). 양식 파일은 이미지·PDF(10장까지, 장마다 긴 쪽 1800px JPEG 으로 blobs). PDF 읽기는 web/vendor/pdfjs-3.11.174(필요할 때만 불러옴). 완성본은 JPEG 장을 담은 PDF(앱·웹 같은 방식) → PDF 받기 또는 npDraft. 쓰던 값은 기기에만(웹 localStorage ffv_<uid>_<양식>, 앱 prefs). 양식 올리기·칸 편집은 PC 웹만.
+- 2026-11-04: 백업 비밀값(BACKUP_PASSWORD) 등록·첫 백업 성공(backup-20261104_1315). 가맹점 수정 암호·삭제 비밀번호 새로 정함(지사장님). 최고관리자 옮기기용 이름 목록(SUPER_MIGRATE_NAMES)과 ensureSupers 삭제 — 최고관리자는 users.super 로만.

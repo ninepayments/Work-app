@@ -650,7 +650,6 @@ public class MainActivity extends Activity {
     private void startAdminWatch() {
         if (adminWatch || me == null || !can(Perm.STAFF_MANAGE)) return;
         adminWatch = true;
-        ensureSupers();
         android.content.SharedPreferences sp = getSharedPreferences("workapp", MODE_PRIVATE);
         if (!sp.getBoolean("phsync3_" + myId(), false)) {
             store.syncAllPhones();
@@ -2597,30 +2596,6 @@ public class MainActivity extends Activity {
 
     static boolean isSuper(JSONObject u) {
         return u != null && !u.optBoolean("deleted") && u.optBoolean("super");
-    }
-
-    // [한 번만 쓰는 옮기기] 예전에는 이름으로 정했다 → 관리자 로그인 1회에 그 계정에 super=true 를 users·phones 에 심는다.
-    // 옮기기가 끝나면(관리자가 새 버전으로 한 번 로그인) 다음 커밋에서 이 이름 목록과 옮기기 코드를 지운다.
-    private static final String[] SUPER_MIGRATE_NAMES = {"양문희", "가태현"};
-
-    private void ensureSupers() {
-        android.content.SharedPreferences sp = getSharedPreferences("workapp", MODE_PRIVATE);
-        if (sp.getBoolean("supmig1_" + myId(), false)) return;
-        for (JSONObject u : store.list(store.users())) {
-            boolean named = false;
-            for (String n : SUPER_MIGRATE_NAMES) if (n.equals(u.optString("name").trim())) named = true;
-            if (u.optBoolean("deleted") || !(named || u.optBoolean("super"))) continue;
-            try {
-                JSONArray np = new JSONArray();
-                for (String k : Perm.KEYS) np.put(k);
-                u.put("perms", np).put("super", true).put("active", true);
-            } catch (Exception ignored) {
-            }
-        }
-        store.save();
-        for (JSONObject u : store.list(store.users())) if (isSuper(u)) store.repush("users", u.optInt("id")); // 최상위 super 표시까지 다시 씀
-        store.syncAllPhones(); // phones 에도 super=true
-        sp.edit().putBoolean("supmig1_" + myId(), true).apply();
     }
 
     private void showEditStaff(final JSONObject u) {
@@ -8002,6 +7977,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.4.4", "2026-11-04", "• 정리: 최고관리자를 처음 옮길 때만 쓰던 이름 목록을 지웠어요(이제 최고관리자는 직원 정보의 최고관리자 표시로만 정해져요)"},
             {"0.4.3", "2026-11-04", "• 결재 양식함(전체 → 회사): 양식을 골라 칸을 채우면 양식 위에 바로 찍혀요. 'PDF 받기' 또는 '나인패스로 보내기'(내 나인패스 계정 임시저장 문서에 첨부 → 열린 창에서 상신)\n• 양식 올리기·칸 편집은 PC 웹에서"},
             {"0.4.2", "2026-11-04", "• 나인패스 계정 연결: 전체 → 회사 → '나인패스 계정 연결' — 나인패스 화면에서 한 번 로그인하면 이름·연락처가 달라도 자동 로그인\n• 나인패스 결재 알림: 결재할 문서가 새로 오면 본인만 보이는 '📝 나인패스 결재' 채팅방에 메시지(제목·종류·기안자), '나인패스 열기'로 그 문서가 바로 열려요"},
             {"0.4.1", "2026-11-04", "• 가맹점 일괄 가져오기: 이카운트 '접수' 목록 엑셀을 그대로 올리면 가맹점마다 응대 기록(요청사항·처리결과·처리담당·프로젝트명·처리일자)으로 들어가요. 여러 가맹점을 한 파일로, 같은 접수번호는 다시 올려도 한 번만\n• 약정마감일 → 계약종료일, CMS금액 → 금액, 적요 → 메모로 읽어요"},

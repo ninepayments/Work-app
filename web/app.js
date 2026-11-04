@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.6.7';
+const VERSION = '웹 0.6.8';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
@@ -410,7 +410,7 @@ function render() {
   const act = document.activeElement; const focusId = act && act.id; const selPos = act && act.selectionStart; const focusVal = act && act.value;
   if (S.room && S.me) markRead(S.room);
   if (!S.lockChecked && S.me && !DEMO) { S.lockChecked = true; showLock(); watchLocks(); } // 새로 열면 잠금 (켜 둔 경우)
-  if (!S.phSynced && S.me && can('staff_manage') && !DEMO) { S.phSynced = true; watchOver(); ensureSupers(); if (LS('phsync3_' + S.uid) !== '1') { list('users').forEach(syncPhone); LS('phsync3_' + S.uid, '1'); } } // 서버 규칙용 권한 표시(medit 등)를 한 번 모두 맞춘다 // 보고 있는 방은 읽은 것으로 먼저 (숫자가 남지 않게)
+  if (!S.phSynced && S.me && can('staff_manage') && !DEMO) { S.phSynced = true; watchOver(); if (LS('phsync3_' + S.uid) !== '1') { list('users').forEach(syncPhone); LS('phsync3_' + S.uid, '1'); } } // 서버 규칙용 권한 표시(medit 등)를 한 번 모두 맞춘다 // 보고 있는 방은 읽은 것으로 먼저 (숫자가 남지 않게)
   const badges = {task: newTaskCount(), all: unreadNotices(), chat: unreadTotal()};
   syncTitle(badges.task + badges.all + badges.chat); armBack();
   const k = S.sub || S.tab;
@@ -2541,18 +2541,9 @@ ACT.picPick = () => {
 };
 
 // ---------- 직원과 권한 (최고관리자) — users 문서 + 로그인용 phones 문서를 같이 맞춘다 (앱 Store.push 와 같음) ----------
-// 최고관리자(양문희·가태현): 모든 권한(모든 메뉴의 등록·수정·삭제)이 항상 켜져 있고, 다른 관리자가 끄거나 사용 중지할 수 없다
+// 최고관리자: 모든 권한(모든 메뉴의 등록·수정·삭제)이 항상 켜져 있고, 다른 관리자가 끄거나 사용 중지할 수 없다
 // 최고관리자는 users.super == true 인 계정만(이름으로 정하지 않는다). 서버 규칙도 phones.super 로 판단한다
 const isSuper = u => !!(u && u.super === true && !u.deleted);
-// [한 번만 쓰는 옮기기] 예전에는 이름으로 정했다 → 관리자 로그인 1회에 그 계정에 super=true 를 users·phones 에 심는다.
-// 옮기기가 끝나면(관리자가 새 버전으로 한 번 로그인) 다음 커밋에서 이 이름 목록과 아래 옮기기 코드를 지운다.
-const SUPER_MIGRATE_NAMES = ['양문희', '가태현'];
-function ensureSupers() {
-  if (LS('supmig1_' + S.uid) === '1') return;
-  const all = PERMS.map(p => p[0]);
-  list('users').filter(u => !u.deleted && (u.super === true || SUPER_MIGRATE_NAMES.includes(String(u.name || '').trim()))).forEach(u => { u.super = true; u.perms = all; u.active = true; put('users', u); syncPhone(u); });
-  LS('supmig1_' + S.uid, '1');
-}
 const PERMS = [['task_create', '업무 만들기'], ['task_assign', '다른 직원에게 업무 배정'], ['task_view_all', '전체 업무 보기'], ['history_all', '전체 이력 보기'], ['notice_write', '공지 작성'],
   ['perf_view', '실적 보기 (본부장·대표님)'], ['report_view', '일일보고·실적보고 종합 보기 (대표님)'], ['merchant_edit', '가맹점 정보 수정 (암호 필요)'], ['data_delete', '중요 자료 삭제 (가맹점·계약·재고)'], ['staff_view', '직원 정보 보기 (부서·직책·생년월일·연락처·주소)'], ['staff_manage', '직원 관리 (관리자 전용)']];
 // 권한 체계: 역할 3단계 + 항목별 체크(세부 조정). 최고관리자 = 모든 권한 + super 표시(최고관리자만 줄 수 있음)
@@ -3262,6 +3253,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.6.8', '2026-11-04', ['정리: 최고관리자를 처음 옮길 때만 쓰던 이름 목록을 지웠어요(이제 최고관리자는 직원 정보의 최고관리자 표시로만 정해져요)']],
   ['웹 0.6.7', '2026-11-04', ['결재 양식함(☰ → 회사): 관리자가 양식(이미지·PDF, 10장까지)을 올리고 그림 위를 끌어서 입력 칸을 그려 둬요(이름·날짜·부서 등 자동 입력 가능)', '직원은 칸을 채우면 양식 위에 바로 찍히고, ⬇ PDF 받기 또는 [나인패스로 보내기] — 내 나인패스 계정의 임시저장 문서에 완성본이 첨부돼 새 창에서 상신만 하면 돼요']],
   ['웹 0.6.6', '2026-11-04', ['나인패스 계정 연결: ☰ → 회사 → ‘나인패스 계정 연결’ — 나인패스 화면에서 한 번 로그인하면 이름·연락처가 달라도 자동 로그인', '나인패스 결재 알림: 결재할 문서가 새로 오면 본인만 보이는 ‘📝 나인패스 결재’ 채팅방에 메시지(제목·종류·기안자), [나인패스 열기]로 그 문서가 바로 열려요', '나인패스 직원 정보가 안 맞으면 계정 연결하기 안내']],
   ['웹 0.6.5', '2026-11-04', ['가맹점 일괄 가져오기: 이카운트 ‘접수’ 목록 엑셀을 그대로 올리면 가맹점마다 응대 기록(요청사항·처리결과·처리담당·프로젝트명·처리일자)으로 들어가요. 여러 가맹점을 한 파일로, 같은 접수번호는 다시 올려도 한 번만', '약정마감일 → 계약종료일, CMS금액 → 금액, 적요 → 메모로 읽어요']],
