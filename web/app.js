@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.6.9';
+const VERSION = '웹 0.7.0';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
@@ -1481,10 +1481,11 @@ ACT.mlockSet = () => {
   if (!can('staff_manage')) return toast('관리자만 설정할 수 있어요.');
   const L = lockDoc();
   formModal('가맹점 수정 암호', '<div class="sub">' + (L ? '암호가 설정돼 있어요. 바꾸려면 현재 암호도 입력해 주세요.' : '아직 암호가 없어서 누구나(권한이 있으면) 수정할 수 있어요. 암호를 정하면 수정할 때마다 물어봐요.') + '</div>' +
-    (L ? '<input id="f_old" type="password" autocomplete="off" placeholder="현재 암호">' : '') + '<input id="f_new" type="password" autocomplete="off" placeholder="새 암호 (4자 이상)"><input id="f_new2" type="password" autocomplete="off" placeholder="새 암호 한 번 더">', () => {
+    (L ? '<input id="f_old" type="password" autocomplete="off" placeholder="현재 암호">' + (isSuper(S.me) ? '<label class="chk"><input type="checkbox" id="f_forgot"><span>현재 암호를 잊었어요 (최고관리자만 — 현재 암호 없이 새로 정해요)</span></label>' : '') : '') + '<input id="f_new" type="password" autocomplete="off" placeholder="새 암호 (4자 이상)"><input id="f_new2" type="password" autocomplete="off" placeholder="새 암호 한 번 더">', () => {
     const nw = $('#f_new').value; if (nw.length < 4) return warn('암호는 4자 이상으로 해 주세요.'); if (nw !== $('#f_new2').value) return warn('새 암호가 서로 달라요.');
     const done = () => { const salt = Math.random().toString(36).slice(2) + Date.now().toString(36); sha(salt + nw).then(h => { setLock('merchant_lock', salt, h); unlockedAt = Date.now(); closeModal(); render(); toast('암호를 저장했어요.'); }); };
-    if (L) sha(L.salt + $('#f_old').value).then(h => { if (h === L.hash) done(); else toast('현재 암호가 맞지 않아요.'); }); else done();
+    if (L && $('#f_forgot') && $('#f_forgot').checked && isSuper(S.me)) { alog('edit', null, '가맹점 수정 암호 초기화(최고관리자)'); done(); } // 잊었을 때: 최고관리자는 현재 암호 없이
+    else if (L) sha(L.salt + $('#f_old').value).then(h => { if (h === L.hash) done(); else toast('현재 암호가 맞지 않아요.'); }); else done();
     return false;
   }, '저장');
 };
@@ -2623,10 +2624,11 @@ ACT.dlockSet = () => {
   if (!can('staff_manage')) return toast('관리자만 설정할 수 있어요.');
   const L = dlockDoc();
   formModal('삭제 비밀번호', '<div class="sub" style="margin-top:0">직원 완전 삭제, 가맹점·재고·응대 기록·자료실 삭제 때 물어봐요. ' + (L ? '바꾸려면 현재 비밀번호도 입력해 주세요.' : '아직 없어요 — 정하기 전에는 직원 완전 삭제를 할 수 없어요.') + '</div>' +
-    (L ? '<input id="f_old" type="password" autocomplete="off" placeholder="현재 비밀번호">' : '') + '<input id="f_new" type="password" autocomplete="off" placeholder="새 비밀번호 (4자 이상)"><input id="f_new2" type="password" autocomplete="off" placeholder="새 비밀번호 한 번 더">', () => {
+    (L ? '<input id="f_old" type="password" autocomplete="off" placeholder="현재 비밀번호">' + (isSuper(S.me) ? '<label class="chk"><input type="checkbox" id="f_forgot"><span>현재 비밀번호를 잊었어요 (최고관리자만 — 현재 비밀번호 없이 새로 정해요)</span></label>' : '') : '') + '<input id="f_new" type="password" autocomplete="off" placeholder="새 비밀번호 (4자 이상)"><input id="f_new2" type="password" autocomplete="off" placeholder="새 비밀번호 한 번 더">', () => {
     const nw = $('#f_new').value; if (nw.length < 4) return warn('비밀번호는 4자 이상으로 해 주세요.'); if (nw !== $('#f_new2').value) return warn('새 비밀번호가 서로 달라요.');
     const done = () => { const salt = Math.random().toString(36).slice(2) + Date.now().toString(36); sha(salt + nw).then(h => { setLock('delete_lock', salt, h); closeModal(); render(); toast('삭제 비밀번호를 저장했어요.'); }); };
-    if (L) sha(L.salt + $('#f_old').value).then(h => { if (h === L.hash) done(); else toast('현재 비밀번호가 맞지 않아요.'); }); else done();
+    if (L && $('#f_forgot') && $('#f_forgot').checked && isSuper(S.me)) { alog('edit', null, '삭제 비밀번호 초기화(최고관리자)'); done(); }
+    else if (L) sha(L.salt + $('#f_old').value).then(h => { if (h === L.hash) done(); else toast('현재 비밀번호가 맞지 않아요.'); }); else done();
     return false;
   }, '저장');
 };
@@ -3286,6 +3288,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.7.0', '2026-11-04', ['가맹점 수정 암호·삭제 비밀번호를 잊었을 때: 최고관리자는 ‘현재 암호를 잊었어요’를 체크하고 현재 암호 없이 새로 정할 수 있어요(감사 기록에 남아요)']],
   ['웹 0.6.9', '2026-11-04', ['PC 프로그램(0.1.0 이상)에서 나인패스가 다른 메뉴처럼 열려요 — 상단바 ‘나인패스’를 누르면 아래 화면이 나인패스로 바뀌고, 다른 메뉴를 누르면 돌아와요(보던 화면은 그대로). 뒤로·새로고침·처음 화면·새 창으로 버튼', '채팅 결재 알림의 [나인패스 열기]와 결재 양식함의 [나인패스로 보내기]도 PC 프로그램에서는 그 화면에서 열려요']],
   ['웹 0.6.8', '2026-11-04', ['정리: 최고관리자를 처음 옮길 때만 쓰던 이름 목록을 지웠어요(이제 최고관리자는 직원 정보의 최고관리자 표시로만 정해져요)']],
   ['웹 0.6.7', '2026-11-04', ['결재 양식함(☰ → 회사): 관리자가 양식(이미지·PDF, 10장까지)을 올리고 그림 위를 끌어서 입력 칸을 그려 둬요(이름·날짜·부서 등 자동 입력 가능)', '직원은 칸을 채우면 양식 위에 바로 찍히고, ⬇ PDF 받기 또는 [나인패스로 보내기] — 내 나인패스 계정의 임시저장 문서에 완성본이 첨부돼 새 창에서 상신만 하면 돼요']],

@@ -2300,6 +2300,9 @@ public class MainActivity extends Activity {
         final EditText old = Ui.field(this, "현재 비밀번호", false), nw = Ui.field(this, "새 비밀번호 (4자 이상)", false), nw2 = Ui.field(this, "새 비밀번호 한 번 더", false);
         for (EditText e : new EditText[]{old, nw, nw2}) e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
         if (L != null) f.addView(old, Ui.lp(this, 8));
+        final CheckBox forgot = new CheckBox(this); // 잊었을 때: 최고관리자는 현재 비밀번호 없이 새로 정한다 (웹과 같음)
+        forgot.setText("현재 비밀번호를 잊었어요 (최고관리자만 — 현재 비밀번호 없이 새로 정해요)");
+        if (L != null && isSuper(me)) f.addView(forgot, Ui.lp(this, 4));
         f.addView(nw, Ui.lp(this, 8));
         f.addView(nw2, Ui.lp(this, 8));
         final AlertDialog dlg = new Dlg(this).setTitle("삭제 비밀번호").setView(f).setNegativeButton("취소", null).setPositiveButton("저장", null).create();
@@ -2314,10 +2317,12 @@ public class MainActivity extends Activity {
                 Ui.warn(this, "새 비밀번호가 서로 달라요.");
                 return;
             }
-            if (L != null && !sha256(L.optString("salt") + old.getText().toString()).equals(L.optString("hash"))) {
+            boolean reset = L != null && forgot.isChecked() && isSuper(me);
+            if (L != null && !reset && !sha256(L.optString("salt") + old.getText().toString()).equals(L.optString("hash"))) {
                 Ui.warn(this, "현재 비밀번호가 맞지 않아요.");
                 return;
             }
+            if (reset) store.alog(myId(), "edit", null, "삭제 비밀번호 초기화(최고관리자)");
             String salt = Long.toString(System.nanoTime(), 36) + Long.toString(new java.util.Random().nextLong(), 36);
             setLock("delete_lock", salt, sha256(salt + n));
             dlg.dismiss();
@@ -3659,15 +3664,20 @@ public class MainActivity extends Activity {
                 : "암호가 설정돼 있어요. 바꾸려면 현재 암호도 입력해 주세요.", 13, Ui.GRAY, false));
         final EditText old = pwField("현재 암호");
         if (L != null) f.addView(old);
+        final CheckBox forgot = new CheckBox(this); // 잊었을 때: 최고관리자는 현재 암호 없이 새로 정한다 (웹과 같음)
+        forgot.setText("현재 암호를 잊었어요 (최고관리자만 — 현재 암호 없이 새로 정해요)");
+        if (L != null && isSuper(me)) f.addView(forgot);
         final EditText n1 = pwField("새 암호 (4자 이상)");
         final EditText n2 = pwField("새 암호 한 번 더");
         f.addView(n1);
         f.addView(n2);
         AlertDialog.Builder b = new Dlg(this).setTitle("가맹점 수정 암호").setView(f).setNegativeButton("취소", null).setPositiveButton("저장", (d, w) -> {
-            if (L != null && !sha256(L.optString("salt") + old.getText().toString()).equals(L.optString("hash"))) {
+            boolean reset = L != null && forgot.isChecked() && isSuper(me);
+            if (L != null && !reset && !sha256(L.optString("salt") + old.getText().toString()).equals(L.optString("hash"))) {
                 Ui.warn(this, "현재 암호가 맞지 않아요.");
                 return;
             }
+            if (reset) store.alog(myId(), "edit", null, "가맹점 수정 암호 초기화(최고관리자)");
             String nw = n1.getText().toString();
             if (nw.length() < 4) {
                 Ui.warn(this, "암호는 4자 이상으로 해 주세요.");
@@ -7977,6 +7987,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.4.5", "2026-11-04", "• 가맹점 수정 암호·삭제 비밀번호를 잊었을 때: 최고관리자는 '현재 암호를 잊었어요'를 체크하고 현재 암호 없이 새로 정할 수 있어요(감사 기록에 남아요)"},
             {"0.4.4", "2026-11-04", "• 정리: 최고관리자를 처음 옮길 때만 쓰던 이름 목록을 지웠어요(이제 최고관리자는 직원 정보의 최고관리자 표시로만 정해져요)"},
             {"0.4.3", "2026-11-04", "• 결재 양식함(전체 → 회사): 양식을 골라 칸을 채우면 양식 위에 바로 찍혀요. 'PDF 받기' 또는 '나인패스로 보내기'(내 나인패스 계정 임시저장 문서에 첨부 → 열린 창에서 상신)\n• 양식 올리기·칸 편집은 PC 웹에서"},
             {"0.4.2", "2026-11-04", "• 나인패스 계정 연결: 전체 → 회사 → '나인패스 계정 연결' — 나인패스 화면에서 한 번 로그인하면 이름·연락처가 달라도 자동 로그인\n• 나인패스 결재 알림: 결재할 문서가 새로 오면 본인만 보이는 '📝 나인패스 결재' 채팅방에 메시지(제목·종류·기안자), '나인패스 열기'로 그 문서가 바로 열려요"},
