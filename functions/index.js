@@ -106,6 +106,7 @@ async function npAsk(st) { // 나인패스 결재 대기 수 → {found, count} 
   const q = new URLSearchParams({name: st.name, phone: st.phones.join(',')});
   const r = await fetch(npBase() + '/api/external/pending?' + q, {headers: {'X-NinePass-Key': NINEPASS_KEY.value()}, signal: AbortSignal.timeout(5000)});
   if (r.status === 404) return {found: false, count: 0};
+  if (r.status === 401) throw new Error('key'); // 연동 키가 나인패스 것과 다름
   if (!r.ok) throw new Error('ninepass ' + r.status);
   const j = await r.json();
   return {found: j.found !== false, count: Math.max(0, Number(j.pending) || 0)};
@@ -137,6 +138,7 @@ exports.npGo = onRequest(npOpts, async (req, res) => {
     if (!a.found) return res.status(404).json({error: 'mismatch'});
   } catch (e) {
     console.error('npGo check', e.message);
+    if (e.message === 'key') return res.status(502).json({error: '나인패스 연동 키가 맞지 않아요. 관리자가 GitHub 비밀값 NINEPASS_KEY 를 나인패스의 [복사] 버튼으로 다시 넣어야 해요'});
   }
   const next = typeof (req.body && req.body.next) === 'string' && /^\/[^/\\]/.test(req.body.next) ? req.body.next : '/';
   const phone = st.phones.join(','), ts = Math.floor(Date.now() / 1000);
