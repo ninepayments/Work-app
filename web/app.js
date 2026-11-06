@@ -2,11 +2,18 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.7.0';
+const VERSION = '웹 0.7.1';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
-const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '카드사서류', '큐밴등록', '기타']; // 예전 업무의 'AS'·'카드사 서류' 는 그대로 보여요
+const TYPES = ['신규 설치', '방문AS', '원격AS', '영업 방문', '서류 접수', '기타']; // 예전 업무의 'AS'·'카드사 서류'·'카드사서류'·'큐밴등록' 은 그대로 보여요
+const DOC_SUBS = ['카드사신규', '큐밴등록']; // '서류 접수' 를 고르면 2단계로 고른다 → 저장은 '서류 접수 · 카드사신규' (앱과 같음)
+const typeSplit = ty => { ty = ty || '기타'; const m = /^서류 접수 · (.+)$/.exec(ty); if (m) return ['서류 접수', m[1]]; if (/^카드사 ?서류$/.test(ty)) return ['서류 접수', '카드사신규']; if (ty === '큐밴등록') return ['서류 접수', '큐밴등록']; return [ty, '']; };
+const typeSelHTML = ty => { const [a, b] = typeSplit(ty); const ts = TYPES.includes(a) ? TYPES : TYPES.concat([a]);
+  return '<label class="fl" for="f_ty">종류</label><select id="f_ty">' + ts.map(x => '<option' + (x === a ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select>' +
+    '<div id="f_ty2w" style="display:' + (a === '서류 접수' ? 'block' : 'none') + '"><label class="fl" for="f_ty2">서류 종류</label><select id="f_ty2"><option value="">(고르지 않음)</option>' + DOC_SUBS.map(x => '<option' + (x === b ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></div>'; };
+const typeVal = () => { const a = $('#f_ty').value, b = $('#f_ty2') ? $('#f_ty2').value : ''; return a === '서류 접수' && b ? a + ' · ' + b : a; };
+const wireTypeSel = () => { const el = $('#f_ty'); if (el) el.addEventListener('change', () => { $('#f_ty2w').style.display = el.value === '서류 접수' ? 'block' : 'none'; }); };
 const KINDS = ['방문A/S', '원격A/S', '전화응대', '용지신청', '기타'];
 // 업무 요청 '가맹점 요청사항' 빠른 선택 버튼 — 관리자가 ☰ → 관리자 → 빠른 선택 버튼에서 바꾼다 (config key 'req_quick')
 const reqQuickDoc = () => list('config').find(c => c.key === 'req_quick');
@@ -345,7 +352,7 @@ if (window.nineWin) document.documentElement.classList.add('elec'); // PC 프로
 if (window.nineWin && window.nineWin.move) {
   document.documentElement.classList.add('jsdrag');
   let dg = null;
-  document.addEventListener('pointerdown', e => { const t = e.target.closest && e.target.closest('.pctop'); if (!t || e.button !== 0) return; dg = {x: e.screenX, y: e.screenY, on: false, id: e.pointerId, el: t}; }, true);
+  document.addEventListener('pointerdown', e => { const t = e.target.closest && e.target.closest('.pctop'); if (!t || e.button !== 0 || e.target.closest('.pcnav [data-nk]')) return; /* 메뉴 버튼은 끌어서 순서 바꾸기 */ dg = {x: e.screenX, y: e.screenY, on: false, id: e.pointerId, el: t}; }, true);
   document.addEventListener('pointermove', e => {
     if (!dg || e.pointerId !== dg.id) return; const dx = e.screenX - dg.x, dy = e.screenY - dg.y;
     if (!dg.on) { if (Math.abs(dx) + Math.abs(dy) < 6) return; dg.on = true; try { dg.el.setPointerCapture(dg.id); } catch (er) {} }
@@ -359,15 +366,47 @@ if (window.nineWin && window.nineWin.move) {
 // PC 상단바에 내가 고른 메뉴 버튼 (프로필 topnav 에 메뉴 go 값 목록 — 직원마다, 이 계정 모든 PC 에 같게)
 const topNav = () => { const p = myProf(); return p && Array.isArray(p.topnav) ? p.topnav : []; };
 const shortLabel = l => l.replace(/\s*\(.*\)\s*$/, '');
-function topExtraHTML() {
+function topExtraHTML(pairs) {
   const items = menuItems(); const k = S.sub || S.tab;
-  return topNav().map(go => items.find(e => e.go === go)).filter(Boolean).map(e => { const g = e.go.split(':');
-    return g[0] === 'nav' ? '<button data-nav="' + g[1] + '" data-sub="' + g[2] + '" class="' + (!S.menu && k === (g[2] || g[1]) ? 'on' : '') + '"><span class="t">' + esc(shortLabel(e.label)) + '</span></button>' : '<button data-act="' + g[1] + '"><span class="t">' + esc(shortLabel(e.label)) + '</span></button>'; }).join('');
+  const out = topNav().map(go => items.find(e => e.go === go)).filter(Boolean).map(e => { const g = e.go.split(':');
+    const h = g[0] === 'nav' ? '<button data-nav="' + g[1] + '" data-sub="' + g[2] + '" class="' + (!S.menu && k === (g[2] || g[1]) ? 'on' : '') + '"><span class="t">' + esc(shortLabel(e.label)) + '</span></button>' : '<button data-act="' + g[1] + '"><span class="t">' + esc(shortLabel(e.label)) + '</span></button>'; return [e.go, h]; });
+  return pairs ? out : out.map(x => x[1]).join('');
+}
+// 상단 메뉴 순서: 버튼을 끌어서 옮기면 프로필 navorder(버튼 열쇠 목록)에 저장 — 직원마다, 이 계정 모든 PC 에 같게
+const navOrder = () => { const p = myProf(); return p && Array.isArray(p.navorder) ? p.navorder : []; };
+function pcNavHTML(btn) {
+  const items = [];
+  NAVPC.forEach(n => items.push(['f:' + n[0], btn(n)]));
+  items.push(['np', npNavHTML()]);
+  const ex = topExtraHTML(true); ex.forEach(x => items.push(x));
+  const ord = navOrder(), ix = k => { const i = ord.indexOf(k); return i < 0 ? 1000 : i; };
+  return items.map((x, i) => [x, i]).sort((a, b) => (ix(a[0][0]) - ix(b[0][0])) || (a[1] - b[1])).map(([x]) => x[1].replace(/^<button /, '<button data-nk="' + esc(x[0]) + '" ')).join('');
+}
+{ // 끌어서 옮기기 (마우스를 6px 넘게 움직이면 시작, 놓으면 저장. 살짝 누르기만 하면 그냥 클릭)
+  let dr = null;
+  document.addEventListener('pointerdown', e => { const b = e.button === 0 && e.target.closest && e.target.closest('.pcnav [data-nk]'); if (b) dr = {b, x: e.clientX, id: e.pointerId, on: false}; }, true);
+  document.addEventListener('pointermove', e => {
+    if (!dr || e.pointerId !== dr.id) return;
+    if (!dr.b.isConnected) { dr = null; return; }
+    if (!dr.on) { if (Math.abs(e.clientX - dr.x) < 6) return; dr.on = true; dr.b.classList.add('navdrag'); try { dr.b.setPointerCapture(dr.id); } catch (er) {} }
+    const nav = dr.b.parentNode; const sib = [...nav.querySelectorAll('[data-nk]')].filter(x => x !== dr.b);
+    const over = sib.find(x => { const r = x.getBoundingClientRect(); return e.clientX < r.left + r.width / 2; });
+    if (over) { if (dr.b.nextSibling !== over) nav.insertBefore(dr.b, over); } else { const last = sib[sib.length - 1]; if (last && last.nextSibling !== dr.b) nav.insertBefore(dr.b, last.nextSibling); }
+  }, true);
+  const end = e => {
+    if (!dr || (e && e.pointerId !== dr.id)) return; const d = dr; dr = null; if (!d.on) return;
+    try { d.b.releasePointerCapture(d.id); } catch (er) {} d.b.classList.remove('navdrag');
+    const stop = ev => { ev.preventDefault(); ev.stopPropagation(); }; document.addEventListener('click', stop, {capture: true, once: true}); setTimeout(() => document.removeEventListener('click', stop, true), 300);
+    if (!d.b.isConnected) return;
+    const ord = [...d.b.parentNode.querySelectorAll('[data-nk]')].map(x => x.dataset.nk);
+    const pr = Object.assign({}, myProf() || {id: S.uid}); pr.navorder = ord; put('profiles', pr); render(); toast('메뉴 순서를 바꿨어요.');
+  };
+  document.addEventListener('pointerup', end, true); document.addEventListener('pointercancel', end, true);
 }
 function topAddAct() { // ACT 는 아래에서 만들어진다 → ACT.topAdd 는 ACT 다음에 붙인다
   const cur = topNav(), fixed = NAVPC.map(n => 'nav:' + n[2] + ':' + n[3]);
   const items = menuItems().filter(e => e.go && e.sec !== '바로가기' && !fixed.includes(e.go) && e.go !== 'act:logout');
-  formModal('상단바 메뉴 고르기', '<div class="sub" style="margin-top:0">자주 쓰는 메뉴를 체크하면 위쪽 상단바에 버튼이 생겨요(최대 6개, 체크한 순서대로). 이 계정으로 쓰는 모든 PC에 같게 보여요.</div><div style="max-height:55vh;overflow:auto">' +
+  formModal('상단바 메뉴 고르기', '<div class="sub" style="margin-top:0">자주 쓰는 메뉴를 체크하면 위쪽 상단바에 버튼이 생겨요(최대 6개). 상단바 버튼은 마우스로 끌어서 순서를 바꿀 수 있어요. 이 계정으로 쓰는 모든 PC에 같게 보여요.</div><div style="max-height:55vh;overflow:auto">' +
     items.map(e => '<label class="chk"><input type="checkbox" class="tnv" value="' + esc(e.go) + '"' + (cur.includes(e.go) ? ' checked' : '') + '><span class="grow">' + esc(e.label) + ' <small style="color:var(--gray)">' + esc(e.sec) + '</small></span></label>').join('') + '</div>', () => {
     const on = [...document.querySelectorAll('.tnv:checked')].map(x => x.value); if (on.length > 6) return warn('6개까지 고를 수 있어요.');
     const keep = cur.filter(g => on.includes(g)).concat(on.filter(g => !cur.includes(g)));
@@ -377,8 +416,27 @@ function topAddAct() { // ACT 는 아래에서 만들어진다 → ACT.topAdd �
 // ---------- 나인패스(전자결재): 상단 '메모' 오른쪽 메뉴 + 결재 대기 수. 키는 서버 함수(npGo·npPending)에만 있고 화면은 로그인 토큰으로 묻기만 한다 ----------
 const NP_FN = 'https://asia-northeast3-nine-family.cloudfunctions.net/';
 const npBadge = () => S.npCount ? '<span class="badge">' + (S.npCount > 99 ? '99+' : S.npCount) + '</span>' : '';
-// PC 프로그램 0.1.0~ 은 나인패스를 다른 메뉴처럼 상단바 아래 화면으로 띄운다(npIn). 그 밖(인터넷 창·옛 PC 프로그램)은 새 창
-const npIn = () => !!(window.nineWin && window.nineWin.np) && isWide();
+// PC 프로그램 0.1.1~ 은 나인패스를 다른 메뉴처럼 상단바 아래 칸에 띄운다(npIn). 나인패밀리 화면 안의 <webview> 한 칸이라 상단 메뉴줄·팝업은 그대로 보인다.
+// 그 밖(인터넷 창·옛 PC 프로그램 — 0.1.0 의 덮어 띄우기 방식은 쓰지 않음)은 새 창
+const NP = window.nineWin && window.nineWin.npTag ? (() => {
+  let host = null, wv = null;
+  const ok = u => /^https:\/\/([a-z0-9-]+\.)*ninepayments\.co\.kr(\/|$)/i.test(u || '');
+  const ensure = () => {
+    if (host) return;
+    host = document.createElement('div'); host.id = 'nphost';
+    wv = document.createElement('webview'); wv.setAttribute('partition', 'persist:ninepass'); wv.setAttribute('allowpopups', '');
+    host.appendChild(wv); document.body.appendChild(host);
+  };
+  const place = b => { host.style.left = b.x + 'px'; host.style.top = b.y + 'px'; host.style.width = b.w + 'px'; host.style.height = b.h + 'px'; host.style.visibility = 'visible'; };
+  return {
+    show(url, b) { ensure(); place(b); if (url && ok(url)) wv.src = url; },
+    bounds(b) { if (host) place(b); },
+    hide() { if (host) host.style.visibility = 'hidden'; },
+    back() { try { if (wv && wv.canGoBack()) wv.goBack(); } catch (e) {} },
+    reload() { try { if (wv) wv.reload(); } catch (e) {} }
+  };
+})() : null;
+const npIn = () => !!NP && isWide();
 const npNavHTML = () => npIn()
   ? '<button class="npnav' + (!S.menu && S.sub === 'ninepass' ? ' on' : '') + '" data-nav="all" data-sub="ninepass" title="나인패스 전자결재"><img src="ninepass-logo-64.png" alt=""><span class="t">나인패스</span>' + npBadge() + '</button>'
   : '<button class="npnav" data-act="ninepass" title="나인패스 전자결재 (새 창)"><img src="ninepass-logo-64.png" alt=""><span class="t">나인패스</span>' + npBadge() + '</button>';
@@ -389,17 +447,17 @@ function viewNinePassPane() {
 let npShown = false;
 function npRect() { const el = $('#nppane'); if (!el) return null; const r = el.getBoundingClientRect(); const h = Math.max(200, window.innerHeight - r.top - 6); el.style.height = h + 'px'; return {x: r.left, y: r.top, w: r.width, h}; }
 async function npSync() { // 지금 화면이 나인패스면 그 자리에 보이고, 아니면(또는 팝업이 떠 있으면) 숨긴다
-  if (!(window.nineWin && window.nineWin.np)) return;
+  if (!NP) return;
   const b = npIn() && S.sub === 'ninepass' && !S.menu && !$('#modal') ? npRect() : null;
-  if (!b) { if (npShown) { window.nineWin.np.hide(); npShown = false; } return; }
-  if (S.npPendUrl) { window.nineWin.np.show(S.npPendUrl, b); S.npPendUrl = ''; S.npLoaded = true; npShown = true; return; }
-  if (S.npLoaded) { window.nineWin.np.show('', b); npShown = true; return; }
+  if (!b) { if (npShown) { NP.hide(); npShown = false; } return; }
+  if (S.npPendUrl) { NP.show(S.npPendUrl, b); S.npPendUrl = ''; S.npLoaded = true; npShown = true; return; }
+  if (S.npLoaded) { NP.show('', b); npShown = true; return; }
   if (S.npLoading) return; S.npLoading = true;
   try {
     const r = await fetch(NP_FN + 'npGo', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}, body: JSON.stringify({next: S.npNext || '/'})});
     const j = await r.json().catch(() => ({}));
     const b2 = S.sub === 'ninepass' && !$('#modal') ? npRect() : null;
-    if (r.ok && j.url && b2) { window.nineWin.np.show(j.url, b2); npShown = true; S.npLoaded = true; S.npNext = ''; setTimeout(npPoll, 5000); }
+    if (r.ok && j.url && b2) { NP.show(j.url, b2); npShown = true; S.npLoaded = true; S.npNext = ''; setTimeout(npPoll, 5000); }
     else if (!r.ok) { const m = $('#npmsg'); if (m) m.textContent = j.error === 'mismatch' || j.error === 'unlinked' ? NP_MISMATCH + ' (☰ → 회사 → 나인패스 계정 연결)' : (j.error || '나인패스를 열지 못했어요 (' + r.status + ')'); }
   } catch (e) { const m = $('#npmsg'); if (m) m.textContent = '인터넷 연결을 확인해 주세요'; }
   S.npLoading = false;
@@ -446,7 +504,7 @@ function render() {
   const body = bodyHTML();
   if (wide) {
     const top = '<header class="pctop"><button class="hamb" data-act="menu" aria-label="' + (S.menu ? '전체 메뉴 닫기' : '전체 메뉴 열기') + '">' + (S.menu ? '✕' : '☰') + (!S.menu && badges.all ? '<span class="badge">' + badges.all + '</span>' : '') + '</button>' +
-      '<div class="logo" data-act="home" title="홈으로"><img src="icon-192.png" alt="">나인패밀리</div><nav class="pcnav">' + NAVPC.map(btn).join('') + npNavHTML() + topExtraHTML() + '<button class="navadd" data-act="topAdd" title="상단바에 메뉴 추가·빼기" aria-label="상단바에 메뉴 추가">+</button></nav>' +
+      '<div class="logo" data-act="home" title="홈으로"><img src="icon-192.png" alt="">나인패밀리</div><nav class="pcnav">' + pcNavHTML(btn) + '<button class="navadd" data-act="topAdd" title="상단바에 메뉴 추가·빼기" aria-label="상단바에 메뉴 추가">+</button></nav>' +
       '<button data-act="installApp" class="inst pcinst" style="display:none">PC에 설치하기</button><div class="me">' + esc(S.me.name) + ' · ' + roleName(S.me) + '</div>' + '<button class="pcdock' + (LS('dock_' + S.uid) === '1' ? ' on' : '') + '" data-act="dockToggle" title="오른쪽 채팅창 열기·닫기">💬 채팅창' + (badges.chat ? '<span class="badge">' + badges.chat + '</span>' : '') + '</button>' + (window.nineWin ? '<button class="pcwin" data-act="pcWin" aria-label="창 메뉴">⋮</button>' : '') + '</header>';
     root.innerHTML = '<div class="app pc' + (dockOn() ? ' dockon' : '') + '">' + top + chatBarHTML() + '<div class="main">' + body + '</div></div>' + (S.menu ? '' : fab());
   } else {
@@ -590,7 +648,7 @@ function viewTasks(noHero) {
 }
 function taskCard(t) {
   const s = ST[t.status] || t.status; const c = stColor(t.status === '확인함' ? '진행중' : t.status);
-  const ty = (t.type || '기타').replace('신규 ', '').replace('영업 방문', '영업').replace('서류 접수', '서류').replace('카드사 서류', '카드').replace('카드사서류', '카드').replace('큐밴등록', '큐밴').slice(0, 2);
+  const ty = (t.type || '기타').replace('신규 ', '').replace('영업 방문', '영업').replace('서류 접수 · 카드사신규', '카드').replace('서류 접수 · 큐밴등록', '큐밴').replace('서류 접수', '서류').replace('카드사 서류', '카드').replace('카드사서류', '카드').replace('큐밴등록', '큐밴').slice(0, 2);
   return '<div class="card" data-act="task" data-arg="' + t.id + '"><div class="row"><div class="tile">' + esc(ty) + '</div><div class="grow"><div class="t1">' + esc(t.title) + '</div><div class="t2">' + esc((t.client ? t.client + ' · ' : '') + uname(t.assignee) + (t.due ? ' · ' + t.due : '')) + '</div></div><span class="chip" style="background:' + c[0] + ';color:' + c[1] + '">' + s + '</span></div></div>';
 }
 ACT.scope = a => { S.showAll = a === '1'; render(); };
@@ -610,7 +668,7 @@ ACT.task = id => {
     (own && t.status === '완료' ? '<button class="btn full" data-act="tstatus" data-arg="' + id + '|진행중">진행중으로 되돌리기</button>' : '') +
     (t.status === '완료' && !(t.mlog && byId('mlogs', t.mlog)) && (own || t.creator === S.uid) ? '<button class="btn tint full" data-act="tlink" data-arg="' + id + '">🏪 가맹점 응대 기록에 남기기</button>' : '') +
     (own && t.status === '보류' ? '<button class="btn tint full" data-act="tresched" data-arg="' + id + '">일정 다시 잡기</button>' : '') +
-    '<div class="btns">' + (t.creator === S.uid || can('staff_manage') ? '<button class="btn red" data-act="tdel" data-arg="' + id + '">삭제</button>' : '') + '<button class="btn" data-act="close">닫기</button></div>');
+    '<div class="btns">' + (t.creator === S.uid || can('staff_manage') ? '<button class="btn red" data-act="tdel" data-arg="' + id + '">삭제</button>' : '') + (canEditTask(t) ? '<button class="btn tint" data-act="tedit" data-arg="' + id + '">✏ 수정</button>' : '') + '<button class="btn" data-act="close">닫기</button></div>');
 };
 ACT.tdel = id => { const t = byId('tasks', id); if (!t) return; askConfirm('업무를 삭제할까요?', t.title + '\n목록과 달력에서 사라집니다.', '삭제', () => { t.deleted = true; put('tasks', t); render(); toast('삭제했어요.'); }, true); };
 ACT.tstatus = a => {
@@ -661,31 +719,57 @@ ACT.tdone = id => {
     put('tasks', t); render(); toast(mer ? '완료 처리하고 응대 기록에도 남겼어요.' : '완료 처리했어요.'); return true;
   }, '완료 처리');
 };
-ACT.newTask = draft => {
-  const staff = list('users').filter(u => u.active !== false && (can('task_assign') || u.id === S.uid));
-  formModal('업무 요청', '<label class="fl" for="f_t1">업무 제목 (필수)</label><input id="f_t1" placeholder="예: A마트 포스 설치"><label class="fl" for="f_ty">종류</label><select id="f_ty">' + TYPES.map(x => '<option>' + x + '</option>').join('') + '</select>' + MP_FILL +
+const canEditTask = t => t.creator === S.uid || t.assignee === S.uid || can('staff_manage'); // 업무 내용 수정: 요청한 사람·담당자·최고관리자 (앱과 같음)
+ACT.tedit = id => { const t = byId('tasks', id); if (t && canEditTask(t)) { closeModal(); ACT.newTask(null, id); } };
+ACT.newTask = (draft, editId) => {
+  const et = editId ? byId('tasks', editId) : null;
+  const staff = list('users').filter(u => u.active !== false && (can('task_assign') || u.id === S.uid || (et && u.id === et.assignee)));
+  formModal(et ? '업무 수정' : '업무 요청', '<label class="fl" for="f_t1">업무 제목 (필수)</label><input id="f_t1" placeholder="예: A마트 포스 설치">' + typeSelHTML(et ? et.type : '') + MP_FILL +
     '<label class="fl" for="f_c">거래처 (상호)</label><input id="f_c" placeholder="가맹점을 고르면 자동으로 채워져요"><label class="fl" for="f_p">매장 전화</label><input id="f_p" type="tel" placeholder="예: 062-123-4567"><label class="fl" for="f_a">매장 주소</label><input id="f_a" placeholder="예: 광주 동구 …">' +
     '<label class="fl" for="f_rq">가맹점 요청사항 (빠른 선택 + 직접 입력 — 완료하면 처리결과와 함께 응대 기록에 남아요)</label><div class="pills" style="margin-top:4px">' + reqQuick().map(w => '<button type="button" class="pill rqq" data-w="' + w + '">＋ ' + w + '</button>').join('') + '</div><textarea id="f_rq" placeholder="예: 카드 결제가 안 된다고 함, 영수증 출력 안 됨"></textarea>' +
     '<label class="fl" for="f_d">기한 날짜 (선택 — 고르면 일정 달력에도 표시돼요)</label><input id="f_d" type="date"><label class="fl" for="f_tm">기한 시간 (선택)</label>' + timeSel('f_tm') + '<label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모"></textarea><label class="fl" for="f_w">담당 직원</label><select id="f_w">' + staff.map(u => '<option value="' + u.id + '"' + (u.id === S.uid ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('') + '</select>', () => {
     const ti = $('#f_t1').value.trim(); if (!ti) return warn('업무 제목을 입력해 주세요.');
     const d = $('#f_d').value, tm = $('#f_tm').value; const as = Number($('#f_w').value);
-    const t = create('tasks', {title: ti, type: $('#f_ty').value, client: $('#f_c').value.trim(), phone: $('#f_p').value.trim(), addr: $('#f_a').value.trim(), due: d ? d + (tm ? ' ' + tm : '') : '', memo: $('#f_m').value.trim(), req: reqClean($('#f_rq').value), merchant: pickedMer && pickedMer.name === $('#f_c').value.trim() ? pickedMer.id : 0, assignee: as, creator: S.uid, status: '지시됨', history: []});
+    if (et) { // 수정: 바뀐 칸만 처리 이력에 남긴다
+      const t = byId('tasks', editId); if (!t) return true;
+      const nv = {title: ti, type: typeVal(), client: $('#f_c').value.trim(), phone: $('#f_p').value.trim(), addr: $('#f_a').value.trim(), due: d ? d + (tm ? ' ' + tm : '') : '', memo: $('#f_m').value.trim(), req: reqClean($('#f_rq').value), assignee: as};
+      const NM = {title: '제목', type: '종류', client: '거래처', phone: '전화', addr: '주소', due: '기한', memo: '메모', req: '요청사항', assignee: '담당'};
+      const ch = Object.keys(nv).filter(k => (t[k] || '') !== (nv[k] || ''));
+      if (pickedMer && pickedMer.name === nv.client && t.merchant !== pickedMer.id) { t.merchant = pickedMer.id; ch.push('merchant'); }
+      else if (t.merchant && nv.client !== t.client) { const m0 = byId('merchants', t.merchant); if (!m0 || m0.name !== nv.client) t.merchant = 0; }
+      if (!ch.length) { toast('바뀐 내용이 없어요.'); return true; }
+      if (nv.assignee !== t.assignee) { tlog(t, '담당 변경 ' + uname(t.assignee) + ' → ' + uname(nv.assignee)); if (t.status === '지시됨') t.seenAt = ''; }
+      if (nv.due !== (t.due || '')) tlog(t, '일정 변경 ' + (t.due || '없음') + ' → ' + (nv.due || '없음'));
+      const rest = ch.filter(k => k !== 'assignee' && k !== 'due').map(k => NM[k] || '가맹점');
+      if (rest.length) tlog(t, '내용 수정: ' + rest.join(', '));
+      Object.assign(t, nv); t.editedBy = S.uid; t.editedAt = nowStr(); put('tasks', t);
+      if (d) { const p = d.split('-'); S.calY = +p[0]; S.calM = +p[1]; S.calSel = d; }
+      render(); toast('업무를 고쳤어요.'); return true;
+    }
+    const t = create('tasks', {title: ti, type: typeVal(), client: $('#f_c').value.trim(), phone: $('#f_p').value.trim(), addr: $('#f_a').value.trim(), due: d ? d + (tm ? ' ' + tm : '') : '', memo: $('#f_m').value.trim(), req: reqClean($('#f_rq').value), merchant: pickedMer && pickedMer.name === $('#f_c').value.trim() ? pickedMer.id : 0, assignee: as, creator: S.uid, status: '지시됨', history: []});
     tlog(t, '업무 요청 → ' + uname(as)); put('tasks', t);
     if (t.type.includes('서류')) postToRoom('서류접수', '📄 서류 업무 · ' + ti + (t.client ? ' · ' + t.client : '') + '\n담당 ' + uname(as) + ' · 요청 ' + uname(S.uid) + (t.due ? ' · 기한 ' + t.due : '')); // 앱과 같은 자동 알림
     if (d) { const p = d.split('-'); S.calY = +p[0]; S.calM = +p[1]; S.calSel = d; }
     render(); toast(uname(as) + '님에게 업무를 요청했습니다.'); return true;
-  }, '요청하기');
+  }, et ? '저장' : '요청하기');
+  wireTypeSel();
   let pickedMer = null;
   const syncQ = () => { const v = $('#f_rq').value; document.querySelectorAll('#modal .rqq').forEach(b => b.classList.toggle('on', v.includes(b.dataset.w))); };
   document.querySelectorAll('#modal .rqq').forEach(b => b.onclick = () => { const el = $('#f_rq'); el.value = toggleWord(el.value, b.dataset.w); syncQ(); el.focus(); el.setSelectionRange(el.value.length, el.value.length); });
   $('#f_rq').addEventListener('input', syncQ);
   const pick = wireMerchantPicker(m => { pickedMer = m; const n = mNums(m); $('#f_c').value = m.name || ''; $('#f_p').value = n.phone || n.mobile || ''; $('#f_a').value = m.addr || ''; });
-  const ids = ['f_t1', 'f_ty', 'f_c', 'f_p', 'f_a', 'f_rq', 'f_d', 'f_tm', 'f_m', 'f_w'];
+  const ids = ['f_t1', 'f_ty', 'f_ty2', 'f_c', 'f_p', 'f_a', 'f_rq', 'f_d', 'f_tm', 'f_m', 'f_w'];
   S.mpNew = q => { // 가맹점이 없으면 여기서 바로 등록 → 저장하면 이 업무 창으로 돌아와 자동 연결
     const d = {}; ids.forEach(k => { const el = $('#' + k); if (el) d[k] = el.value; });
-    newMerchantThen(q, m => { ACT.newTask(Object.assign(d, {mer: m.id})); }, () => ACT.newTask(d));
+    newMerchantThen(q, m => { ACT.newTask(Object.assign(d, {mer: m.id}), editId); }, () => ACT.newTask(d, editId));
   };
-  if (draft) { ids.forEach(k => { const el = $('#' + k); if (el && draft[k] != null) el.value = draft[k]; }); syncQ(); const m = draft.mer && byId('merchants', draft.mer); if (m) pick(m); }
+  if (et && !draft) { // 수정: 지금 값으로 채운다
+    const dd = (et.due || '').split(' ');
+    const v = {f_t1: et.title, f_c: et.client, f_p: et.phone, f_a: et.addr, f_rq: et.req, f_d: dd[0] || '', f_tm: dd[1] || '', f_m: et.memo, f_w: String(et.assignee)};
+    Object.keys(v).forEach(k => { const el = $('#' + k); if (el && v[k] != null) el.value = v[k]; }); syncQ();
+    const m = et.merchant && byId('merchants', et.merchant); if (m) { pickedMer = m; const sel = $('#mpSel'); if (sel) { sel.className = 'picked'; sel.style.display = ''; sel.innerHTML = '✔ <b>' + esc(m.name) + '</b>' + (m.bizno ? ' · ' + esc(m.bizno) : ''); } }
+  }
+  if (draft) { ids.forEach(k => { const el = $('#' + k); if (el && draft[k] != null) el.value = draft[k]; }); syncQ(); const m = draft.mer && byId('merchants', draft.mer); if (m) pick(m); const w2 = $('#f_ty2w'); if (w2) w2.style.display = $('#f_ty').value === '서류 접수' ? 'block' : 'none'; }
 };
 
 // ---------- 프로젝트 ----------
@@ -1088,7 +1172,7 @@ ACT.ninepass = () => npWin('npGo', {next: '/'});
 ACT.ninepassWin = () => npWin('npGo', {next: '/', win: true});
 function npGoPane(path) { S.npNext = path || '/'; S.npLoaded = false; S.menu = false; S.room = 0; S.tab = 'all'; S.sub = 'ninepass'; closeModal(); render(); }
 ACT.npOpen = path => npIn() ? npGoPane(path) : npWin('npGo', {next: path || '/'}); // 채팅 결재 알림의 [나인패스 열기]
-ACT.npBack = () => window.nineWin.np.back(); ACT.npReload = () => window.nineWin.np.reload(); ACT.npHome = () => npGoPane('/');
+ACT.npBack = () => NP.back(); ACT.npReload = () => NP.reload(); ACT.npHome = () => npGoPane('/');
 ACT.npLink = () => { closeModal(); npWin('npLinkStart', {}, '나인패스 계정 연결 중…').then(ok => { if (ok) toast('새 창에서 나인패스에 로그인하고 [연결]을 눌러 주세요.'); }); };
 ACT.npUnlink = () => askConfirm('나인패스 계정 연결을 끊을까요?', '끊으면 이름·연락처로 다시 찾아요. 언제든 다시 연결할 수 있어요.', '연결 끊기', async () => {
   try { const r = await fetch(NP_FN + 'npUnlink', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}, body: '{}'}); const j = await r.json().catch(() => ({})); if (!r.ok) return toast(j.error || '끊지 못했어요'); S.npLinked = false; render(); toast('연결을 끊었어요.'); } catch (e) { toast('인터넷 연결을 확인해 주세요'); }
@@ -1421,6 +1505,7 @@ function merchantForm(m) {
     '<label class="fl" for="f_ca" id="f_cal">' + amtLabel(m.ctype) + '</label><input id="f_ca" inputmode="numeric" placeholder="숫자만 (예: 30000)" value="' + esc(m.camt || '') + '">' +
     mfield('f_t', '계약조건 (추가 내용)', '예: 36개월 약정, 위약금 없음', m.terms) +
     '<div class="row" style="gap:8px"><div class="grow">' + mfield('f_cs', '계약시작일', '', m.cstart, 'date') + '</div><div class="grow">' + mfield('f_ce', '계약종료일', '', m.cend, 'date') + '</div></div>' +
+    '<div class="pills" style="margin-top:2px"><span class="sub" style="margin:0 4px 0 0;align-self:center">계약 기간</span>' + [24, 36, 48].map(n => '<button type="button" class="pill cmon' + (n === 36 ? ' on' : '') + '" data-cm="' + n + '">' + n + '개월</button>').join('') + '<span class="sub" style="margin:0;align-self:center">· 시작일을 고르면 종료일이 자동으로 정해져요(직접 바꿔도 돼요)</span></div>' +
     '<label class="fl" for="f_g">등급 (0~3코드: 밴피 기준)</label><select id="f_g">' + GRADES.map((g, i) => g ? '<option value="' + i + '"' + (Number(m.grade == null ? 5 : m.grade) === i ? ' selected' : '') + '>' + gradeFull(i) + '</option>' : '').join('') + '</select>' +
     '<label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모">' + esc(m.memo || '') + '</textarea>';
 }
@@ -2174,6 +2259,9 @@ function wireEquipPicker(sel) {
 // ---------- 계약 ----------
 function daysLeft(ymd) { const a = new Date(todayStr() + 'T00:00:00'), b = new Date(String(ymd) + 'T00:00:00'); return isNaN(b) ? 99999 : Math.round((b - a) / 86400000); }
 function dday(d) { return d === 99999 ? '' : d < 0 ? '만료 ' + (-d) + '일 지남' : d === 0 ? '오늘 만료' : 'D-' + d; }
+// 가맹점 등록·수정: 계약시작일을 고르면 종료일 = 시작일 + 계약 기간(기본 36개월). 24·48개월 버튼으로 바꾸고, 종료일은 직접 고쳐도 된다 (앱과 같음)
+document.addEventListener('change', e => { if (e.target && e.target.id === 'f_cs' && e.target.value) { const on = document.querySelector('#modal .cmon.on'); const ce = $('#f_ce'); if (ce) ce.value = addMonths(e.target.value, on ? Number(on.dataset.cm) : 36); } });
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('.cmon'); if (!b) return; document.querySelectorAll('#modal .cmon').forEach(x => x.classList.toggle('on', x === b)); const cs = $('#f_cs'), ce = $('#f_ce'); if (cs && ce && cs.value) ce.value = addMonths(cs.value, Number(b.dataset.cm)); });
 function addMonths(ymd, m) { const p = String(ymd).split('-').map(Number); if (p.length < 3 || !p[0]) return ''; const d = new Date(p[0], p[1] - 1 + m, p[2]); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
 const amountLabel = k => k === 'CMS' ? 'CMS 금액' : k === '렌탈' ? '월 렌탈료' : '판매금액';
 const expiringContracts = () => list('contracts').filter(c => c.expire && daysLeft(c.expire) <= 90).sort((a, b) => daysLeft(a.expire) - daysLeft(b.expire));
@@ -3288,6 +3376,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.7.1', '2026-11-06', ['업무 종류 정리: ‘서류 접수’를 고르면 2단계로 카드사신규·큐밴등록을 골라요(예전 업무의 카드사서류·큐밴등록은 그대로 보여요)', '업무 수정: 업무를 눌러 [✏ 수정] — 제목·종류·거래처·전화·주소·요청사항·기한·메모·담당을 고치면 처리 이력에 남아요(요청한 사람·담당자·최고관리자)', '가맹점 등록·수정: 계약시작일을 고르면 종료일이 36개월 뒤로 자동으로 정해져요. 24·48개월 버튼, 종료일 직접 수정도 돼요', 'PC 상단 메뉴 버튼을 마우스로 끌어서 순서를 바꿀 수 있어요(계정마다 저장)', 'PC 프로그램 0.1.1: 나인패스가 나인패밀리 창 안 한 칸에 열려요 — 상단 메뉴줄은 그대로, 다른 메뉴를 누르면 바로 돌아와요']],
   ['웹 0.7.0', '2026-11-04', ['가맹점 수정 암호·삭제 비밀번호를 잊었을 때: 최고관리자는 ‘현재 암호를 잊었어요’를 체크하고 현재 암호 없이 새로 정할 수 있어요(감사 기록에 남아요)']],
   ['웹 0.6.9', '2026-11-04', ['PC 프로그램(0.1.0 이상)에서 나인패스가 다른 메뉴처럼 열려요 — 상단바 ‘나인패스’를 누르면 아래 화면이 나인패스로 바뀌고, 다른 메뉴를 누르면 돌아와요(보던 화면은 그대로). 뒤로·새로고침·처음 화면·새 창으로 버튼', '채팅 결재 알림의 [나인패스 열기]와 결재 양식함의 [나인패스로 보내기]도 PC 프로그램에서는 그 화면에서 열려요']],
   ['웹 0.6.8', '2026-11-04', ['정리: 최고관리자를 처음 옮길 때만 쓰던 이름 목록을 지웠어요(이제 최고관리자는 직원 정보의 최고관리자 표시로만 정해져요)']],
@@ -3410,7 +3499,7 @@ function viewManual() {
 
 // ---------- 팝업 ----------
 function modal(html) {
-  closeModal(); if (npShown && window.nineWin && window.nineWin.np) { window.nineWin.np.hide(); npShown = false; } // 팝업이 나인패스 화면에 가리지 않게
+  closeModal(); if (npShown && NP) { NP.hide(); npShown = false; } // 팝업이 나인패스 화면에 가리지 않게
   const d = document.createElement('div'); d.className = 'modal'; d.id = 'modal'; document.body.classList.add('hasmodal'); d.innerHTML = '<div class="sheet">' + html + '</div>';
   d.onclick = ev => { if (ev.target === d && !d.querySelector('input:not([type=checkbox]),textarea')) closeModal(); const a = ev.target.closest('[data-act]'); if (a && ACT[a.dataset.act]) { ev.stopPropagation(); ACT[a.dataset.act](a.dataset.arg, a, ev); } };
   document.body.appendChild(d);

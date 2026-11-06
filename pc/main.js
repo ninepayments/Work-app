@@ -1,7 +1,7 @@
 'use strict';
 /* 나인패밀리 PC 프로그램 — 토스포스처럼 설치형 창으로 웹앱(https://ninepayments.github.io/Work-app/)을 띄운다.
  * 화면과 기능은 웹앱 그대로라서, 웹을 고치면 이 프로그램도 다시 설치할 필요 없이 바로 바뀐다. 자료는 서버(Firebase)에 있다. */
-const {app, BrowserWindow, WebContentsView, shell, session, Menu, Tray, ipcMain, nativeImage, screen} = require('electron');
+const {app, BrowserWindow, shell, session, Menu, Tray, ipcMain, nativeImage, screen} = require('electron');
 const path = require('path');
 const fs = require('fs');
 const SETUP_URL = 'https://github.com/ninepayments/Work-app/releases/latest/download/NineFamily-Setup.exe';
@@ -53,7 +53,7 @@ function createWindow() {
     width: 1280, height: 860, minWidth: 900, minHeight: 600, title: '나인패밀리', backgroundColor: '#ffffff', autoHideMenuBar: true, show: false,
     frame: false, // 토스포스처럼 윈도우 제목줄 없이: 창 조작은 웹앱 오른쪽 위 ⋮ 메뉴로, 작은 창일 때는 위쪽 검은 줄을 끌어 옮긴다
     icon: path.join(__dirname, 'res', 'icon.png'),
-    webPreferences: {contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, preload: path.join(__dirname, 'preload.js'), additionalArguments: ['--nine-ver=' + app.getVersion()]}
+    webPreferences: {contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, preload: path.join(__dirname, 'preload.js'), webviewTag: true, additionalArguments: ['--nine-ver=' + app.getVersion()]}
   });
   win.once('ready-to-show', () => { win.maximize(); win.show(); }); // 처음엔 전체 모드(토스포스처럼)
   win.on('close', e => { // X 를 눌러도 꺼지지 않고 오른쪽 아래 트레이로 숨는다 (알림을 계속 받게)
@@ -68,7 +68,11 @@ function createWindow() {
   win.on('session-end', () => { quitting = true; }); // 윈도우 끄기·로그아웃 때는 막지 않는다
   win.webContents.setUserAgent(win.webContents.getUserAgent() + ' NineFamilyPC/' + app.getVersion()); // 웹이 설치된 PC 프로그램 버전을 알아보게
   win.loadURL(HOME);
-  win.webContents.on('did-start-navigation', (e) => { if (e.isMainFrame && !e.isSameDocument && npView) npView.setVisible(false); }); // 웹앱을 새로 불러오면 나인패스 화면은 숨김
+  win.webContents.on('will-attach-webview', (e, wp, params) => { // 웹앱 안 나인패스 칸(<webview>)은 나인패스 주소만, 별도 보관함·잠금 설정으로
+    if (params.src && !npOk(params.src)) { e.preventDefault(); return; }
+    delete wp.preload; wp.nodeIntegration = false; wp.contextIsolation = true; wp.sandbox = true; wp.webviewTag = false;
+    params.partition = 'persist:ninepass';
+  });
   win.webContents.on('before-input-event', (e, i) => { // F5·Ctrl+R = 새 버전으로 새로고침 (메뉴줄이 없어서 직접 건다)
     if (i.type === 'keyDown' && (i.key === 'F5' || (i.control && i.key.toLowerCase() === 'r'))) { e.preventDefault(); win.webContents.reloadIgnoringCache(); }
   });
@@ -80,35 +84,14 @@ function createWindow() {
   });
 }
 
-// ---------- 나인패스를 메뉴 화면처럼: 상단바 아래 영역에 나인패스를 띄운다(프로그램 안의 별도 화면 — 끼워 넣기(iframe)가 아니라 로그인이 안정적) ----------
-// 웹앱이 자리(x, y, 너비, 높이)와 1회용 자동 로그인 주소를 알려 주면 그 자리에 보이고, 다른 메뉴로 가면 숨긴다(다시 오면 보던 화면 그대로)
-let npView = null, npHost = '';
+// ---------- 나인패스 칸: 웹앱 화면 안의 <webview> 로 띄운다(0.1.1~). 상단 메뉴줄·팝업은 웹앱 그대로 보이고, 다른 메뉴를 누르면 칸만 숨는다 ----------
 const npOk = url => { try { const u = new URL(url); return u.protocol === 'https:' && /(^|\.)ninepayments\.co\.kr$/.test(u.hostname); } catch (e) { return false; } };
-function npEnsure() {
-  if (npView) return npView;
-  npView = new WebContentsView({webPreferences: {contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false}});
-  npView.setBackgroundColor('#ffffff');
-  const wc = npView.webContents;
-  wc.setWindowOpenHandler(({url}) => { if (npOk(url)) wc.loadURL(url); else shell.openExternal(url); return {action: 'deny'}; }); // 나인패스 안 새 창은 같은 화면에서
+app.on('web-contents-created', (ev, wc) => {
+  if (wc.getType() !== 'webview') return;
+  wc.setWindowOpenHandler(({url}) => { if (npOk(url)) wc.loadURL(url); else shell.openExternal(url); return {action: 'deny'}; }); // 나인패스 안 새 창은 같은 칸에서
   wc.on('will-navigate', (e, url) => { if (!npOk(url)) { e.preventDefault(); shell.openExternal(url); } });
   wc.on('will-redirect', (e, url) => { if (!npOk(url)) { e.preventDefault(); shell.openExternal(url); } });
-  wc.on('page-title-updated', () => { if (win) win.webContents.send('nine-np-ev', 'title', wc.getTitle()); });
-  win.contentView.addChildView(npView);
-  return npView;
-}
-ipcMain.on('nine-np', (e, k, a) => {
-  if (!win || e.sender !== win.webContents) return;
-  a = a || {};
-  const b = {x: Math.max(0, Math.round(a.x || 0)), y: Math.max(0, Math.round(a.y || 0)), width: Math.max(1, Math.round(a.w || 1)), height: Math.max(1, Math.round(a.h || 1))};
-  if (k === 'show') {
-    const v = npEnsure(); v.setBounds(b); v.setVisible(true);
-    if (a.url && npOk(a.url)) { npHost = new URL(a.url).host; v.webContents.loadURL(a.url); }
-  } else if (k === 'bounds') { if (npView) npView.setBounds(b); }
-  else if (k === 'hide') { if (npView) npView.setVisible(false); }
-  else if (k === 'back') { if (npView && npView.webContents.navigationHistory.canGoBack()) npView.webContents.navigationHistory.goBack(); }
-  else if (k === 'reload') { if (npView) npView.webContents.reload(); }
 });
-ipcMain.handle('nine-np-state', () => ({open: !!npView, host: npHost}));
 
 // 웹앱 오른쪽 위 ⋮ 메뉴: 새로고침 · 다시시작 · 종료 · 창 최소화 · 창 줄이기(옮길 수 있는 작은 창) · 크게보기(다시 전체 모드)
 ipcMain.on('nine-win', (e, k) => {
@@ -180,6 +163,7 @@ app.whenReady().then(async () => {
   try { await session.defaultSession.clearCache(); } catch (e) {}
   // 바코드 카메라·알림만 허용 (우리 웹앱에서 요청할 때)
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb, details) => cb(inApp(details.requestingUrl || wc.getURL()) && ['media', 'notifications', 'clipboard-sanitized-write'].includes(perm)));
+  try { session.fromPartition('persist:ninepass').setPermissionRequestHandler((wc, perm, cb) => cb(perm === 'clipboard-sanitized-write')); } catch (e) {}
   createWindow();
   createTray();
 });

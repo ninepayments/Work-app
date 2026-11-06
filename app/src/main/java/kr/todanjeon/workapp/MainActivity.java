@@ -41,7 +41,17 @@ import java.util.Comparator;
 import java.util.List;
 
 public class MainActivity extends Activity {
-    static final String[] TYPES = {"신규 설치", "방문AS", "원격AS", "영업 방문", "서류 접수", "카드사서류", "큐밴등록", "기타"}; // 예전 업무의 'AS'·'카드사 서류' 는 그대로 보여요
+    static final String[] TYPES = {"신규 설치", "방문AS", "원격AS", "영업 방문", "서류 접수", "기타"}; // 예전 업무의 'AS'·'카드사 서류'·'카드사서류'·'큐밴등록' 은 그대로 보여요
+    static final String[] DOC_SUBS = {"(고르지 않음)", "카드사신규", "큐밴등록"}; // '서류 접수' 를 고르면 2단계로 고른다 → 저장은 '서류 접수 · 카드사신규' (웹과 같음)
+
+    /** 저장된 종류 → {1단계, 2단계}. 예전 값 '카드사서류'·'큐밴등록' 도 서류 접수의 2단계로 본다 */
+    static String[] typeSplit(String ty) {
+        if (ty == null || ty.isEmpty()) ty = "기타";
+        if (ty.startsWith("서류 접수 · ")) return new String[]{"서류 접수", ty.substring(8)};
+        if (ty.equals("카드사서류") || ty.equals("카드사 서류")) return new String[]{"서류 접수", "카드사신규"};
+        if (ty.equals("큐밴등록")) return new String[]{"서류 접수", "큐밴등록"};
+        return new String[]{ty, ""};
+    }
     static final String[] STATUS_ACTIONS = {"진행중", "보류"};
 
     private Store store;
@@ -1525,12 +1535,42 @@ public class MainActivity extends Activity {
     }
 
     private void showCreateTask() {
+        showCreateTask(null);
+    }
+
+    /** 업무 내용 수정: 요청한 사람·담당자·최고관리자 (웹과 같음) */
+    private boolean canEditTask(JSONObject t) {
+        return t.optInt("creator") == myId() || t.optInt("assignee") == myId() || can(Perm.STAFF_MANAGE);
+    }
+
+    /** et == null 이면 새 업무 요청, 아니면 그 업무 수정(바뀐 칸만 처리 이력에 남김) */
+    private void showCreateTask(final JSONObject et) {
         LinearLayout f = new LinearLayout(this);
         f.setOrientation(LinearLayout.VERTICAL);
         f.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0);
         final EditText title = Ui.field(this, "업무 제목 (필수)", false);
+        final String[] ts0 = typeSplit(et == null ? "" : et.optString("type"));
+        final List<String> typeList = new ArrayList<>(java.util.Arrays.asList(TYPES));
+        if (!typeList.contains(ts0[0])) typeList.add(ts0[0]); // 예전 종류('AS' 등)는 그대로 고를 수 있게
         final Spinner type = new Spinner(this);
-        type.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, TYPES));
+        type.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, typeList));
+        final Spinner type2 = new Spinner(this);
+        type2.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, DOC_SUBS));
+        final TextView type2L = Ui.text(this, "서류 종류", 12, Ui.GRAY, true);
+        type.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> pa, View v, int pos, long id) {
+                int vis = "서류 접수".equals(typeList.get(pos)) ? View.VISIBLE : View.GONE;
+                type2.setVisibility(vis);
+                type2L.setVisibility(vis);
+            }
+
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> pa) {
+            }
+        });
+        type.setSelection(Math.max(0, typeList.indexOf(ts0[0])));
+        type2.setSelection(Math.max(0, java.util.Arrays.asList(DOC_SUBS).indexOf(ts0[1])));
         final EditText client = Ui.field(this, "거래처(상호)", false);
         final EditText phone = Ui.field(this, "매장 전화", false);
         phone.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
@@ -1548,14 +1588,30 @@ public class MainActivity extends Activity {
         final List<JSONObject> staff = new ArrayList<>();
         for (JSONObject u : store.list(store.users())) {
             if (!u.optBoolean("active", true)) continue;
-            if (can(Perm.TASK_ASSIGN) || u.optInt("id") == myId()) staff.add(u);
+            if (can(Perm.TASK_ASSIGN) || u.optInt("id") == myId() || (et != null && u.optInt("id") == et.optInt("assignee"))) staff.add(u);
         }
         List<String> names = new ArrayList<>();
         for (JSONObject u : staff) names.add(u.optString("name"));
         final Spinner who = new Spinner(this);
         who.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+        if (et != null) { // 수정: 지금 값으로 채운다
+            title.setText(et.optString("title"));
+            client.setText(et.optString("client"));
+            phone.setText(et.optString("phone"));
+            addr.setText(et.optString("addr"));
+            String[] dd0 = et.optString("due").split(" ");
+            due.setText(dd0.length > 0 ? dd0[0] : "");
+            dueT.setText(dd0.length > 1 ? dd0[1] : "");
+            memo.setText(et.optString("memo"));
+            req.setText(et.optString("req"));
+            for (int i = 0; i < staff.size(); i++) if (staff.get(i).optInt("id") == et.optInt("assignee")) who.setSelection(i);
+            JSONObject m0 = store.byId("merchants", et.optInt("merchant"));
+            if (m0 != null) picked[0] = m0;
+        }
         f.addView(title);
         f.addView(type);
+        f.addView(type2L, Ui.lp(this, 6));
+        f.addView(type2);
         Button mp = Ui.button(this, "가맹점 조회 (정보 자동 입력)", Ui.TINT, Ui.DEEP);
         mp.setOnClickListener(v -> pickMerchant(m -> {
             picked[0] = m;
@@ -1584,9 +1640,9 @@ public class MainActivity extends Activity {
         f.addView(who);
         ScrollView sv = new ScrollView(this);
         sv.addView(f);
-        new Dlg(this).setTitle("업무 요청").setView(sv)
+        new Dlg(this).setTitle(et == null ? "업무 요청" : "업무 수정").setView(sv)
                 .setNegativeButton("취소", null)
-                .setPositiveButton("요청하기", (d, w) -> {
+                .setPositiveButton(et == null ? "요청하기" : "저장", (d, w) -> {
                     String ti = title.getText().toString().trim();
                     if (ti.isEmpty() || staff.isEmpty()) {
                         Ui.warn(this, "업무 제목을 입력해 주세요.");
@@ -1595,7 +1651,20 @@ public class MainActivity extends Activity {
                     int assignee = staff.get(who.getSelectedItemPosition()).optInt("id");
                     String dd = due.getText().toString().trim();
                     final String dueStr = dd.isEmpty() ? "" : dd + (dueT.getText().toString().trim().isEmpty() ? "" : " " + dueT.getText().toString().trim());
-                    JSONObject nt = store.addTask(ti, TYPES[type.getSelectedItemPosition()], client.getText().toString().trim(),
+                    String tp1 = typeList.get(type.getSelectedItemPosition());
+                    final String tp = "서류 접수".equals(tp1) && type2.getSelectedItemPosition() > 0 ? tp1 + " · " + DOC_SUBS[type2.getSelectedItemPosition()] : tp1;
+                    if (et != null) {
+                        saveTaskEdit(et, ti, tp, client.getText().toString().trim(), phone.getText().toString().trim(), addr.getText().toString().trim(),
+                                dueStr, memo.getText().toString().trim(), req.getText().toString().replaceAll("[\\s,]+$", "").trim(), assignee, picked[0]);
+                        if (dd.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                            calSel = dd;
+                            calY = Integer.parseInt(dd.substring(0, 4));
+                            calM = Integer.parseInt(dd.substring(5, 7));
+                        }
+                        render();
+                        return;
+                    }
+                    JSONObject nt = store.addTask(ti, tp, client.getText().toString().trim(),
                             phone.getText().toString().trim(), addr.getText().toString().trim(),
                             dueStr, memo.getText().toString().trim(), assignee, myId());
                     if (nt != null) {
@@ -1612,7 +1681,6 @@ public class MainActivity extends Activity {
                         calY = Integer.parseInt(dd.substring(0, 4));
                         calM = Integer.parseInt(dd.substring(5, 7));
                     }
-                    String tp = TYPES[type.getSelectedItemPosition()];
                     if (tp.contains("서류")) {
                         postToRoom("서류접수", "📄 서류 업무 · " + ti + (client.getText().toString().trim().isEmpty() ? "" : " · " + client.getText().toString().trim())
                                 + "\n담당 " + store.userName(assignee) + " · 요청 " + store.userName(myId()) + (dueStr.isEmpty() ? "" : " · 기한 " + dueStr));
@@ -1620,6 +1688,42 @@ public class MainActivity extends Activity {
                     Ui.toast(this, store.userName(assignee) + "님에게 업무를 요청했습니다.");
                     render();
                 }).show();
+    }
+
+    private void saveTaskEdit(JSONObject t, String ti, String tp, String client, String phone, String addr, String due, String memo, String req, int assignee, JSONObject picked) {
+        try {
+            String[][] f = {{"title", ti, "제목"}, {"type", tp, "종류"}, {"client", client, "거래처"}, {"phone", phone, "전화"}, {"addr", addr, "주소"}, {"memo", memo, "메모"}, {"req", req, "요청사항"}};
+            List<String> ch = new ArrayList<>();
+            for (String[] x : f) if (!t.optString(x[0]).equals(x[1])) ch.add(x[2]);
+            boolean whoCh = t.optInt("assignee") != assignee, dueCh = !t.optString("due").equals(due);
+            int mer = picked != null && picked.optString("name").trim().equals(client) ? picked.optInt("id") : 0;
+            if (mer == 0 && t.optInt("merchant") != 0) {
+                JSONObject m0 = store.byId("merchants", t.optInt("merchant"));
+                if (m0 != null && m0.optString("name").trim().equals(client)) mer = t.optInt("merchant");
+            }
+            boolean merCh = mer != t.optInt("merchant");
+            if (merCh && mer != 0) ch.add("가맹점");
+            if (ch.isEmpty() && !whoCh && !dueCh && !merCh) {
+                Ui.toast(this, "바뀐 내용이 없어요.");
+                return;
+            }
+            if (!t.has("history")) t.put("history", new JSONArray());
+            if (whoCh) {
+                store.log(t, myId(), "담당 변경 " + store.userName(t.optInt("assignee")) + " → " + store.userName(assignee));
+                if ("지시됨".equals(t.optString("status"))) t.put("seenAt", "");
+            }
+            if (dueCh) store.log(t, myId(), "일정 변경 " + (t.optString("due").isEmpty() ? "없음" : t.optString("due")) + " → " + (due.isEmpty() ? "없음" : due));
+            if (!ch.isEmpty()) store.log(t, myId(), "내용 수정: " + android.text.TextUtils.join(", ", ch));
+            for (String[] x : f) t.put(x[0], x[1]);
+            t.put("due", due);
+            t.put("assignee", assignee);
+            t.put("merchant", mer);
+            t.put("editedBy", myId());
+            t.put("editedAt", store.now());
+            store.save();
+            Ui.toast(this, "업무를 고쳤어요.");
+        } catch (org.json.JSONException ignored) {
+        }
     }
 
     private void showTask(final int id) {
@@ -1712,6 +1816,14 @@ public class MainActivity extends Activity {
                 pickMerchant(m -> askLink(t, m));
             });
             l.addView(lk, Ui.lp(this, 8));
+        }
+        if (canEditTask(t)) {
+            Button ed = Ui.button(this, "✏ 업무 내용 수정", Ui.TINT, Ui.DEEP);
+            ed.setOnClickListener(v -> {
+                if (dlg[0] != null) dlg[0].dismiss();
+                showCreateTask(t);
+            });
+            l.addView(ed, Ui.lp(this, 8));
         }
         ScrollView sv = new ScrollView(this);
         sv.addView(l);
@@ -3827,6 +3939,44 @@ public class MainActivity extends Activity {
         labeled(f, "계약 추가 조건", terms);
         labeled(f, "계약시작일", cstart);
         labeled(f, "계약종료일", cend);
+        // 계약시작일을 고르면 종료일 = 시작일 + 계약 기간(기본 36개월). 24·48개월 버튼으로 바꾸고, 종료일은 직접 고쳐도 된다 (웹과 같음)
+        final int[] cMon = {36};
+        final int[] cMons = {24, 36, 48};
+        final TextView[] cPills = new TextView[3];
+        LinearLayout cRow = new LinearLayout(this);
+        cRow.setGravity(Gravity.CENTER_VERTICAL);
+        cRow.addView(Ui.text(this, "계약 기간  ", 12, Ui.GRAY, true));
+        for (int i = 0; i < 3; i++) {
+            final int n = cMons[i];
+            cPills[i] = pill(n + "개월", n == 36, () -> {
+                cMon[0] = n;
+                for (int j = 0; j < 3; j++) {
+                    boolean on = cMons[j] == n;
+                    cPills[j].setTextColor(on ? Color.WHITE : Ui.GRAY);
+                    cPills[j].setBackground(Ui.round(on ? Ui.NAVY : Ui.FIELD, 18, this));
+                }
+                String cs = cstart.getText().toString().trim();
+                if (cs.matches("\\d{4}-\\d{2}-\\d{2}")) cend.setText(addMonths(cs, n));
+            });
+            cRow.addView(cPills[i]);
+        }
+        f.addView(cRow, Ui.lp(this, 6));
+        f.addView(Ui.text(this, "시작일을 고르면 종료일이 자동으로 정해져요(직접 바꿔도 돼요).", 12, Ui.GRAY, false), Ui.lp(this, 2));
+        cstart.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence x, int a1, int a2, int a3) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence x, int a1, int a2, int a3) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable x) {
+                String cs = x.toString().trim();
+                if (cs.matches("\\d{4}-\\d{2}-\\d{2}")) cend.setText(addMonths(cs, cMon[0]));
+            }
+        });
         labeled(f, "등급 (0~3코드: 밴피 기준)", grade);
         labeled(f, "메모", memo);
         ScrollView sv = new ScrollView(this);
@@ -7987,6 +8137,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.4.6", "2026-11-06", "• 업무 종류 정리: '서류 접수'를 고르면 2단계로 카드사신규·큐밴등록을 골라요(예전 업무의 카드사서류·큐밴등록은 그대로 보여요)\n• 업무 수정: 업무를 눌러 [✏ 업무 내용 수정] — 고친 칸은 처리 이력에 남아요(요청한 사람·담당자·최고관리자)\n• 가맹점 등록·수정: 계약시작일을 고르면 종료일이 36개월 뒤로 자동으로 정해져요(24·48개월 버튼, 종료일 직접 수정 가능)"},
             {"0.4.5", "2026-11-04", "• 가맹점 수정 암호·삭제 비밀번호를 잊었을 때: 최고관리자는 '현재 암호를 잊었어요'를 체크하고 현재 암호 없이 새로 정할 수 있어요(감사 기록에 남아요)"},
             {"0.4.4", "2026-11-04", "• 정리: 최고관리자를 처음 옮길 때만 쓰던 이름 목록을 지웠어요(이제 최고관리자는 직원 정보의 최고관리자 표시로만 정해져요)"},
             {"0.4.3", "2026-11-04", "• 결재 양식함(전체 → 회사): 양식을 골라 칸을 채우면 양식 위에 바로 찍혀요. 'PDF 받기' 또는 '나인패스로 보내기'(내 나인패스 계정 임시저장 문서에 첨부 → 열린 창에서 상신)\n• 양식 올리기·칸 편집은 PC 웹에서"},
