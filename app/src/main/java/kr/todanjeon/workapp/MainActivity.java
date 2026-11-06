@@ -921,6 +921,7 @@ public class MainActivity extends Activity {
     private static final String NP_FN = "https://asia-northeast3-nine-family.cloudfunctions.net/";
     private static final String NP_MISMATCH = "나인패스에 등록된 직원 정보와 일치하지 않습니다. 관리자에게 문의하세요";
     private int npCount = 0;
+    private JSONArray npItems = new JSONArray(); // 결재 대기 문서 목록 (업무 화면 맨 위 카드)
     private final android.os.Handler npHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable npTick = new Runnable() {
         @Override
@@ -954,19 +955,55 @@ public class MainActivity extends Activity {
         if (me == null || fu == null) return;
         fu.getIdToken(false).addOnSuccessListener(tk -> new Thread(() -> {
             int n = 0;
+            JSONArray it = null;
             try {
                 JSONObject j = (JSONObject) npCall("npPending", tk.getToken(), "{}")[1];
                 n = j.optBoolean("error") ? 0 : Math.max(0, j.optInt("count"));
                 if (j.has("linked")) npLinked = j.optBoolean("linked");
+                if (!j.optBoolean("error")) it = j.optJSONArray("items") != null ? j.optJSONArray("items") : new JSONArray();
             } catch (Exception ignored) {
             }
             final int f = n;
+            final JSONArray fit = it;
             runOnUiThread(() -> {
-                if (f == npCount) return;
+                boolean itCh = fit != null && !fit.toString().equals(npItems.toString());
+                if (fit != null) npItems = fit;
+                if (f == npCount && !itCh) return;
                 npCount = f;
-                if ("all".equals(tab) && !isFinishing()) render();
+                if (("all".equals(tab) || "task".equals(tab)) && (sub == null || sub.isEmpty()) && !isFinishing()) render();
             });
         }).start());
+    }
+
+    private void showNpPendingList() {
+        if (npItems.length() == 0) {
+            openNinepass("/");
+            return;
+        }
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        l.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0);
+        final AlertDialog[] dlg = new AlertDialog[1];
+        for (int i = 0; i < npItems.length() && i < 30; i++) {
+            final JSONObject x = npItems.optJSONObject(i);
+            if (x == null) continue;
+            LinearLayout c = Ui.card(this);
+            c.addView(Ui.text(this, x.optString("title", "(제목 없음)"), 15, Ui.INK, true));
+            String at = x.optString("at");
+            String meta = (x.optString("kind").isEmpty() ? "" : x.optString("kind") + " · ") + (x.optString("drafter").isEmpty() ? "" : "기안 " + x.optString("drafter"))
+                    + (at.length() >= 16 ? " · " + at.substring(5, 16).replace('T', ' ') : "");
+            c.addView(Ui.text(this, meta + "   결재 ›", 12, Ui.GRAY, false), Ui.lp(this, 2));
+            c.setOnClickListener(v -> {
+                if (dlg[0] != null) dlg[0].dismiss();
+                String p = x.optString("path", "/");
+                openNinepass(p.startsWith("/") ? p : "/");
+            });
+            l.addView(c, Ui.lp(this, 8));
+        }
+        ScrollView sv = new ScrollView(this);
+        sv.addView(l);
+        dlg[0] = new Dlg(this).setTitle("나인패스 결재 대기 " + npCount + "건").setView(sv)
+                .setNegativeButton("닫기", null).setPositiveButton("나인패스 열기", (d, w) -> openNinepass("/")).show();
     }
 
     private void openNinepass() {
@@ -1424,6 +1461,16 @@ public class MainActivity extends Activity {
         });
         hero.addView(track, Ui.lp(this, 8));
         fixedTop.addView(hero);
+        if (npCount > 0 || npItems.length() > 0) { // 나인패스 결재 대기 — 누르면 문서 목록, 문서를 누르면 나인패스에서 그 문서 (웹과 같음)
+            LinearLayout nc = Ui.card(this);
+            nc.setBackground(Ui.round(Color.WHITE, 20, this));
+            nc.addView(Ui.text(this, "📝 나인패스 결재 대기 " + npCount + "건", 15, Ui.DEEP, true));
+            JSONObject f0 = npItems.optJSONObject(0);
+            if (f0 != null) nc.addView(Ui.text(this, f0.optString("title") + (f0.optString("drafter").isEmpty() ? "" : " · 기안 " + f0.optString("drafter"))
+                    + (npItems.length() > 1 ? " 외 " + (npItems.length() - 1) + "건" : "") + "  (눌러서 보기)", 12, Ui.GRAY, false), Ui.lp(this, 2));
+            nc.setOnClickListener(v -> showNpPendingList());
+            fixedTop.addView(nc, Ui.lp(this, 8));
+        }
         List<JSONObject> expList = expiringContracts();
         if (!expList.isEmpty()) {
             LinearLayout al = Ui.card(this);
@@ -8137,6 +8184,7 @@ public class MainActivity extends Activity {
 
     /** {버전, 날짜, 내용}. 새 버전은 맨 위에 추가. CI 가 현재 versionName 항목이 있는지 검사한다. */
     private static final String[][] CHANGELOG = {
+            {"0.4.7", "2026-11-06", "• 업무 화면 맨 위에 '📝 나인패스 결재 대기' 카드 — 누르면 결재할 문서 목록, 문서를 누르면 나인패스에서 바로 열려요"},
             {"0.4.6", "2026-11-06", "• 업무 종류 정리: '서류 접수'를 고르면 2단계로 카드사신규·큐밴등록을 골라요(예전 업무의 카드사서류·큐밴등록은 그대로 보여요)\n• 업무 수정: 업무를 눌러 [✏ 업무 내용 수정] — 고친 칸은 처리 이력에 남아요(요청한 사람·담당자·최고관리자)\n• 가맹점 등록·수정: 계약시작일을 고르면 종료일이 36개월 뒤로 자동으로 정해져요(24·48개월 버튼, 종료일 직접 수정 가능)"},
             {"0.4.5", "2026-11-04", "• 가맹점 수정 암호·삭제 비밀번호를 잊었을 때: 최고관리자는 '현재 암호를 잊었어요'를 체크하고 현재 암호 없이 새로 정할 수 있어요(감사 기록에 남아요)"},
             {"0.4.4", "2026-11-04", "• 정리: 최고관리자를 처음 옮길 때만 쓰던 이름 목록을 지웠어요(이제 최고관리자는 직원 정보의 최고관리자 표시로만 정해져요)"},

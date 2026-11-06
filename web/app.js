@@ -2,7 +2,7 @@
 /* 나인패밀리 웹앱 — 앱과 같은 Firebase(nine-family)를 쓴다. 문서는 {j: JSON문자열, u: 시각} 형식. */
 const CFG = {apiKey: 'AIzaSyCsA-M6QGGGk0owyDXzziv1X79TqF5NptI', authDomain: 'nine-family.firebaseapp.com', projectId: 'nine-family',
   storageBucket: 'nine-family.firebasestorage.app', messagingSenderId: '48232341344', appId: '1:48232341344:web:19be016c9c1c1de5a34805'};
-const VERSION = '웹 0.7.1';
+const VERSION = '웹 0.7.2';
 const APPCHECK_KEY = ''; // App Check(reCAPTCHA v3) 사이트 키. 비어 있으면 App Check 를 켜지 않는다. 키를 지어내지 말고 Firebase 콘솔 → App Check 에서 만든 값을 넣을 것
 const DEMO = location.hash === '#demo';
 const COLLS = ['users', 'tasks', 'notices', 'projects', 'events', 'merchants', 'rooms', 'msgs', 'profiles', 'mlogs', 'config', 'stock', 'contracts', 'deposits', 'costs', 'reports', 'library', 'contacts'];
@@ -469,12 +469,21 @@ async function npPoll() { // 결재 대기 수 — 실패하면 숫자만 숨긴
   try {
     const r = await fetch(NP_FN + 'npPending', {method: 'POST', headers: {Authorization: 'Bearer ' + await auth.currentUser.getIdToken()}});
     const j = await r.json(); n = j && !j.error ? Math.max(0, Number(j.count) || 0) : 0; if (j && typeof j.linked === 'boolean') S.npLinked = j.linked;
+    if (j && !j.error) { const it = Array.isArray(j.items) ? j.items : []; const key = JSON.stringify(it); if (key !== S.npItemsKey) { S.npItemsKey = key; S.npItems = it; if (!S.menu && (S.sub || S.tab) === 'task' && !$('#modal')) render(); } }
   } catch (e) { n = 0; }
   if (n === (S.npCount || 0)) return; S.npCount = n;
+  if (!S.menu && (S.sub || S.tab) === 'task' && !$('#modal')) render();
   document.querySelectorAll('.npnav').forEach(b => { const o = b.querySelector('.badge'); if (o) o.remove(); if (n) b.insertAdjacentHTML('beforeend', npBadge()); });
 }
 setInterval(npPoll, 30000); setTimeout(npPoll, 3000); document.addEventListener('visibilitychange', () => { if (!document.hidden) npPoll(); });
 const NP_MISMATCH = '나인패스에 등록된 직원 정보와 일치하지 않습니다. 관리자에게 문의하세요';
+// 업무 화면 맨 위: 나인패스 결재 대기 (서버 npPending 이 준 목록 — 누르면 그 문서를 나인패스에서 연다, 앱과 같음)
+function npTaskHTML() {
+  const n = S.npCount || 0, it = S.npItems || []; if (!n && !it.length) return '';
+  return '<div class="npcard"><div class="row" style="gap:8px"><img src="ninepass-logo-64.png" alt=""><b class="grow">나인패스 결재 대기 ' + n + '건</b><button class="btn" data-act="npOpen" data-arg="/">나인패스 열기 ›</button></div>' +
+    it.slice(0, 8).map(x => '<button class="npitem" data-act="npOpen" data-arg="' + esc(x.path || '/') + '"><span class="grow"><b>' + esc(x.title || '(제목 없음)') + '</b><small>' + esc([x.kind, x.drafter ? '기안 ' + x.drafter : '', (x.at || '').slice(5, 16).replace('T', ' ')].filter(Boolean).join(' · ')) + '</small></span><span class="go">결재 ›</span></button>').join('') +
+    (it.length > 8 ? '<div class="sub" style="margin:6px 0 0">그 밖에 ' + (it.length - 8) + '건 — 나인패스에서 확인해 주세요</div>' : '') + '</div>';
+}
 function newTaskCount() { return list('tasks').filter(t => t.assignee === S.uid && t.status === '지시됨').length + list('tasks').filter(t => t.preq && t.preq.stage === '발송함' && t.creator === S.uid).length; } // 물품요청이 발송되면 요청한 사람에게 '입고 확인' 알림
 function bodyHTML() {
   const k = S.sub || S.tab, wide = isWide();
@@ -641,7 +650,7 @@ function viewTasks(noHero) {
   const rows = scope.filter(t => S.taskFilter === 0 ? norm(t) !== '완료' : norm(t) === FS[S.taskFilter]).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
   const exn = expiringContracts().length;
   const expCard = exn ? '<button class="expcard" data-nav="all" data-sub="contracts">⏰ 만료가 3개월 안으로 남은 계약 ' + exn + '건 <span>계약 관리 ›</span></button>' : '';
-  return expCard + (noHero ? '' : '<div class="hero"><div class="row"><div class="grow">남은 업무<div class="n">' + open + '건</div></div><div style="text-align:right;font-size:12px">미확인 ' + fresh + ' · 진행 ' + doing + ' · 보류 ' + held + '<br>오늘 완료 ' + done + '</div></div><div class="bar"><i style="width:' + ratio + '%"></i></div></div>') +
+  return npTaskHTML() + expCard + (noHero ? '' : '<div class="hero"><div class="row"><div class="grow">남은 업무<div class="n">' + open + '건</div></div><div style="text-align:right;font-size:12px">미확인 ' + fresh + ' · 진행 ' + doing + ' · 보류 ' + held + '<br>오늘 완료 ' + done + '</div></div><div class="bar"><i style="width:' + ratio + '%"></i></div></div>') +
     (can('task_view_all') ? '<div class="pills"><button class="pill ' + (!S.showAll ? 'on' : '') + '" data-act="scope" data-arg="0">내 업무</button><button class="pill ' + (S.showAll ? 'on' : '') + '" data-act="scope" data-arg="1">전체 업무</button></div>' : '') +
     '<div class="sub" style="margin-top:' + (noHero ? 4 : 14) + 'px;font-weight:700">상태별로 보기</div><div class="seg">' + F.map((f, i) => '<button class="' + (S.taskFilter === i ? 'on' : '') + '" data-act="tfilter" data-arg="' + i + '">' + f + '<b>' + cnt[i] + '</b></button>').join('') + '</div>' +
     (rows.length ? rows.map(taskCard).join('') : '<div class="empty">' + (S.taskFilter === 0 ? '진행 중인 업무가 없습니다.' : '\'' + F[S.taskFilter] + '\' 업무가 없습니다.') + '</div>');
@@ -3376,6 +3385,7 @@ function viewHome() {
 
 // ---------- 사용설명서 · 버전 내역 (웹) ----------
 const WEB_CHANGES = [
+  ['웹 0.7.2', '2026-11-06', ['업무 화면 맨 위에 ‘📝 나인패스 결재 대기’ 카드 — 결재할 문서 제목·기안자·종류가 보이고, 누르면 그 문서를 나인패스에서 바로 열어요']],
   ['웹 0.7.1', '2026-11-06', ['업무 종류 정리: ‘서류 접수’를 고르면 2단계로 카드사신규·큐밴등록을 골라요(예전 업무의 카드사서류·큐밴등록은 그대로 보여요)', '업무 수정: 업무를 눌러 [✏ 수정] — 제목·종류·거래처·전화·주소·요청사항·기한·메모·담당을 고치면 처리 이력에 남아요(요청한 사람·담당자·최고관리자)', '가맹점 등록·수정: 계약시작일을 고르면 종료일이 36개월 뒤로 자동으로 정해져요. 24·48개월 버튼, 종료일 직접 수정도 돼요', 'PC 상단 메뉴 버튼을 마우스로 끌어서 순서를 바꿀 수 있어요(계정마다 저장)', 'PC 프로그램 0.1.1: 나인패스가 나인패밀리 창 안 한 칸에 열려요 — 상단 메뉴줄은 그대로, 다른 메뉴를 누르면 바로 돌아와요']],
   ['웹 0.7.0', '2026-11-04', ['가맹점 수정 암호·삭제 비밀번호를 잊었을 때: 최고관리자는 ‘현재 암호를 잊었어요’를 체크하고 현재 암호 없이 새로 정할 수 있어요(감사 기록에 남아요)']],
   ['웹 0.6.9', '2026-11-04', ['PC 프로그램(0.1.0 이상)에서 나인패스가 다른 메뉴처럼 열려요 — 상단바 ‘나인패스’를 누르면 아래 화면이 나인패스로 바뀌고, 다른 메뉴를 누르면 돌아와요(보던 화면은 그대로). 뒤로·새로고침·처음 화면·새 창으로 버튼', '채팅 결재 알림의 [나인패스 열기]와 결재 양식함의 [나인패스로 보내기]도 PC 프로그램에서는 그 화면에서 열려요']],

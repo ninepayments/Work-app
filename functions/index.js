@@ -151,11 +151,20 @@ exports.npPending = onRequest(npOpts, async (req, res) => {
   if (!npReady()) return res.json({count: 0, error: true});
   await withLink(st);
   const c = npCache.get(st.uid);
-  if (c && Date.now() - c.at < 15000) return res.json({count: c.count, found: c.found, linked: st.linked});
+  if (c && Date.now() - c.at < 15000) return res.json({count: c.count, found: c.found, items: c.items, linked: st.linked});
   try {
-    const a = await npAsk(st);
-    npCache.set(st.uid, {at: Date.now(), count: a.count, found: a.found});
-    return res.json({count: a.count, found: a.found, linked: st.linked});
+    // 결재 대기 문서 목록도 같이 → 업무 화면 '나인패스 결재 대기' 카드 (목록을 못 받으면 수만)
+    let a = null, items = [];
+    try {
+      const j = await npGet('/api/external/pending/list', st);
+      if (j && Array.isArray(j.items)) {
+        items = j.items.filter((x) => x && x.id != null).slice(0, 30).map((x) => ({id: String(x.id), title: String(x.title || '').slice(0, 120), kind: String(x.kind || '').slice(0, 30), drafter: String(x.drafter || '').slice(0, 30), at: String(x.submittedAt || '').slice(0, 25), path: okPath(x.path)}));
+        a = {found: j.found !== false, count: Math.max(0, Number(j.pending) || items.length)};
+      }
+    } catch (e) { if (e.message === 'key') throw e; }
+    if (!a) a = await npAsk(st);
+    npCache.set(st.uid, {at: Date.now(), count: a.count, found: a.found, items});
+    return res.json({count: a.count, found: a.found, items, linked: st.linked});
   } catch (e) {
     console.error('npPending', e.message); // 키·주소는 남기지 않는다
     return res.json({count: 0, error: true, linked: st.linked});

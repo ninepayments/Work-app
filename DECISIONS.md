@@ -159,3 +159,4 @@
 - 2026-11-06: 가맹점 계약종료일 — 계약시작일을 고르면 종료일 = 시작일 + 계약 기간(기본 36개월, 24·48 버튼), 종료일은 직접 수정 가능. 계산은 기존 addMonths(같은 날짜, -1일 하지 않음 — 계약 탭 +12/24/36 과 같게).
 - 2026-11-06: PC 상단 메뉴 순서 — 버튼을 마우스로 끌어 옮기면 profiles.navorder(버튼 열쇠 목록: 'f:task' 등 고정 메뉴, 'np' 나인패스, 그 밖은 topnav go 값)에 저장. 직원마다, 그 계정의 모든 PC 에 같게. 메뉴 버튼 위 끌기는 창 옮기기에서 뺌(빈 곳을 끌면 창 이동).
 - 2026-11-06: PC 프로그램 0.1.1 — 나인패스 칸을 WebContentsView(창 위에 덮어 띄우기)에서 웹앱 안 <webview> 로 바꿈(0.1.0 은 나인패밀리 화면을 덮어 돌아올 수 없었음). webviewTag 켬, will-attach-webview 에서 *.ninepayments.co.kr 만·preload 제거·partition persist:ninepass, 나인패스 안 새 창은 같은 칸, 다른 주소는 바깥 브라우저. preload nineWin.npTag=true. 웹은 npTag 가 있을 때만 칸으로, 0.1.0 은 새 창. ← 2026-11-04 PC 0.1.0 WebContentsView 결정 대체
+- 2026-11-06: 나인패스 결재 대기를 업무 화면 맨 위 카드로도 보여 줌(채팅 알림은 그대로). 서버 npPending 이 /api/external/pending/list 로 목록(id·title·kind·drafter·at·path, 최대 30)까지 돌려줌 — 목록 실패 시 예전처럼 수만. 웹 npTaskHTML(최대 8건), 앱은 카드 → 목록 창. 업무 개수(빨간 숫자)에는 넣지 않음(나인패스 메뉴 숫자와 겹치지 않게).
