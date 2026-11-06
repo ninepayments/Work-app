@@ -1596,7 +1596,7 @@ public class MainActivity extends Activity {
         f.setOrientation(LinearLayout.VERTICAL);
         f.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0);
         final EditText title = Ui.field(this, "업무 제목 (필수)", false);
-        final String[] ts0 = typeSplit(et == null ? "" : et.optString("type"));
+        final String[] ts0 = typeSplit(et == null ? TYPES[0] : et.optString("type")); // 새 업무는 예전처럼 첫 종류(신규 설치)
         final List<String> typeList = new ArrayList<>(java.util.Arrays.asList(TYPES));
         if (!typeList.contains(ts0[0])) typeList.add(ts0[0]); // 예전 종류('AS' 등)는 그대로 고를 수 있게
         final Spinner type = new Spinner(this);
@@ -1701,7 +1701,8 @@ public class MainActivity extends Activity {
                     String tp1 = typeList.get(type.getSelectedItemPosition());
                     final String tp = "서류 접수".equals(tp1) && type2.getSelectedItemPosition() > 0 ? tp1 + " · " + DOC_SUBS[type2.getSelectedItemPosition()] : tp1;
                     if (et != null) {
-                        saveTaskEdit(et, ti, tp, client.getText().toString().trim(), phone.getText().toString().trim(), addr.getText().toString().trim(),
+                        String[] o2 = typeSplit(et.optString("type")), n2 = typeSplit(tp); // 종류를 안 바꿨으면 저장된 값(예전 '카드사서류' 등) 그대로
+                        saveTaskEdit(et, ti, o2[0].equals(n2[0]) && o2[1].equals(n2[1]) ? et.optString("type") : tp, client.getText().toString().trim(), phone.getText().toString().trim(), addr.getText().toString().trim(),
                                 dueStr, memo.getText().toString().trim(), req.getText().toString().replaceAll("[\\s,]+$", "").trim(), assignee, picked[0]);
                         if (dd.matches("\\d{4}-\\d{2}-\\d{2}")) {
                             calSel = dd;

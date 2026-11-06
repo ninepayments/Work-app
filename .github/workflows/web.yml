@@ -24,6 +24,7 @@ jobs:
           npm i --no-save --silent playwright@1.56.1
           npx playwright install --with-deps chromium >/dev/null
           node tools/smoke/web-smoke.js
+          node tools/smoke/web-flows.js
       - name: Stamp file versions (서버 임시 보관을 피해 새 파일을 바로 받게)
         run: |
           V=${GITHUB_SHA::8}

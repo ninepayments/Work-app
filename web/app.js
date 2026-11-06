@@ -352,7 +352,7 @@ if (window.nineWin) document.documentElement.classList.add('elec'); // PC 프로
 if (window.nineWin && window.nineWin.move) {
   document.documentElement.classList.add('jsdrag');
   let dg = null;
-  document.addEventListener('pointerdown', e => { const t = e.target.closest && e.target.closest('.pctop'); if (!t || e.button !== 0 || e.target.closest('.pcnav [data-nk]')) return; /* 메뉴 버튼은 끌어서 순서 바꾸기 */ dg = {x: e.screenX, y: e.screenY, on: false, id: e.pointerId, el: t}; }, true);
+  document.addEventListener('pointerdown', e => { const t = e.target.closest && e.target.closest('.pctop'); if (!t || e.button !== 0 || (e.pointerType === 'mouse' && e.target.closest('.pcnav [data-nk]'))) return; /* 메뉴 버튼은 끌어서 순서 바꾸기 */ dg = {x: e.screenX, y: e.screenY, on: false, id: e.pointerId, el: t}; }, true);
   document.addEventListener('pointermove', e => {
     if (!dg || e.pointerId !== dg.id) return; const dx = e.screenX - dg.x, dy = e.screenY - dg.y;
     if (!dg.on) { if (Math.abs(dx) + Math.abs(dy) < 6) return; dg.on = true; try { dg.el.setPointerCapture(dg.id); } catch (er) {} }
@@ -384,7 +384,7 @@ function pcNavHTML(btn) {
 }
 { // 끌어서 옮기기 (마우스를 6px 넘게 움직이면 시작, 놓으면 저장. 살짝 누르기만 하면 그냥 클릭)
   let dr = null;
-  document.addEventListener('pointerdown', e => { const b = e.button === 0 && e.target.closest && e.target.closest('.pcnav [data-nk]'); if (b) dr = {b, x: e.clientX, id: e.pointerId, on: false}; }, true);
+  document.addEventListener('pointerdown', e => { const b = e.button === 0 && e.pointerType === 'mouse' && e.target.closest && e.target.closest('.pcnav [data-nk]'); /* 마우스만 (터치 화면은 메뉴줄을 밀어 넘기게) */ if (b) dr = {b, x: e.clientX, id: e.pointerId, on: false}; }, true);
   document.addEventListener('pointermove', e => {
     if (!dr || e.pointerId !== dr.id) return;
     if (!dr.b.isConnected) { dr = null; return; }
@@ -733,7 +733,7 @@ ACT.tedit = id => { const t = byId('tasks', id); if (t && canEditTask(t)) { clos
 ACT.newTask = (draft, editId) => {
   const et = editId ? byId('tasks', editId) : null;
   const staff = list('users').filter(u => u.active !== false && (can('task_assign') || u.id === S.uid || (et && u.id === et.assignee)));
-  formModal(et ? '업무 수정' : '업무 요청', '<label class="fl" for="f_t1">업무 제목 (필수)</label><input id="f_t1" placeholder="예: A마트 포스 설치">' + typeSelHTML(et ? et.type : '') + MP_FILL +
+  formModal(et ? '업무 수정' : '업무 요청', '<label class="fl" for="f_t1">업무 제목 (필수)</label><input id="f_t1" placeholder="예: A마트 포스 설치">' + typeSelHTML(et ? et.type : TYPES[0]) + MP_FILL +
     '<label class="fl" for="f_c">거래처 (상호)</label><input id="f_c" placeholder="가맹점을 고르면 자동으로 채워져요"><label class="fl" for="f_p">매장 전화</label><input id="f_p" type="tel" placeholder="예: 062-123-4567"><label class="fl" for="f_a">매장 주소</label><input id="f_a" placeholder="예: 광주 동구 …">' +
     '<label class="fl" for="f_rq">가맹점 요청사항 (빠른 선택 + 직접 입력 — 완료하면 처리결과와 함께 응대 기록에 남아요)</label><div class="pills" style="margin-top:4px">' + reqQuick().map(w => '<button type="button" class="pill rqq" data-w="' + w + '">＋ ' + w + '</button>').join('') + '</div><textarea id="f_rq" placeholder="예: 카드 결제가 안 된다고 함, 영수증 출력 안 됨"></textarea>' +
     '<label class="fl" for="f_d">기한 날짜 (선택 — 고르면 일정 달력에도 표시돼요)</label><input id="f_d" type="date"><label class="fl" for="f_tm">기한 시간 (선택)</label>' + timeSel('f_tm') + '<label class="fl" for="f_m">메모</label><textarea id="f_m" placeholder="메모"></textarea><label class="fl" for="f_w">담당 직원</label><select id="f_w">' + staff.map(u => '<option value="' + u.id + '"' + (u.id === S.uid ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('') + '</select>', () => {
@@ -741,7 +741,8 @@ ACT.newTask = (draft, editId) => {
     const d = $('#f_d').value, tm = $('#f_tm').value; const as = Number($('#f_w').value);
     if (et) { // 수정: 바뀐 칸만 처리 이력에 남긴다
       const t = byId('tasks', editId); if (!t) return true;
-      const nv = {title: ti, type: typeVal(), client: $('#f_c').value.trim(), phone: $('#f_p').value.trim(), addr: $('#f_a').value.trim(), due: d ? d + (tm ? ' ' + tm : '') : '', memo: $('#f_m').value.trim(), req: reqClean($('#f_rq').value), assignee: as};
+      const tv = typeVal(), keepTy = typeSplit(t.type).join('|') === typeSplit(tv).join('|'); // 종류를 안 바꿨으면 저장된 값(예전 '카드사서류' 등) 그대로
+      const nv = {title: ti, type: keepTy ? t.type : tv, client: $('#f_c').value.trim(), phone: $('#f_p').value.trim(), addr: $('#f_a').value.trim(), due: d ? d + (tm ? ' ' + tm : '') : '', memo: $('#f_m').value.trim(), req: reqClean($('#f_rq').value), assignee: as};
       const NM = {title: '제목', type: '종류', client: '거래처', phone: '전화', addr: '주소', due: '기한', memo: '메모', req: '요청사항', assignee: '담당'};
       const ch = Object.keys(nv).filter(k => (t[k] || '') !== (nv[k] || ''));
       if (pickedMer && pickedMer.name === nv.client && t.merchant !== pickedMer.id) { t.merchant = pickedMer.id; ch.push('merchant'); }
